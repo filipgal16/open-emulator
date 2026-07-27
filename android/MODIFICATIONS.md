@@ -6,7 +6,9 @@ rebuild. Adaptations are AVD/runtime only, aimed at **speed + real workloads**:
 ## Hardware profile (`config/avd_config.ini`)
 
 - SwiftShader GPU (`swiftshader`) for software rendering hosts
-- 720×1280 @ 240dpi (lighter than flagship skins; still usable)
+- **1080×1920 @ 420dpi (FHD)** guest framebuffer by default (was 720×1280)
+- `skin.dynamic=yes`, no `-fixed-scale` — emulator window scales with resize
+- `open-emu display hd|fhd|qhd|WxH` for live + next-boot resolution changes
 - 8 GiB `/data` + 512 MB sdcard for installing real apps
 - Audio, keyboard, GPS, cameras enabled for app compatibility
 - Play Store left enabled

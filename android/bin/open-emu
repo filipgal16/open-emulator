@@ -17,6 +17,7 @@ Commands:
   start [--cold]       Start Android (warm if already running)
   stop                 Stop the emulator cleanly
   status               Show runtime status
+  display [preset]     Set/show display resolution (hd|fhd|qhd|WxH)
   provision            Tune guest for real use + save snapshot (KVM fast path)
   install <apk>        Install an APK (grants runtime permissions)
   launch <component>   Start an activity (pkg/.Activity)
@@ -29,10 +30,12 @@ Commands:
   demo                 Boot (if needed), launch Settings, verify network
 
 Environment:
-  ANDROID_HEADLESS=1   Force -no-window (default in CI / no DISPLAY)
-  ANDROID_CORES=N      Override guest vCPU count
-  ANDROID_MEMORY_MB=N  Override guest RAM
-  ANDROID_GPU_MODE=... auto|swiftshader|host|guest
+  ANDROID_HEADLESS=1          Force -no-window (default in CI / no DISPLAY)
+  ANDROID_CORES=N             Override guest vCPU count
+  ANDROID_MEMORY_MB=N         Override guest RAM
+  ANDROID_GPU_MODE=...        auto|swiftshader|host|guest
+  ANDROID_DISPLAY=hd|fhd|qhd  Guest framebuffer preset (default: fhd)
+  ANDROID_LCD_WIDTH/HEIGHT/DENSITY  Custom guest resolution
   ANDROID_SNAPSHOT_NAME=booted
 EOF
 }
@@ -74,7 +77,18 @@ start_emulator() {
       -e "s/^hw.cpu.ncore=.*/hw.cpu.ncore=${GUEST_CORES}/" \
       -e "s/^hw.ramSize=.*/hw.ramSize=${GUEST_RAM_MB}/" \
       -e "s/^hw.gpu.mode=.*/hw.gpu.mode=swiftshader/" \
+      -e "s/^hw.lcd.width=.*/hw.lcd.width=${LCD_WIDTH}/" \
+      -e "s/^hw.lcd.height=.*/hw.lcd.height=${LCD_HEIGHT}/" \
+      -e "s/^hw.lcd.density=.*/hw.lcd.density=${LCD_DENSITY}/" \
+      -e "s/^skin.dynamic=.*/skin.dynamic=yes/" \
+      -e "s/^showDeviceFrame=.*/showDeviceFrame=no/" \
       "$avd_dir/config.ini"
+    # Ensure lcd.depth exists for crisp rendering.
+    if grep -q '^hw.lcd.depth=' "$avd_dir/config.ini"; then
+      sed -i "s/^hw.lcd.depth=.*/hw.lcd.depth=32/" "$avd_dir/config.ini"
+    else
+      echo "hw.lcd.depth=32" >> "$avd_dir/config.ini"
+    fi
   fi
 
   if (( cold )); then
@@ -90,6 +104,7 @@ start_emulator() {
     -avd "$AVD_NAME"
     -gpu "$gpu"
     -accel "$ACCEL"
+    -dpi-device "$LCD_DENSITY"
     -no-boot-anim
     -no-metrics
     -netdelay none
@@ -99,6 +114,7 @@ start_emulator() {
   if (( headless )); then
     args+=(-no-window)
   fi
+  # Intentionally omit -fixed-scale so the Qt window scales with resize.
 
   # KVM: load named snapshot for fast boot.
   # TCG: skip snapshot load (Emulator often rejects/segfaults without KVM).
@@ -196,12 +212,16 @@ cmd_status() {
   d="$(adb_device || true)"
   echo "adb_device=${d:-none}"
   if [[ -n "$d" ]]; then
-    local boot ver sdk
+    local boot ver sdk size dens
     boot="$("$ADB_BIN" -s "$d" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')"
     ver="$("$ADB_BIN" -s "$d" shell getprop ro.build.version.release 2>/dev/null | tr -d '\r')"
     sdk="$("$ADB_BIN" -s "$d" shell getprop ro.build.version.sdk 2>/dev/null | tr -d '\r')"
+    size="$("$ADB_BIN" -s "$d" shell wm size 2>/dev/null | tr -d '\r')"
+    dens="$("$ADB_BIN" -s "$d" shell wm density 2>/dev/null | tr -d '\r')"
     echo "boot_completed=${boot:-unknown}"
     echo "android=${ver:-unknown} api=${sdk:-unknown}"
+    echo "display_size=${size:-unknown}"
+    echo "display_density=${dens:-unknown}"
   fi
   if snapshot_exists; then
     echo "snapshot=${SNAPSHOT_NAME} present=yes"
@@ -210,6 +230,70 @@ cmd_status() {
   fi
   [[ -f "$STATE_DIR/provisioned_at" ]] && echo "provisioned_at=$(cat "$STATE_DIR/provisioned_at")"
   [[ -f "$PROFILE_FILE" ]] && echo "profile=$(tr '\n' ' ' < "$PROFILE_FILE")"
+}
+
+# Apply or show display resolution. Presets: hd, fhd, qhd, or WIDTHxHEIGHT.
+# Updates AVD config for next cold boot and live wm size/density when running.
+# The emulator Qt window itself scales freely with resize (no -fixed-scale).
+cmd_display() {
+  local preset="${1:-}"
+  detect_host_profile
+  # shellcheck disable=SC1090
+  source "$PROFILE_FILE"
+
+  if [[ -n "$preset" ]]; then
+    case "$preset" in
+      hd|fhd|qhd)
+        export ANDROID_DISPLAY="$preset"
+        ;;
+      *[0-9]x[0-9]*)
+        export ANDROID_DISPLAY=native
+        export ANDROID_LCD_WIDTH="${preset%x*}"
+        export ANDROID_LCD_HEIGHT="${preset#*x}"
+        # Pick a sensible density for the height if not set.
+        if [[ -z "${ANDROID_LCD_DENSITY:-}" ]]; then
+          local h="${ANDROID_LCD_HEIGHT}"
+          if (( h >= 2400 )); then export ANDROID_LCD_DENSITY=560
+          elif (( h >= 1800 )); then export ANDROID_LCD_DENSITY=420
+          else export ANDROID_LCD_DENSITY=320
+          fi
+        fi
+        ;;
+      *)
+        die "usage: open-emu display [hd|fhd|qhd|WIDTHxHEIGHT]"
+        ;;
+    esac
+    detect_host_profile
+    # shellcheck disable=SC1090
+    source "$PROFILE_FILE"
+  fi
+
+  local avd_dir="$AVD_HOME/${AVD_NAME}.avd"
+  if [[ -f "$avd_dir/config.ini" ]]; then
+    sed -i \
+      -e "s/^hw.lcd.width=.*/hw.lcd.width=${LCD_WIDTH}/" \
+      -e "s/^hw.lcd.height=.*/hw.lcd.height=${LCD_HEIGHT}/" \
+      -e "s/^hw.lcd.density=.*/hw.lcd.density=${LCD_DENSITY}/" \
+      -e "s/^skin.dynamic=.*/skin.dynamic=yes/" \
+      "$avd_dir/config.ini"
+  fi
+
+  echo "avd_display=${LCD_WIDTH}x${LCD_HEIGHT} density=${LCD_DENSITY}"
+  echo "window_scaling=enabled (resize the emulator window; no fixed scale)"
+
+  if emulator_running; then
+    local device
+    device="$(adb_device)"
+    log "applying live display ${LCD_WIDTH}x${LCD_HEIGHT} @ ${LCD_DENSITY}dpi"
+    "$ADB_BIN" -s "$device" shell wm size "${LCD_WIDTH}x${LCD_HEIGHT}"
+    "$ADB_BIN" -s "$device" shell wm density "${LCD_DENSITY}"
+    sleep 1
+    "$ADB_BIN" -s "$device" shell wm size
+    "$ADB_BIN" -s "$device" shell wm density
+    echo "note: AVD framebuffer for next cold boot also set to ${LCD_WIDTH}x${LCD_HEIGHT}"
+  else
+    echo "emulator not running — AVD config updated; will apply on next start"
+  fi
 }
 
 cmd_provision() {
@@ -363,6 +447,7 @@ main() {
     start) cmd_start "$@" ;;
     stop) cmd_stop "$@" ;;
     status) cmd_status "$@" ;;
+    display) cmd_display "$@" ;;
     provision) cmd_provision "$@" ;;
     install) cmd_install "$@" ;;
     launch) cmd_launch "$@" ;;

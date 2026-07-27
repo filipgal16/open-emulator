@@ -36,16 +36,20 @@ make android-start          # subsequent calls reuse a running emulator
 | `/dev/kvm` present | KVM | Named snapshot `booted` after provision (fast relaunch) |
 | no KVM (TCG) | off | Optimized cold boot (~3 min here) + **keep emulator running** for warm reuse |
 
-Measured on this agent host (TCG, no KVM):
+### Display (scales with window)
 
-- Cold boot to `sys.boot_completed`: **~175–180s** (down from ~310s)
-- Warm `start` while running: **immediate** (no reboot)
-- Guest network: **ok**
-- F-Droid APK install + Settings launch: **verified**
+Default guest framebuffer is **1080×1920 @ 420dpi (FHD)**. The emulator Qt
+window is **not fixed-scale** — resize the window and the display scales with it.
 
-TCG cannot reliably load Emulator named snapshots (rejects / segfaults). That is
-an upstream Emulator limitation without KVM — not papered over. On KVM hosts,
-`provision` + snapshot load is the fast path.
+```bash
+./android/bin/open-emu display          # show current
+./android/bin/open-emu display fhd      # 1080x1920 @ 420
+./android/bin/open-emu display qhd      # 1440x2560 @ 560
+./android/bin/open-emu display 1280x720 # custom landscape
+# or: ANDROID_DISPLAY=qhd ./android/bin/open-emu start --cold
+```
+
+Presets: `hd` (720×1280), `fhd` (1080×1920), `qhd` (1440×2560).
 
 ## Real-world defaults
 
