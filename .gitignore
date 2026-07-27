@@ -1,0 +1,5 @@
+build/
+*.o
+*.bin
+.open-vmm*
+.DS_Store
