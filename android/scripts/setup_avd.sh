@@ -2,17 +2,13 @@
 # Create / refresh the OpenEmulator_API30 AVD with project-specific config.
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-SDK_ROOT="${ANDROID_SDK_ROOT:-$ROOT/sdk}"
-export ANDROID_SDK_ROOT="$SDK_ROOT"
-export ANDROID_HOME="$SDK_ROOT"
-export PATH="$SDK_ROOT/cmdline-tools/latest/bin:$SDK_ROOT/emulator:$SDK_ROOT/platform-tools:$PATH"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/../lib/common.sh"
+android_env
 
 API_LEVEL="${ANDROID_API_LEVEL:-30}"
-AVD_NAME="${ANDROID_AVD_NAME:-OpenEmulator_API30}"
 SYSTEM_PACKAGE="system-images;android-${API_LEVEL};google_apis;x86_64"
-AVD_HOME="$ROOT/avd"
-export ANDROID_AVD_HOME="$AVD_HOME"
 
 if [[ ! -f "$SDK_ROOT/system-images/android-${API_LEVEL}/google_apis/x86_64/system.img" ]]; then
   echo "Android system image missing. Run android/scripts/fetch_android.sh first." >&2
@@ -22,7 +18,6 @@ fi
 mkdir -p "$AVD_HOME"
 
 echo "==> creating AVD ${AVD_NAME}"
-# echo no = no custom hardware profile prompt
 echo no | avdmanager --verbose create avd \
   --force \
   --name "$AVD_NAME" \
@@ -32,9 +27,7 @@ echo no | avdmanager --verbose create avd \
 
 AVD_DIR="$AVD_HOME/${AVD_NAME}.avd"
 if [[ ! -d "$AVD_DIR" ]]; then
-  # avdmanager may place under ~/.android/avd when ANDROID_AVD_HOME is ignored by older tools
   if [[ -d "${HOME}/.android/avd/${AVD_NAME}.avd" ]]; then
-    mkdir -p "$AVD_HOME"
     cp -a "${HOME}/.android/avd/${AVD_NAME}.avd" "$AVD_DIR"
     cp -a "${HOME}/.android/avd/${AVD_NAME}.ini" "$AVD_HOME/" 2>/dev/null || true
   else
@@ -46,7 +39,15 @@ fi
 echo "==> applying open-emulator AVD config overlays"
 cp "$ROOT/config/avd_config.ini" "$AVD_DIR/config.ini"
 
-# Point ini at our avd home
+# First setup: force one cold boot path until provision saves 'booted'.
+if [[ ! -d "$AVD_DIR/snapshots/booted" ]]; then
+  sed -i \
+    -e 's/^fastboot.forceColdBoot=.*/fastboot.forceColdBoot=yes/' \
+    -e 's/^fastboot.forceFastBoot=.*/fastboot.forceFastBoot=no/' \
+    -e 's/^fastboot.forceChosenSnapshotBoot=.*/fastboot.forceChosenSnapshotBoot=no/' \
+    "$AVD_DIR/config.ini"
+fi
+
 cat > "$AVD_HOME/${AVD_NAME}.ini" <<EOF
 avd.ini.encoding=UTF-8
 path=${AVD_DIR}
@@ -54,18 +55,31 @@ path.rel=avd/${AVD_NAME}.avd
 target=android-${API_LEVEL}
 EOF
 
-# Minimal boot-time property overrides (host adaptations only).
-mkdir -p "$AVD_DIR"
+# SD card for real app storage / downloads.
+MKSDCARD="$SDK_ROOT/emulator/mksdcard"
+if [[ -x "$MKSDCARD" && ! -f "$AVD_DIR/sdcard.img" ]]; then
+  echo "==> creating 512M sdcard.img"
+  "$MKSDCARD" 512M "$AVD_DIR/sdcard.img"
+fi
+
 cat > "$AVD_DIR/advancedFeatures.ini" <<EOF
 GLDirectMem = on
 Vulkan = off
+LogcatPipe = on
 EOF
 
-# First-boot helper: launch Settings after boot completed (also done from run script).
-cat > "$AVD_DIR/open_emulator_boot.sh" <<'EOF'
-#!/system/bin/sh
-# Optional guest-side helper (pushed/used later). Prefer host-side adb am start.
+# Writable hardware.ini overrides used by some emulator builds.
+cat > "$AVD_DIR/hardware-qemu.ini" <<EOF
+hw.ramSize = 4096
+hw.cpu.ncore = 2
+hw.gpu.enabled = yes
+hw.gpu.mode = swiftshader_indirect
+hw.keyboard = yes
+hw.audioInput = yes
+hw.audioOutput = yes
+disk.dataPartition.size = 8G
 EOF
 
 echo "AVD ready: $AVD_NAME"
 echo "  config: $AVD_DIR/config.ini"
+echo "Next: android/bin/open-emu start --cold && android/bin/open-emu provision"
