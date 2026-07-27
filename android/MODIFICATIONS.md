@@ -9,6 +9,10 @@ rebuild. Adaptations are AVD/runtime only, aimed at **speed + real workloads**:
 - **1080×1920 @ 420dpi (FHD)** guest framebuffer by default (was 720×1280)
 - `skin.dynamic=yes`, no `-fixed-scale` — emulator window scales with resize
 - `open-emu display hd|fhd|qhd|WxH` for live + next-boot resolution changes
+- Audio input/output enabled; PulseAudio host backend when available
+- Virtio Wi-Fi + full-speed networking + public DNS servers
+- Guest Bluetooth virtual adapter enabled at boot/provision
+- `open-emu audio|network|bluetooth` control commands
 - 8 GiB `/data` + 512 MB sdcard for installing real apps
 - Audio, keyboard, GPS, cameras enabled for app compatibility
 - Play Store left enabled

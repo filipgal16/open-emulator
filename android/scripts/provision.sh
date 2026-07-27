@@ -44,7 +44,19 @@ adb_t 30 shell settings put global stay_on_while_plugged_in 3
 adb_t 30 shell settings put global airplane_mode_on 0
 adb_t 30 shell svc wifi enable 2>/dev/null || true
 adb_t 30 shell svc data enable 2>/dev/null || true
-adb_t 30 shell settings put global private_dns_mode off 2>/dev/null || true
+adb_t 30 shell cmd wifi set-wifi-enabled enabled 2>/dev/null || true
+adb_t 30 shell settings put global mobile_data 1 2>/dev/null || true
+adb_t 30 shell settings put global wifi_on 1 2>/dev/null || true
+adb_t 30 shell settings put global private_dns_mode opportunistic 2>/dev/null || \
+  adb_t 30 shell settings put global private_dns_mode off 2>/dev/null || true
+
+# --- Audio ---
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/../lib/connectivity.sh"
+apply_guest_audio "$device"
+
+# --- Bluetooth (virtual adapter in the emulator) ---
+apply_guest_bluetooth "$device"
 
 # Keep Play / GMS available for real apps.
 adb_t 60 shell pm enable com.android.vending >/dev/null 2>&1 || true

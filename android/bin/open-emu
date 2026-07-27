@@ -5,6 +5,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/../lib/common.sh"
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/../lib/connectivity.sh"
 android_env
 
 usage() {
@@ -18,6 +20,9 @@ Commands:
   stop                 Stop the emulator cleanly
   status               Show runtime status
   display [preset]     Set/show display resolution (hd|fhd|qhd|WxH)
+  audio [test]         Show audio status; 'test' plays a short UI sound
+  network [on|dns|redir]  Network status / enable / DNS check / port redir
+  bluetooth [on]       Bluetooth status / enable virtual adapter
   provision            Tune guest for real use + save snapshot (KVM fast path)
   install <apk>        Install an APK (grants runtime permissions)
   launch <component>   Start an activity (pkg/.Activity)
@@ -36,6 +41,8 @@ Environment:
   ANDROID_GPU_MODE=...        auto|swiftshader|host|guest
   ANDROID_DISPLAY=hd|fhd|qhd  Guest framebuffer preset (default: fhd)
   ANDROID_LCD_WIDTH/HEIGHT/DENSITY  Custom guest resolution
+  ANDROID_AUDIO_BACKEND=auto|pulse|alsa|none
+  ANDROID_DNS_SERVERS=8.8.8.8,1.1.1.1
   ANDROID_SNAPSHOT_NAME=booted
 EOF
 }
@@ -61,6 +68,9 @@ start_emulator() {
     local d
     d="$(wait_for_adb_device 60)" || die "running emulator has no adb device"
     echo "$d" > "$DEVICE_FILE"
+    apply_guest_network "$d"
+    apply_guest_audio "$d"
+    apply_guest_bluetooth "$d"
     return 0
   fi
 
@@ -100,21 +110,46 @@ start_emulator() {
     gpu="$GPU_MODE"
   fi
 
+  local audio_backend
+  audio_backend="$(detect_audio_backend)"
+  local dns_servers="${ANDROID_DNS_SERVERS:-8.8.8.8,1.1.1.1}"
+
+  # Keep AVD connectivity bits explicit.
+  if [[ -f "$avd_dir/config.ini" ]]; then
+    sed -i \
+      -e "s/^hw.audioInput=.*/hw.audioInput=yes/" \
+      -e "s/^hw.audioOutput=.*/hw.audioOutput=yes/" \
+      -e "s/^runtime.network.latency=.*/runtime.network.latency=none/" \
+      -e "s/^runtime.network.speed=.*/runtime.network.speed=full/" \
+      "$avd_dir/config.ini"
+  fi
+  if [[ -f "$ROOT/config/advancedFeatures.ini" ]]; then
+    cp "$ROOT/config/advancedFeatures.ini" "$avd_dir/advancedFeatures.ini"
+  fi
+
   local args=(
     -avd "$AVD_NAME"
     -gpu "$gpu"
     -accel "$ACCEL"
     -dpi-device "$LCD_DENSITY"
-    -no-boot-anim
-    -no-metrics
+    -audio "$audio_backend"
+    -dns-server "$dns_servers"
     -netdelay none
     -netspeed full
+    -no-boot-anim
+    -no-metrics
   )
+
+  if [[ "$audio_backend" != "none" ]]; then
+    args+=(-allow-host-audio)
+  fi
 
   if (( headless )); then
     args+=(-no-window)
   fi
   # Intentionally omit -fixed-scale so the Qt window scales with resize.
+
+  log "connectivity: audio=${audio_backend} dns=${dns_servers} wifi=virtio netspeed=full"
 
   # KVM: load named snapshot for fast boot.
   # TCG: skip snapshot load (Emulator often rejects/segfaults without KVM).
@@ -168,6 +203,11 @@ start_emulator() {
     die "Android boot_completed not reached"
   }
   log "Android boot_completed=1"
+
+  # Bring up audio / network / bluetooth for real workloads.
+  apply_guest_network "$device"
+  apply_guest_audio "$device"
+  apply_guest_bluetooth "$device"
 }
 
 cmd_start() {
@@ -216,12 +256,12 @@ cmd_status() {
     boot="$("$ADB_BIN" -s "$d" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')"
     ver="$("$ADB_BIN" -s "$d" shell getprop ro.build.version.release 2>/dev/null | tr -d '\r')"
     sdk="$("$ADB_BIN" -s "$d" shell getprop ro.build.version.sdk 2>/dev/null | tr -d '\r')"
-    size="$("$ADB_BIN" -s "$d" shell wm size 2>/dev/null | tr -d '\r')"
-    dens="$("$ADB_BIN" -s "$d" shell wm density 2>/dev/null | tr -d '\r')"
+    size="$("$ADB_BIN" -s "$d" shell wm size 2>/dev/null | tr -d '\r' | paste -sd' / ' -)"
+    dens="$("$ADB_BIN" -s "$d" shell wm density 2>/dev/null | tr -d '\r' | paste -sd' / ' -)"
     echo "boot_completed=${boot:-unknown}"
     echo "android=${ver:-unknown} api=${sdk:-unknown}"
-    echo "display_size=${size:-unknown}"
-    echo "display_density=${dens:-unknown}"
+    echo "display=${size:-unknown}"
+    echo "density=${dens:-unknown}"
   fi
   if snapshot_exists; then
     echo "snapshot=${SNAPSHOT_NAME} present=yes"
@@ -385,6 +425,69 @@ cmd_logcat() {
   adb_sh logcat "$@"
 }
 
+cmd_audio() {
+  require_sdk
+  emulator_running || start_emulator 0
+  local device
+  device="$(adb_device)"
+  apply_guest_audio "$device"
+  guest_audio_report "$device"
+  if [[ "${1:-}" == "test" ]]; then
+    play_audio_smoke "$device"
+  fi
+}
+
+cmd_network() {
+  require_sdk
+  emulator_running || start_emulator 0
+  local device
+  device="$(adb_device)"
+  local action="${1:-status}"
+  case "$action" in
+    on|enable)
+      apply_guest_network "$device"
+      guest_network_report "$device"
+      ;;
+    dns)
+      apply_guest_network "$device"
+      echo "== dns =="
+      "$ADB_BIN" -s "$device" shell getprop net.dns1 | tr -d '\r' | awk '{print "net.dns1="$1}'
+      "$ADB_BIN" -s "$device" shell getprop net.dns2 | tr -d '\r' | awk '{print "net.dns2="$1}'
+      guest_network_report "$device"
+      ;;
+    redir)
+      local spec="${2:-}"
+      [[ -n "$spec" ]] || die "usage: open-emu network redir tcp:HOSTPORT:GUESTPORT"
+      local token_file="$HOME/.emulator_console_auth_token"
+      local token=""
+      [[ -f "$token_file" ]] && token="$(cat "$token_file")"
+      {
+        echo "auth ${token}"
+        echo "redir add ${spec}"
+        echo "redir list"
+        echo "quit"
+      } | timeout 10s nc 127.0.0.1 5554
+      ;;
+    status|"")
+      guest_network_report "$device"
+      ;;
+    *)
+      die "usage: open-emu network [status|on|dns|redir tcp:H:G]"
+      ;;
+  esac
+}
+
+cmd_bluetooth() {
+  require_sdk
+  emulator_running || start_emulator 0
+  local device
+  device="$(adb_device)"
+  if [[ "${1:-}" == "on" || "${1:-}" == "enable" ]]; then
+    apply_guest_bluetooth "$device"
+  fi
+  guest_bluetooth_report "$device"
+}
+
 cmd_doctor() {
   require_sdk
   cmd_status
@@ -392,11 +495,19 @@ cmd_doctor() {
   device="$(adb_device || true)"
   [[ -n "$device" ]] || die "start Android before doctor"
   echo "== network =="
+  apply_guest_network "$device"
   if wait_for_network "$device" 30; then
     echo "network=ok"
   else
     echo "network=fail"
   fi
+  guest_network_report "$device"
+  echo "== audio =="
+  apply_guest_audio "$device"
+  guest_audio_report "$device"
+  echo "== bluetooth =="
+  apply_guest_bluetooth "$device"
+  guest_bluetooth_report "$device"
   echo "== storage =="
   "$ADB_BIN" -s "$device" shell df -h /data | tail -n +1
   echo "== package manager =="
@@ -448,6 +559,9 @@ main() {
     stop) cmd_stop "$@" ;;
     status) cmd_status "$@" ;;
     display) cmd_display "$@" ;;
+    audio) cmd_audio "$@" ;;
+    network) cmd_network "$@" ;;
+    bluetooth) cmd_bluetooth "$@" ;;
     provision) cmd_provision "$@" ;;
     install) cmd_install "$@" ;;
     launch) cmd_launch "$@" ;;
