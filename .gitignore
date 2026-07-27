@@ -7,6 +7,8 @@ android/apps/*.apk
 android/**/*.img
 android/**/*.qcow2
 !android/apps/.gitkeep
+**/__pycache__/
+*.py[cod]
 
 build/
 *.o

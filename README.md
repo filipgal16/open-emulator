@@ -85,6 +85,7 @@ make android-provision    # cold boot, tune for real use, save fast snapshot
 make android-start        # snapshot boot (seconds–minutes depending on KVM)
 ./android/bin/open-emu install path/to/app.apk
 ./android/bin/open-emu launch com.android.settings/.Settings
+./android/bin/open-emu keymap run          # host key → on-screen tap
 ./android/bin/open-emu doctor
 ```
 
@@ -93,5 +94,5 @@ See [`android/README.md`](android/README.md).
 ## Next steps
 
 1. Grow `open-vmm` toward long mode + virtio/goldfish (replace Emulator QEMU)
-2. Desktop UI: APK drag-drop, key mapping, audio routing
+2. Desktop UI: APK drag-drop, visual key-map editor, audio routing
 3. Multi-instance / profiles

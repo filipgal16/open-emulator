@@ -23,6 +23,7 @@ Commands:
   audio [test]         Show audio status; 'test' plays a short UI sound
   network [on|dns|redir]  Network status / enable / DNS check / port redir
   bluetooth [on]       Bluetooth status / enable virtual adapter
+  keymap …             Keyboard → on-screen button mapping (see keymap --help)
   provision            Tune guest for real use + save snapshot (KVM fast path)
   install <apk>        Install an APK (grants runtime permissions)
   launch <component>   Start an activity (pkg/.Activity)
@@ -488,6 +489,162 @@ cmd_bluetooth() {
   guest_bluetooth_report "$device"
 }
 
+cmd_keymap() {
+  local sub="${1:-}"
+  shift || true
+  local map_dir="$ROOT/config/keymaps"
+  local daemon="$ROOT/scripts/keymap_daemon.py"
+  local editor="$ROOT/scripts/keymap_edit.py"
+  local active_link="$STATE_DIR/active_keymap.json"
+  mkdir -p "$STATE_DIR"
+
+  keymap_usage() {
+    cat <<EOF
+Usage: open-emu keymap <command>
+
+  list                      List keymap profiles
+  show [name]               Show bindings
+  use <name>                Activate a profile
+  set <key> <x> <y> [tap|hold] [label...]
+                            Map a key to an on-screen tap/hold point
+  unset <key>               Remove a binding
+  fire <key>                Trigger one binding once (test)
+  run [name] [--backend B]  Listen for keys and inject touches
+                            B = auto|evdev|tty|line
+
+How it works:
+  Press a mapped host key → adb injects a touch at (x,y) on the Android screen.
+  Use 'hold' for WASD-style movement (finger down while key held).
+  Coords use the current display size (see: open-emu display / wm size).
+
+Examples:
+  open-emu keymap use default
+  open-emu keymap set w 270 1450 hold MoveUp
+  open-emu keymap set j 940 1550 tap Attack
+  open-emu keymap fire j
+  open-emu keymap run                  # type keys in this terminal
+  open-emu keymap run --backend evdev  # real keyboard on Linux desktop
+EOF
+  }
+
+  resolve_map() {
+    local name="${1:-}"
+    if [[ -z "$name" ]]; then
+      if [[ -L "$active_link" || -f "$active_link" ]]; then
+        readlink -f "$active_link" 2>/dev/null || realpath "$active_link"
+        return
+      fi
+      name=default
+    fi
+    if [[ -f "$name" ]]; then
+      readlink -f "$name" 2>/dev/null || realpath "$name"
+      return
+    fi
+    if [[ -f "$map_dir/${name}.json" ]]; then
+      echo "$map_dir/${name}.json"
+      return
+    fi
+    die "keymap not found: $name"
+  }
+
+  ensure_writable_map() {
+    local mp
+    mp="$(resolve_map "")"
+    if [[ "$mp" == "$map_dir/"* ]]; then
+      cp "$mp" "$STATE_DIR/custom_keymap.json"
+      ln -sfn "$STATE_DIR/custom_keymap.json" "$active_link"
+      echo "$STATE_DIR/custom_keymap.json"
+    else
+      echo "$mp"
+    fi
+  }
+
+  case "$sub" in
+    ""|-h|--help|help)
+      keymap_usage
+      ;;
+    list)
+      echo "keymaps:"
+      local f n active=""
+      if [[ -e "$active_link" ]]; then
+        active="$(readlink -f "$active_link" 2>/dev/null || realpath "$active_link")"
+      fi
+      for f in "$map_dir"/*.json "$STATE_DIR/custom_keymap.json"; do
+        [[ -f "$f" ]] || continue
+        n="$(basename "$f" .json)"
+        if [[ "$(readlink -f "$f" 2>/dev/null || realpath "$f")" == "$active" ]]; then
+          echo "  $n *"
+        else
+          echo "  $n"
+        fi
+      done
+      ;;
+    show)
+      python3 "$daemon" --map "$(resolve_map "${1:-}")" --list \
+        --adb "$ADB_BIN" --device "$(adb_device 2>/dev/null || true)"
+      ;;
+    use)
+      [[ -n "${1:-}" ]] || die "usage: open-emu keymap use <name>"
+      ln -sfn "$(resolve_map "$1")" "$active_link"
+      echo "active_keymap=$(readlink -f "$active_link")"
+      ;;
+    set)
+      local key="${1:-}" x="${2:-}" y="${3:-}"
+      [[ -n "$key" && -n "$x" && -n "$y" ]] || die "usage: open-emu keymap set <key> <x> <y> [tap|hold] [label]"
+      shift 3
+      local typ="tap" label=""
+      if [[ "${1:-}" == "tap" || "${1:-}" == "hold" ]]; then
+        typ="$1"
+        shift
+      fi
+      label="${*:-$key}"
+      local mp
+      mp="$(ensure_writable_map)"
+      if emulator_running; then
+        local size=""
+        # Redirect stdin so `adb shell` never eats piped keymap input.
+        size="$("$ADB_BIN" -s "$(adb_device)" shell -n wm size </dev/null 2>/dev/null | awk '/Override size:/{print $3; exit}')"
+        [[ -n "$size" ]] || size="$("$ADB_BIN" -s "$(adb_device)" shell -n wm size </dev/null 2>/dev/null | awk '/Physical size:/{print $3; exit}')"
+        if [[ "$size" == *x* ]]; then
+          python3 -c "import json;p=r'$mp';w,h='$size'.lower().split('x');d=json.load(open(p));d['display']={'width':int(w),'height':int(h)};json.dump(d,open(p,'w'),indent=2);print('map display',w+'x'+h)"
+        fi
+      fi
+      python3 "$editor" set "$mp" "$key" "$x" "$y" --type "$typ" --label "$label"
+      ;;
+    unset)
+      [[ -n "${1:-}" ]] || die "usage: open-emu keymap unset <key>"
+      python3 "$editor" unset "$(ensure_writable_map)" "$1"
+      ;;
+    fire)
+      require_sdk
+      emulator_running || start_emulator 0
+      [[ -n "${1:-}" ]] || die "usage: open-emu keymap fire <key>"
+      python3 "$daemon" --map "$(resolve_map "")" --fire "$1" \
+        --adb "$ADB_BIN" --device "$(adb_device)"
+      ;;
+    run)
+      require_sdk
+      emulator_running || start_emulator 0
+      local name="" backend="auto"
+      while (($#)); do
+        case "$1" in
+          --backend) backend="${2:-auto}"; shift 2 ;;
+          --backend=*) backend="${1#*=}"; shift ;;
+          -*) die "unknown option: $1" ;;
+          *) name="$1"; shift ;;
+        esac
+      done
+      echo "Starting keymap listener (backend=$backend). Ctrl+C to stop."
+      python3 "$daemon" --map "$(resolve_map "$name")" --backend "$backend" \
+        --adb "$ADB_BIN" --device "$(adb_device)"
+      ;;
+    *)
+      keymap_usage
+      die "unknown keymap command: $sub"
+      ;;
+  esac
+}
+
 cmd_doctor() {
   require_sdk
   cmd_status
@@ -562,6 +719,7 @@ main() {
     audio) cmd_audio "$@" ;;
     network) cmd_network "$@" ;;
     bluetooth) cmd_bluetooth "$@" ;;
+    keymap) cmd_keymap "$@" ;;
     provision) cmd_provision "$@" ;;
     install) cmd_install "$@" ;;
     launch) cmd_launch "$@" ;;

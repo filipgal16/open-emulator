@@ -1,0 +1,22 @@
+{
+  "name": "settings-demo",
+  "description": "Simple taps useful for Settings / UI demos on 1080x1920.",
+  "display": {
+    "width": 1080,
+    "height": 1920
+  },
+  "bindings": [
+    {"key": "b", "type": "keyevent", "code": "KEYCODE_BACK", "label": "Back"},
+    {"key": "h", "type": "keyevent", "code": "KEYCODE_HOME", "label": "Home"},
+    {"key": "r", "type": "keyevent", "code": "KEYCODE_APP_SWITCH", "label": "Recents"},
+    {"key": "up", "type": "swipe", "x1": 540, "y1": 1400, "x2": 540, "y2": 600, "duration_ms": 250, "label": "Swipe up"},
+    {"key": "down", "type": "swipe", "x1": 540, "y1": 600, "x2": 540, "y2": 1400, "duration_ms": 250, "label": "Swipe down"},
+    {"key": "left", "type": "swipe", "x1": 900, "y1": 960, "x2": 200, "y2": 960, "duration_ms": 250, "label": "Swipe left"},
+    {"key": "right", "type": "swipe", "x1": 200, "y1": 960, "x2": 900, "y2": 960, "duration_ms": 250, "label": "Swipe right"},
+    {"key": "space", "type": "tap", "x": 540, "y": 960, "label": "Center tap"},
+    {"key": "1", "type": "tap", "x": 540, "y": 400, "label": "Top row"},
+    {"key": "2", "type": "tap", "x": 540, "y": 700, "label": "Upper mid"},
+    {"key": "3", "type": "tap", "x": 540, "y": 1000, "label": "Mid"},
+    {"key": "4", "type": "tap", "x": 540, "y": 1300, "label": "Lower mid"}
+  ]
+}
