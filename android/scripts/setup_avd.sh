@@ -63,10 +63,17 @@ if [[ -x "$MKSDCARD" && ! -f "$AVD_DIR/sdcard.img" ]]; then
 fi
 
 cat > "$AVD_DIR/advancedFeatures.ini" <<EOF
+Wifi = on
+VirtioWifi = on
+WiFiPacketStream = on
+ModemSimulator = on
 GLDirectMem = on
 Vulkan = off
 LogcatPipe = on
 EOF
+if [[ -f "$ROOT/config/advancedFeatures.ini" ]]; then
+  cp "$ROOT/config/advancedFeatures.ini" "$AVD_DIR/advancedFeatures.ini"
+fi
 
 # Writable hardware.ini overrides used by some emulator builds.
 cat > "$AVD_DIR/hardware-qemu.ini" <<EOF

@@ -36,20 +36,21 @@ make android-start          # subsequent calls reuse a running emulator
 | `/dev/kvm` present | KVM | Named snapshot `booted` after provision (fast relaunch) |
 | no KVM (TCG) | off | Optimized cold boot (~3 min here) + **keep emulator running** for warm reuse |
 
-### Display (scales with window)
-
-Default guest framebuffer is **1080×1920 @ 420dpi (FHD)**. The emulator Qt
-window is **not fixed-scale** — resize the window and the display scales with it.
+### Connectivity (audio / network / bluetooth)
 
 ```bash
-./android/bin/open-emu display          # show current
-./android/bin/open-emu display fhd      # 1080x1920 @ 420
-./android/bin/open-emu display qhd      # 1440x2560 @ 560
-./android/bin/open-emu display 1280x720 # custom landscape
-# or: ANDROID_DISPLAY=qhd ./android/bin/open-emu start --cold
+./android/bin/open-emu audio          # status + max volumes
+./android/bin/open-emu audio test     # play a short UI sound
+./android/bin/open-emu network        # wifi/data/DNS reachability
+./android/bin/open-emu network on     # enable wifi + mobile data
+./android/bin/open-emu network redir tcp:8080:8080
+./android/bin/open-emu bluetooth      # virtual BT adapter status
+./android/bin/open-emu bluetooth on
 ```
 
-Presets: `hd` (720×1280), `fhd` (1080×1920), `qhd` (1440×2560).
+- **Audio**: PulseAudio when available (`-audio pulse -allow-host-audio`); null sink on headless hosts
+- **Network**: Virtio Wi-Fi, `netspeed full`, DNS `8.8.8.8,1.1.1.1`
+- **Bluetooth**: guest virtual adapter enabled (host HCI passthrough is optional / BlueZ)
 
 ## Real-world defaults
 
