@@ -79,6 +79,26 @@ detect_host_profile() {
   [[ -n "${ANDROID_CORES:-}" ]] && cores="$ANDROID_CORES"
   [[ -n "${ANDROID_MEMORY_MB:-}" ]] && ram_mb_guest="$ANDROID_MEMORY_MB"
 
+  # Display profile: guest framebuffer resolution (Qt window scales freely on resize).
+  # ANDROID_DISPLAY=hd|fhd|qhd|native  or ANDROID_LCD_WIDTH/HEIGHT/DENSITY
+  local lcd_w lcd_h lcd_dpi
+  case "${ANDROID_DISPLAY:-fhd}" in
+    hd)   lcd_w=720;  lcd_h=1280; lcd_dpi=320 ;;
+    fhd)  lcd_w=1080; lcd_h=1920; lcd_dpi=420 ;;
+    qhd)  lcd_w=1440; lcd_h=2560; lcd_dpi=560 ;;
+    native)
+      lcd_w="${ANDROID_LCD_WIDTH:-1080}"
+      lcd_h="${ANDROID_LCD_HEIGHT:-1920}"
+      lcd_dpi="${ANDROID_LCD_DENSITY:-420}"
+      ;;
+    *)
+      lcd_w=1080; lcd_h=1920; lcd_dpi=420
+      ;;
+  esac
+  [[ -n "${ANDROID_LCD_WIDTH:-}" ]] && lcd_w="$ANDROID_LCD_WIDTH"
+  [[ -n "${ANDROID_LCD_HEIGHT:-}" ]] && lcd_h="$ANDROID_LCD_HEIGHT"
+  [[ -n "${ANDROID_LCD_DENSITY:-}" ]] && lcd_dpi="$ANDROID_LCD_DENSITY"
+
   cat > "$PROFILE_FILE" <<EOF
 HOST_CPUS=${cpus}
 HOST_RAM_MB=${ram_mb}
@@ -87,10 +107,13 @@ ACCEL=${accel}
 GPU_MODE=${gpu_mode}
 GUEST_CORES=${cores}
 GUEST_RAM_MB=${ram_mb_guest}
+LCD_WIDTH=${lcd_w}
+LCD_HEIGHT=${lcd_h}
+LCD_DENSITY=${lcd_dpi}
 EOF
   # shellcheck disable=SC1090
   source "$PROFILE_FILE"
-  log "host profile: kvm=${HAS_KVM} accel=${ACCEL} gpu=${GPU_MODE} cores=${GUEST_CORES} ram=${GUEST_RAM_MB}MB"
+  log "host profile: kvm=${HAS_KVM} accel=${ACCEL} gpu=${GPU_MODE} cores=${GUEST_CORES} ram=${GUEST_RAM_MB}MB display=${LCD_WIDTH}x${LCD_HEIGHT}@${LCD_DENSITY}"
 }
 
 adb_start() {
