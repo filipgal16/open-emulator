@@ -1,3 +1,13 @@
+# Imported / generated Android artifacts (do not commit)
+android/sdk/
+android/avd/
+android/logs/
+android/state/
+android/apps/*.apk
+android/**/*.img
+android/**/*.qcow2
+!android/apps/.gitkeep
+
 build/
 *.o
 *.bin

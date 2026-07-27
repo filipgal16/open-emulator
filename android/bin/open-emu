@@ -1,0 +1,381 @@
+#!/usr/bin/env bash
+# open-emu — Android runtime control plane for open-emulator.
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/../lib/common.sh"
+android_env
+
+usage() {
+  cat <<EOF
+Usage: open-emu <command> [args]
+
+Commands:
+  profile              Detect host and write performance profile
+  setup                Create/refresh AVD with project config
+  start [--cold]       Start Android (warm if already running)
+  stop                 Stop the emulator cleanly
+  status               Show runtime status
+  provision            Tune guest for real use + save snapshot (KVM fast path)
+  install <apk>        Install an APK (grants runtime permissions)
+  launch <component>   Start an activity (pkg/.Activity)
+  shell [args...]      adb shell (interactive if no args)
+  push <local> <remote>
+  pull <remote> <local>
+  screenshot [file]    Capture PNG screenshot
+  logcat [args...]     adb logcat
+  doctor               Run connectivity / readiness checks
+  demo                 Boot (if needed), launch Settings, verify network
+
+Environment:
+  ANDROID_HEADLESS=1   Force -no-window (default in CI / no DISPLAY)
+  ANDROID_CORES=N      Override guest vCPU count
+  ANDROID_MEMORY_MB=N  Override guest RAM
+  ANDROID_GPU_MODE=... auto|swiftshader|host|guest
+  ANDROID_SNAPSHOT_NAME=booted
+EOF
+}
+
+cmd_profile() {
+  detect_host_profile
+  cat "$PROFILE_FILE"
+}
+
+cmd_setup() {
+  "$ROOT/scripts/setup_avd.sh"
+}
+
+start_emulator() {
+  local cold="${1:-0}"
+  require_sdk
+  detect_host_profile
+  # shellcheck disable=SC1090
+  source "$PROFILE_FILE"
+
+  if emulator_running; then
+    log "emulator already running (warm path — no reboot)"
+    local d
+    d="$(wait_for_adb_device 60)" || die "running emulator has no adb device"
+    echo "$d" > "$DEVICE_FILE"
+    return 0
+  fi
+
+  adb_start
+
+  local headless=0
+  if [[ "${ANDROID_HEADLESS:-}" == "1" || -z "${DISPLAY:-}" ]]; then
+    headless=1
+  fi
+
+  local avd_dir="$AVD_HOME/${AVD_NAME}.avd"
+  if [[ -f "$avd_dir/config.ini" ]]; then
+    sed -i \
+      -e "s/^hw.cpu.ncore=.*/hw.cpu.ncore=${GUEST_CORES}/" \
+      -e "s/^hw.ramSize=.*/hw.ramSize=${GUEST_RAM_MB}/" \
+      -e "s/^hw.gpu.mode=.*/hw.gpu.mode=swiftshader/" \
+      "$avd_dir/config.ini"
+  fi
+
+  if (( cold )); then
+    rm -rf "${avd_dir}/snapshots/${SNAPSHOT_NAME}"
+  fi
+
+  local gpu="swiftshader"
+  if (( HAS_KVM )) && [[ "${GPU_MODE}" != "swiftshader" && "${GPU_MODE}" != "swiftshader_indirect" ]]; then
+    gpu="$GPU_MODE"
+  fi
+
+  local args=(
+    -avd "$AVD_NAME"
+    -gpu "$gpu"
+    -accel "$ACCEL"
+    -no-boot-anim
+    -no-metrics
+    -netdelay none
+    -netspeed full
+  )
+
+  if (( headless )); then
+    args+=(-no-window)
+  fi
+
+  # KVM: load named snapshot for fast boot.
+  # TCG: skip snapshot load (Emulator often rejects/segfaults without KVM).
+  if (( cold == 0 )) && snapshot_exists && (( HAS_KVM )); then
+    log "fast boot from snapshot '${SNAPSHOT_NAME}' (KVM)"
+    args+=(-snapshot "$SNAPSHOT_NAME" -no-snapshot-save)
+  else
+    if (( HAS_KVM == 0 )) && (( cold == 0 )); then
+      log "TCG host: optimized cold boot (keep process alive for warm reuse)"
+    else
+      log "cold boot"
+    fi
+    args+=(-no-snapshot-load)
+  fi
+
+  : > "$EMULATOR_LOG"
+  log "starting emulator: ${args[*]}"
+  nohup "$EMULATOR_BIN" "${args[@]}" >>"$EMULATOR_LOG" 2>&1 &
+  local pid=$!
+  echo "$pid" > "$PID_FILE"
+  log "emulator pid=${pid}"
+
+  sleep 5
+
+  local device
+  device="$(wait_for_adb_device 180)" || {
+    tail -n 100 "$EMULATOR_LOG" || true
+    die "adb device did not appear"
+  }
+  log "adb device=${device}"
+
+  if (( cold == 0 )) && (( HAS_KVM )) && snapshot_exists; then
+    if grep -q "Failed to load snapshot\|cannot load snapshot" "$EMULATOR_LOG"; then
+      log "snapshot load failed — cold booting"
+      kill "$pid" 2>/dev/null || true
+      sleep 2
+      kill -9 "$pid" 2>/dev/null || true
+      rm -f "$PID_FILE"
+      pkill -f "qemu-system-x86_64.*${AVD_NAME}" 2>/dev/null || true
+      sleep 2
+      start_emulator 1
+      return $?
+    fi
+  fi
+
+  local boot_timeout=1800
+  (( HAS_KVM )) && boot_timeout=300
+
+  wait_for_boot "$device" "$boot_timeout" || {
+    tail -n 100 "$EMULATOR_LOG" || true
+    die "Android boot_completed not reached"
+  }
+  log "Android boot_completed=1"
+}
+
+cmd_start() {
+  local cold=0
+  [[ "${1:-}" == "--cold" ]] && cold=1
+  local t0=$SECONDS
+  start_emulator "$cold"
+  log "start finished in $((SECONDS - t0))s"
+  cmd_status
+}
+
+cmd_stop() {
+  local device=""
+  device="$(adb_device || true)"
+  if [[ -n "$device" ]]; then
+    log "requesting emulator kill via adb"
+    "$ADB_BIN" -s "$device" emu kill >/dev/null 2>&1 || true
+    sleep 2
+  fi
+  if [[ -f "$PID_FILE" ]]; then
+    local pid
+    pid="$(cat "$PID_FILE")"
+    kill "$pid" 2>/dev/null || true
+    sleep 2
+    kill -9 "$pid" 2>/dev/null || true
+    rm -f "$PID_FILE"
+  fi
+  pkill -f "qemu-system-x86_64.*${AVD_NAME}" 2>/dev/null || true
+  rm -f "$DEVICE_FILE"
+  log "emulator stopped"
+}
+
+cmd_status() {
+  echo "avd=${AVD_NAME}"
+  if emulator_running; then
+    echo "emulator=running"
+    [[ -f "$PID_FILE" ]] && echo "pid=$(cat "$PID_FILE")"
+  else
+    echo "emulator=stopped"
+  fi
+  local d
+  d="$(adb_device || true)"
+  echo "adb_device=${d:-none}"
+  if [[ -n "$d" ]]; then
+    local boot ver sdk
+    boot="$("$ADB_BIN" -s "$d" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')"
+    ver="$("$ADB_BIN" -s "$d" shell getprop ro.build.version.release 2>/dev/null | tr -d '\r')"
+    sdk="$("$ADB_BIN" -s "$d" shell getprop ro.build.version.sdk 2>/dev/null | tr -d '\r')"
+    echo "boot_completed=${boot:-unknown}"
+    echo "android=${ver:-unknown} api=${sdk:-unknown}"
+  fi
+  if snapshot_exists; then
+    echo "snapshot=${SNAPSHOT_NAME} present=yes"
+  else
+    echo "snapshot=${SNAPSHOT_NAME} present=no"
+  fi
+  [[ -f "$STATE_DIR/provisioned_at" ]] && echo "provisioned_at=$(cat "$STATE_DIR/provisioned_at")"
+  [[ -f "$PROFILE_FILE" ]] && echo "profile=$(tr '\n' ' ' < "$PROFILE_FILE")"
+}
+
+cmd_provision() {
+  require_sdk
+  if ! emulator_running; then
+    start_emulator 1
+  fi
+  "$ROOT/scripts/provision.sh"
+}
+
+cmd_install() {
+  local apk="${1:-}"
+  [[ -n "$apk" && -f "$apk" ]] || die "usage: open-emu install <apk>"
+  require_sdk
+  emulator_running || start_emulator 0
+  local device
+  device="$(adb_device)"
+  log "installing $apk"
+  local out rc
+  set +e
+  out="$(timeout 300s "$ADB_BIN" -s "$device" install -r -g -d "$apk" 2>&1)"
+  rc=$?
+  set -e
+  echo "$out" | tee -a "$RUNTIME_LOG"
+  if grep -qi 'Success' <<<"$out"; then
+    log "install OK"
+    return 0
+  fi
+  # Heuristic: under TCG adb may time out after the package is already installed.
+  local pkg_guess
+  pkg_guess="$(basename "$apk" .apk | tr '[:upper:]' '[:lower:]')"
+  if timeout 30s "$ADB_BIN" -s "$device" shell pm list packages 2>/dev/null | grep -qi "$pkg_guess"; then
+    log "install timed out (rc=${rc}) but package appears present"
+    return 0
+  fi
+  if [[ "$apk" == *F-Droid* ]] && timeout 30s "$ADB_BIN" -s "$device" shell pm path org.fdroid.fdroid >/dev/null 2>&1; then
+    log "install timed out (rc=${rc}) but F-Droid is present"
+    return 0
+  fi
+  die "install failed (rc=${rc})"
+}
+
+cmd_launch() {
+  local comp="${1:-}"
+  [[ -n "$comp" ]] || die "usage: open-emu launch pkg/.Activity"
+  require_sdk
+  emulator_running || start_emulator 0
+  local device
+  device="$(adb_device)"
+  "$ADB_BIN" -s "$device" shell input keyevent KEYCODE_WAKEUP || true
+  "$ADB_BIN" -s "$device" shell am start -n "$comp"
+  sleep 2
+  "$ADB_BIN" -s "$device" shell dumpsys activity activities | awk '/mResumedActivity/{print; exit}'
+}
+
+cmd_shell() {
+  require_sdk
+  emulator_running || die "emulator not running"
+  local device
+  device="$(adb_device)"
+  if (($#)); then
+    "$ADB_BIN" -s "$device" shell "$@"
+  else
+    "$ADB_BIN" -s "$device" shell
+  fi
+}
+
+cmd_push() {
+  (($# == 2)) || die "usage: open-emu push <local> <remote>"
+  adb_sh push "$1" "$2"
+}
+
+cmd_pull() {
+  (($# == 2)) || die "usage: open-emu pull <remote> <local>"
+  adb_sh pull "$1" "$2"
+}
+
+cmd_screenshot() {
+  local out="${1:-$LOG_DIR/screen.png}"
+  require_sdk
+  local device
+  device="$(adb_device)"
+  "$ADB_BIN" -s "$device" exec-out screencap -p > "$out"
+  log "screenshot written to $out"
+  echo "$out"
+}
+
+cmd_logcat() {
+  adb_sh logcat "$@"
+}
+
+cmd_doctor() {
+  require_sdk
+  cmd_status
+  local device
+  device="$(adb_device || true)"
+  [[ -n "$device" ]] || die "start Android before doctor"
+  echo "== network =="
+  if wait_for_network "$device" 30; then
+    echo "network=ok"
+  else
+    echo "network=fail"
+  fi
+  echo "== storage =="
+  "$ADB_BIN" -s "$device" shell df -h /data | tail -n +1
+  echo "== package manager =="
+  "$ADB_BIN" -s "$device" shell pm path android
+  echo "== free mem =="
+  "$ADB_BIN" -s "$device" shell cat /proc/meminfo | awk '/MemTotal|MemFree|MemAvailable/{print}'
+}
+
+cmd_demo() {
+  require_sdk
+  local t0=$SECONDS
+  if ! emulator_running; then
+    start_emulator 0
+    if [[ ! -f "$STATE_DIR/provisioned_at" ]]; then
+      "$ROOT/scripts/provision.sh"
+    fi
+  fi
+  local device
+  device="$(adb_device)"
+  wait_for_network "$device" 60 || log "WARNING: network not ready"
+  cmd_launch "com.android.settings/.Settings"
+  local resumed ver sdk
+  resumed="$("$ADB_BIN" -s "$device" shell dumpsys activity activities | awk '/mResumedActivity/{print; exit}' | tr -d '\r')"
+  ver="$("$ADB_BIN" -s "$device" shell getprop ro.build.version.release | tr -d '\r')"
+  sdk="$("$ADB_BIN" -s "$device" shell getprop ro.build.version.sdk | tr -d '\r')"
+  mkdir -p "$LOG_DIR"
+  cat > "$LOG_DIR/last_success.txt" <<EOF
+ok=1
+android_version=${ver}
+android_api=${sdk}
+app=com.android.settings/.Settings
+resumed=${resumed}
+device=${device}
+elapsed_s=$((SECONDS - t0))
+time=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+EOF
+  cp "$LOG_DIR/last_success.txt" "$ROOT/imported/last_verified.txt"
+  log "demo OK in $((SECONDS - t0))s"
+  cat "$LOG_DIR/last_success.txt"
+}
+
+main() {
+  local cmd="${1:-}"
+  shift || true
+  case "$cmd" in
+    profile) cmd_profile "$@" ;;
+    setup) cmd_setup "$@" ;;
+    start) cmd_start "$@" ;;
+    stop) cmd_stop "$@" ;;
+    status) cmd_status "$@" ;;
+    provision) cmd_provision "$@" ;;
+    install) cmd_install "$@" ;;
+    launch) cmd_launch "$@" ;;
+    shell) cmd_shell "$@" ;;
+    push) cmd_push "$@" ;;
+    pull) cmd_pull "$@" ;;
+    screenshot) cmd_screenshot "$@" ;;
+    logcat) cmd_logcat "$@" ;;
+    doctor) cmd_doctor "$@" ;;
+    demo) cmd_demo "$@" ;;
+    -h|--help|help|"") usage ;;
+    *) die "unknown command: $cmd" ;;
+  esac
+}
+
+main "$@"
