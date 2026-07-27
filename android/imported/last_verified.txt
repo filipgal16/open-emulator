@@ -1,0 +1,7 @@
+ok=1
+android_version=11
+android_api=30
+app=com.android.settings/.Settings
+resumed=    mResumedActivity: ActivityRecord{53d5ac u0 com.android.settings/.Settings t16}
+device=emulator-5554
+time=2026-07-27T13:34:05Z

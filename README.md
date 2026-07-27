@@ -64,6 +64,7 @@ make test
 include/     Public headers (vmm, serial, soft CPU)
 src/         VMM, KVM backend, soft CPU, serial device
 guest/       Guest assembly source
+android/     Android 11 guest import + run scripts
 scripts/     Guest assembler + smoke test
 build/       Build outputs
 ```
@@ -73,9 +74,22 @@ build/       Build outputs
 - Linux, `gcc`, `make`, `python3`
 - For the KVM backend: `/dev/kvm` (user in `kvm` group), CPU with VT-x/AMD-V
 
-## Next steps (not in this PR)
+## Android guest (API 30 / Android 11)
 
-1. Multiboot / Linux kernel boot (64-bit long mode, page tables, e820)
-2. Virtio devices (console, block, net)
-3. Android / AOSP guest image bring-up
-4. Host UI: APK install, key mapping, audio routing
+Imported under [`android/`](android/). Boots via the Android Emulator QEMU engine
+(needed until `open-vmm` grows a full machine model). Headless bring-up opens
+Settings to prove the OS + app launch path.
+
+```bash
+make android-fetch   # download SDK + Android 11 image (~1.5–2 GiB, once)
+make android-setup
+make android-run     # boot + launch Settings
+```
+
+See [`android/README.md`](android/README.md).
+
+## Next steps
+
+1. Grow `open-vmm` toward long mode + virtio (replace Emulator QEMU over time)
+2. APK sideload UI, key mapping, audio routing
+3. KVM acceleration when `/dev/kvm` is available
