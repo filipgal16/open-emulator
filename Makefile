@@ -9,7 +9,9 @@ GUEST    := $(BUILD)/guest/hello.bin
 SRC      := src/main.c src/vmm.c src/serial.c src/x86_soft.c
 OBJ      := $(patsubst src/%.c,$(BUILD)/%.o,$(SRC))
 
-.PHONY: all clean test run guest android-fetch android-setup android-run android
+.PHONY: all clean test run guest \
+	android-fetch android-setup android-run android \
+	android-provision android-start android-stop android-status android-doctor android-bench
 
 all: $(BIN) $(GUEST)
 
@@ -19,10 +21,29 @@ android-fetch:
 android-setup:
 	./android/scripts/setup_avd.sh
 
-android-run:
-	./android/scripts/run_android.sh
+android-provision:
+	ANDROID_HEADLESS=1 ./android/bin/open-emu start --cold
+	ANDROID_HEADLESS=1 ./android/bin/open-emu provision
 
-android: android-fetch android-setup android-run
+android-start:
+	ANDROID_HEADLESS=1 ./android/bin/open-emu start
+
+android-stop:
+	./android/bin/open-emu stop
+
+android-status:
+	./android/bin/open-emu status
+
+android-doctor:
+	./android/bin/open-emu doctor
+
+android-run:
+	ANDROID_HEADLESS=1 ./android/bin/open-emu demo
+
+android-bench:
+	ANDROID_HEADLESS=1 ./android/scripts/bench_realtime.sh
+
+android: android-fetch android-setup android-provision android-start
 
 $(BIN): $(OBJ) | $(BUILD)
 	$(CC) $(CFLAGS) -o $@ $(OBJ) $(LDFLAGS)

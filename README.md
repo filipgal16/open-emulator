@@ -76,20 +76,22 @@ build/       Build outputs
 
 ## Android guest (API 30 / Android 11)
 
-Imported under [`android/`](android/). Boots via the Android Emulator QEMU engine
-(needed until `open-vmm` grows a full machine model). Headless bring-up opens
-Settings to prove the OS + app launch path.
+Imported under [`android/`](android/). Control plane: `android/bin/open-emu`.
 
 ```bash
-make android-fetch   # download SDK + Android 11 image (~1.5–2 GiB, once)
+make android-fetch        # download SDK + Android 11 image (~4 GiB, once)
 make android-setup
-make android-run     # boot + launch Settings
+make android-provision    # cold boot, tune for real use, save fast snapshot
+make android-start        # snapshot boot (seconds–minutes depending on KVM)
+./android/bin/open-emu install path/to/app.apk
+./android/bin/open-emu launch com.android.settings/.Settings
+./android/bin/open-emu doctor
 ```
 
 See [`android/README.md`](android/README.md).
 
 ## Next steps
 
-1. Grow `open-vmm` toward long mode + virtio (replace Emulator QEMU over time)
-2. APK sideload UI, key mapping, audio routing
-3. KVM acceleration when `/dev/kvm` is available
+1. Grow `open-vmm` toward long mode + virtio/goldfish (replace Emulator QEMU)
+2. Desktop UI: APK drag-drop, key mapping, audio routing
+3. Multi-instance / profiles

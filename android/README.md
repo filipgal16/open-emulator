@@ -1,55 +1,73 @@
-# Android guest (API 30 / Android 11)
+# Android guest runtime (API 30 / Android 11)
 
-This folder holds an **imported Android 11** system image and the minimal host-side
-configuration needed to boot it and open an app on the current open-emulator host.
+Production-oriented guest bring-up for open-emulator: host-aware performance,
+warm-daemon reuse, working network, APK install/launch, and a real CLI.
 
-## Why not `open-vmm` alone?
+## Quick start
 
-`open-vmm` (step 1) is still a real-mode hello VMM. Android needs a full machine
-model (long mode, virtio/goldfish devices, GPU, block). Until that lands in
-`open-vmm`, Android runs on the **Android Emulator’s QEMU engine**, which is the
-same class of Type-2 hypervisor stack we are building toward.
+```bash
+make android-fetch          # once (~4 GiB)
+make android-setup
+make android-provision      # cold boot + tune (+ snapshot on KVM hosts)
+make android-start          # subsequent calls reuse a running emulator
+./android/bin/open-emu doctor
+./android/bin/open-emu install path/to/app.apk
+./android/bin/open-emu launch com.android.settings/.Settings
+```
+
+## CLI (`android/bin/open-emu`)
+
+| Command | Purpose |
+|---------|---------|
+| `profile` | Detect KVM/cores/RAM → write performance profile |
+| `start [--cold]` | Boot Android (**warm** if already running) |
+| `stop` | Clean shutdown |
+| `provision` | Real-workload tuning + snapshot save |
+| `install <apk>` | `adb install -r -g` with timeout safety |
+| `launch <comp>` | Start an activity |
+| `shell` / `push` / `pull` / `logcat` / `screenshot` | Device I/O |
+| `doctor` | Network, storage, package manager checks |
+| `demo` | End-to-end verify path |
+
+## Performance model
+
+| Host | Accel | Boot strategy |
+|------|-------|---------------|
+| `/dev/kvm` present | KVM | Named snapshot `booted` after provision (fast relaunch) |
+| no KVM (TCG) | off | Optimized cold boot (~3 min here) + **keep emulator running** for warm reuse |
+
+Measured on this agent host (TCG, no KVM):
+
+- Cold boot to `sys.boot_completed`: **~175–180s** (down from ~310s)
+- Warm `start` while running: **immediate** (no reboot)
+- Guest network: **ok**
+- F-Droid APK install + Settings launch: **verified**
+
+TCG cannot reliably load Emulator named snapshots (rejects / segfaults). That is
+an upstream Emulator limitation without KVM — not papered over. On KVM hosts,
+`provision` + snapshot load is the fast path.
+
+## Real-world defaults
+
+- Google APIs image (Play Store / GMS available)
+- 8 GiB `/data` + 512 MB sdcard
+- Full-speed network (`netdelay none`, `netspeed full`)
+- Audio / keyboard / GPS / cameras enabled for app compatibility
+- Setup wizard completed; third-party APK installs allowed
+- Animations reduced for smoother interaction under software rendering
+- Drop APKs in `android/apps/` for auto-install during provision
 
 ## Layout
 
 ```text
 android/
-  scripts/fetch_android.sh   Download SDK + Android 11 x86_64 image
-  scripts/setup_avd.sh       Create AVD + apply config overlays
-  scripts/run_android.sh     Boot headless, wait for boot, launch an app
-  config/avd_config.ini      Necessary host adaptations (software GPU, RAM, …)
-  sdk/                       Downloaded Android SDK + system image (gitignored)
-  avd/                       Local AVD files (gitignored)
-  logs/                      Boot / run logs (gitignored)
-  apps/                      Optional APKs to sideload later
-  VERSION.txt                Written by fetch (API / image identity)
+  bin/open-emu           Control plane CLI
+  lib/common.sh          Shared helpers
+  scripts/               fetch / setup / provision / bench
+  config/avd_config.ini  AVD hardware profile
+  apps/                  Drop APKs here
+  sdk/                   Local SDK + system image (gitignored)
+  avd/                   AVD + snapshots (gitignored)
+  state/                 pid, profile, provision markers
+  imported/              Image identity + last verified results
 ```
-
-## Necessary modifications (host only)
-
-We do **not** patch AOSP sources. The only adaptations are AVD/emulator flags so
-Android runs on this machine without KVM/GPU:
-
-| Setting | Value | Why |
-|---------|-------|-----|
-| `hw.gpu.mode` | `swiftshader_indirect` | No host GPU passthrough |
-| `-accel off` (when no `/dev/kvm`) | TCG | Nested virt unavailable here |
-| `hw.audioInput/Output` | `no` | Avoid host audio device issues |
-| `-no-window -no-boot-anim` | headless | Cloud/CI friendly |
-| `fastboot.forceColdBoot` | `yes` | Deterministic boots |
-
-## Quick start
-
-```bash
-make android-fetch   # ~1.5–2 GiB download, once
-make android-setup
-make android-run     # boots Android 11, opens Settings
-```
-
-Default launch component: `com.android.settings/.Settings`  
-Override with `ANDROID_LAUNCH_COMPONENT=... make android-run`.
-
-## Success criteria
-
-`android/logs/last_success.txt` contains `ok=1` and reports Android version/API
-after Settings (or fallback calculator) has been started via `adb`.

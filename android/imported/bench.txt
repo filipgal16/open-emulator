@@ -1,0 +1,7 @@
+cold_boot_s≈175-180 (TCG, optimized AVD)
+warm_start_s=0 (emulator already running)
+kvm_snapshot=unsupported_on_this_host
+network=ok
+fdroid_install=ok
+settings_launch=ok
+time=2026-07-27T15:34:30Z

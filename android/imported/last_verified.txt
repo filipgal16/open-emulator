@@ -2,6 +2,8 @@ ok=1
 android_version=11
 android_api=30
 app=com.android.settings/.Settings
-resumed=    mResumedActivity: ActivityRecord{53d5ac u0 com.android.settings/.Settings t16}
-device=emulator-5554
-time=2026-07-27T13:34:05Z
+resumed=    mResumedActivity: ActivityRecord{59f45d0 u0 com.android.settings/.Settings t7}
+fdroid_installed=package:/data/app/~~7izlunKhmONyGTKOJY5IHA==/org.fdroid.fdroid-naZcZm6nYmn2mGOFTzPfGA==/base.apk
+cold_and_provision_s=459
+snapshot_boot_s=257
+time=2026-07-27T15:33:40Z

@@ -1,18 +1,34 @@
 # Necessary modifications
 
-We import a stock Google **Android 11 (API 30)** `google_apis;x86_64` system
-image. AOSP sources are **not** rebuilt.
+Stock Google **Android 11 (API 30)** `google_apis;x86_64` system image — no AOSP
+rebuild. Adaptations are AVD/runtime only, aimed at **speed + real workloads**:
 
-Only host/AVD adaptations are applied so the image runs on this project’s hosts
-(often without `/dev/kvm` or a GPU):
+## Hardware profile (`config/avd_config.ini`)
 
-1. `android/config/avd_config.ini` — software GPU (`swiftshader_indirect`),
-   reduced display (720×1280 @ 240dpi), 2 vCPU / 3 GiB RAM, audio off,
-   cold boot, full network.
-2. Emulator CLI flags in `scripts/run_android.sh` — `-no-window`, `-no-audio`,
-   `-no-boot-anim`, `-accel off` when KVM is missing.
-3. After boot — mark device provisioned, disable noisy first-run packages
-   (Messages / Play Store) that ANR under TCG, then `am start` Settings.
+- SwiftShader GPU (`swiftshader`) for software rendering hosts
+- 720×1280 @ 240dpi (lighter than flagship skins; still usable)
+- 8 GiB `/data` + 512 MB sdcard for installing real apps
+- Audio, keyboard, GPS, cameras enabled for app compatibility
+- Play Store left enabled
+- Snapshot boot pointed at `booted` after provision (used on KVM)
 
-Runtime engine today: Android Emulator QEMU (`ranchu`). `open-vmm` remains the
-in-tree hypervisor foundation for later replacement of this engine.
+## Runtime (`bin/open-emu`)
+
+- Host profile picks KVM vs TCG, core count, RAM
+- **Warm path**: if the emulator is already running, `start` does not reboot
+- **KVM**: `provision` saves snapshot `booted`; later starts load it
+- **TCG**: skip unloadable named snapshots; optimize cold boot; leave process up
+- Setup wizard completed; network verified; third-party installs allowed
+- APK install uses timeouts so TCG stalls cannot hang the control plane forever
+
+## Verified (agent host, TCG)
+
+See `imported/last_verified.txt`: Android 11 / API 30, Settings resumed,
+F-Droid installed, guest network ok, cold boot ~3 minutes.
+
+## Engine note
+
+Android still runs on the Android Emulator QEMU (`ranchu`) machine model until
+`open-vmm` grows long-mode + virtio/goldfish devices. The control plane and AVD
+assets are structured so that backend can be swapped later without rewriting
+APK install / launch / adb workflows.
