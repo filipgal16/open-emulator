@@ -28,6 +28,7 @@ make android-start          # subsequent calls reuse a running emulator
 | `shell` / `push` / `pull` / `logcat` / `screenshot` | Device I/O |
 | `doctor` | Network, storage, package manager checks |
 | `demo` | End-to-end verify path |
+| `keymap …` | Map host keys → on-screen taps/holds (LDPlayer-style) |
 
 ## Performance model
 
@@ -36,7 +37,21 @@ make android-start          # subsequent calls reuse a running emulator
 | `/dev/kvm` present | KVM | Named snapshot `booted` after provision (fast relaunch) |
 | no KVM (TCG) | off | Optimized cold boot (~3 min here) + **keep emulator running** for warm reuse |
 
-### Connectivity (audio / network / bluetooth)
+### Keyboard → on-screen buttons
+
+Map host keys to touch points (LDPlayer-style):
+
+```bash
+open-emu keymap use default
+open-emu keymap set w 270 1450 hold MoveUp
+open-emu keymap set j 940 1550 tap Attack
+open-emu keymap fire j          # test one binding
+open-emu keymap run             # press keys in this terminal
+# On a Linux desktop with a real keyboard:
+open-emu keymap run --backend evdev
+```
+
+Profiles live in `android/config/keymaps/`. Active edits go to `android/state/custom_keymap.json`.
 
 ```bash
 ./android/bin/open-emu audio          # status + max volumes
