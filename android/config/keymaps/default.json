@@ -1,21 +1,20 @@
 {
   "name": "default",
-  "description": "WASD + action buttons for portrait FHD (1080x1920). Edit coordinates to match your game UI.",
+  "description": "Joystick + action buttons for portrait FHD (1080x1920). Edit coordinates to match your game UI.",
   "display": {
     "width": 1080,
     "height": 1920
   },
   "bindings": [
-    {"key": "w", "type": "hold", "x": 270, "y": 1450, "label": "Move Up"},
-    {"key": "a", "type": "hold", "x": 150, "y": 1600, "label": "Move Left"},
-    {"key": "s", "type": "hold", "x": 270, "y": 1750, "label": "Move Down"},
-    {"key": "d", "type": "hold", "x": 390, "y": 1600, "label": "Move Right"},
+    {"type": "joystick", "cx": 270, "cy": 1600, "radius": 150, "up": "w", "down": "s", "left": "a", "right": "d", "label": "Move Stick"},
     {"key": "j", "type": "tap", "x": 820, "y": 1550, "label": "Action A"},
     {"key": "k", "type": "tap", "x": 940, "y": 1450, "label": "Action B"},
     {"key": "l", "type": "tap", "x": 940, "y": 1650, "label": "Action C"},
     {"key": "space", "type": "tap", "x": 540, "y": 1700, "label": "Jump / Confirm"},
     {"key": "escape", "type": "keyevent", "code": "KEYCODE_BACK", "label": "Back"},
     {"key": "h", "type": "keyevent", "code": "KEYCODE_HOME", "label": "Home"},
-    {"key": "enter", "type": "tap", "x": 540, "y": 960, "label": "Center tap"}
+    {"key": "enter", "type": "tap", "x": 540, "y": 960, "label": "Center tap"},
+    {"key": "gamepad_a", "type": "tap", "x": 820, "y": 1550, "label": "Gamepad A / Action A"},
+    {"key": "gamepad_b", "type": "tap", "x": 940, "y": 1450, "label": "Gamepad B / Action B"}
   ]
 }

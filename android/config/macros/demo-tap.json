@@ -1,0 +1,19 @@
+{
+  "name": "demo-tap",
+  "description": "Demo macro that waits briefly, taps the center of the default FHD screen, then waits again.",
+  "steps": [
+    {
+      "type": "wait",
+      "ms": 500
+    },
+    {
+      "type": "tap",
+      "x": 540,
+      "y": 960
+    },
+    {
+      "type": "wait",
+      "ms": 250
+    }
+  ]
+}

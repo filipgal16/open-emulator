@@ -8,6 +8,13 @@ source "$SCRIPT_DIR/../lib/common.sh"
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/../lib/connectivity.sh"
 android_env
+PERFORMANCE_FILE="$STATE_DIR/performance.env"
+if [[ -f "$PERFORMANCE_FILE" ]]; then
+  # shellcheck disable=SC1090
+  source "$PERFORMANCE_FILE"
+fi
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/../lib/instances.sh"
 
 usage() {
   cat <<EOF
@@ -24,6 +31,13 @@ Commands:
   network [on|dns|redir]  Network status / enable / DNS check / port redir
   bluetooth [on]       Bluetooth status / enable virtual adapter
   keymap …             Keyboard → on-screen button mapping (see keymap --help)
+  instance …           Multi-instance manager (list/create/start/stop/batch)
+  macro …              Record/show/run JSON tap macros
+  fps [30|60|90|120|show]
+  performance show|set [--cores N] [--memory MB] [--gpu MODE] [--fps N]
+  gpu [swiftshader|host|auto|guest]
+  share push|pull|open Shared folder helpers for /sdcard/OpenEmulator/
+  gps <lat> <lng> | gps show
   provision            Tune guest for real use + save snapshot (KVM fast path)
   install <apk>        Install an APK (grants runtime permissions)
   launch <component>   Start an activity (pkg/.Activity)
@@ -72,6 +86,9 @@ start_emulator() {
     apply_guest_network "$d"
     apply_guest_audio "$d"
     apply_guest_bluetooth "$d"
+    if [[ -n "${ANDROID_FPS:-}" ]]; then
+      apply_fps_live "$ANDROID_FPS" "$d"
+    fi
     return 0
   fi
 
@@ -87,7 +104,7 @@ start_emulator() {
     sed -i \
       -e "s/^hw.cpu.ncore=.*/hw.cpu.ncore=${GUEST_CORES}/" \
       -e "s/^hw.ramSize=.*/hw.ramSize=${GUEST_RAM_MB}/" \
-      -e "s/^hw.gpu.mode=.*/hw.gpu.mode=swiftshader/" \
+      -e "s/^hw.gpu.mode=.*/hw.gpu.mode=${GPU_MODE}/" \
       -e "s/^hw.lcd.width=.*/hw.lcd.width=${LCD_WIDTH}/" \
       -e "s/^hw.lcd.height=.*/hw.lcd.height=${LCD_HEIGHT}/" \
       -e "s/^hw.lcd.density=.*/hw.lcd.density=${LCD_DENSITY}/" \
@@ -209,6 +226,9 @@ start_emulator() {
   apply_guest_network "$device"
   apply_guest_audio "$device"
   apply_guest_bluetooth "$device"
+  if [[ -n "${ANDROID_FPS:-}" ]]; then
+    apply_fps_live "$ANDROID_FPS" "$device"
+  fi
 }
 
 cmd_start() {
@@ -496,6 +516,7 @@ cmd_keymap() {
   local daemon="$ROOT/scripts/keymap_daemon.py"
   local editor="$ROOT/scripts/keymap_edit.py"
   local active_link="$STATE_DIR/active_keymap.json"
+  local sync_file="$STATE_DIR/keymap_sync.json"
   mkdir -p "$STATE_DIR"
 
   keymap_usage() {
@@ -509,12 +530,16 @@ Usage: open-emu keymap <command>
                             Map a key to an on-screen tap/hold point
   unset <key>               Remove a binding
   fire <key>                Trigger one binding once (test)
-  run [name] [--backend B]  Listen for keys and inject touches
-                            B = auto|evdev|tty|line
+  run [name] [--backend B] [--device SERIAL|--devices SERIAL1,SERIAL2]
+                            Listen for keys and inject touches
+                            B = auto|evdev|tty|line|mouse|gamepad
+  sync on [serials]         Save follower adb serials for keymap run
+  sync off                  Disable keymap follower sync
+  sync status               Show keymap follower sync state
 
 How it works:
   Press a mapped host key → adb injects a touch at (x,y) on the Android screen.
-  Use 'hold' for WASD-style movement (finger down while key held).
+  Use 'joystick' for WASD-style movement with diagonals.
   Coords use the current display size (see: open-emu display / wm size).
 
 Examples:
@@ -524,6 +549,8 @@ Examples:
   open-emu keymap fire j
   open-emu keymap run                  # type keys in this terminal
   open-emu keymap run --backend evdev  # real keyboard on Linux desktop
+  open-emu keymap run --devices emulator-5554,emulator-5556
+  open-emu keymap sync on emulator-5556
 EOF
   }
 
@@ -557,6 +584,96 @@ EOF
     else
       echo "$mp"
     fi
+  }
+
+  keymap_discover_followers() {
+    local primary="${1:-}"
+    if [[ ! -x "$ADB_BIN" ]]; then
+      return 0
+    fi
+    "$ADB_BIN" devices 2>/dev/null | awk -v primary="$primary" '
+      $2 == "device" && $1 != primary { print $1 }
+    '
+  }
+
+  keymap_sync_write() {
+    local enabled="$1"
+    shift || true
+    python3 - "$sync_file" "$enabled" "$@" <<'PY'
+import json
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+
+path = Path(sys.argv[1])
+enabled = sys.argv[2] == "1"
+followers = []
+for arg in sys.argv[3:]:
+    for serial in arg.replace(",", " ").split():
+        if serial and serial not in followers:
+            followers.append(serial)
+data = {
+    "enabled": enabled,
+    "followers": followers,
+    "updated_at": datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z"),
+}
+path.write_text(json.dumps(data, indent=2) + "\n")
+PY
+  }
+
+  keymap_sync_status() {
+    python3 - "$sync_file" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+if path.exists():
+    data = json.loads(path.read_text())
+else:
+    data = {"enabled": False, "followers": []}
+print(json.dumps(data, indent=2))
+PY
+  }
+
+  keymap_sync_enabled() {
+    python3 - "$sync_file" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+if not path.exists():
+    raise SystemExit(1)
+try:
+    data = json.loads(path.read_text())
+except Exception:
+    raise SystemExit(1)
+raise SystemExit(0 if data.get("enabled") else 1)
+PY
+  }
+
+  keymap_sync_followers_csv() {
+    python3 - "$sync_file" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+if not path.exists():
+    raise SystemExit(0)
+try:
+    data = json.loads(path.read_text())
+except Exception:
+    raise SystemExit(0)
+followers = []
+if data.get("enabled"):
+    for serial in data.get("followers", []):
+        serial = str(serial).strip()
+        if serial and serial not in followers:
+            followers.append(serial)
+print(",".join(followers))
+PY
   }
 
   case "$sub" in
@@ -622,25 +739,337 @@ EOF
       python3 "$daemon" --map "$(resolve_map "")" --fire "$1" \
         --adb "$ADB_BIN" --device "$(adb_device)"
       ;;
+    sync)
+      local action="${1:-status}"
+      shift || true
+      case "$action" in
+        on|enable)
+          local serials=("$@")
+          if ((${#serials[@]} == 0)); then
+            local primary=""
+            primary="$(adb_device 2>/dev/null || true)"
+            mapfile -t serials < <(keymap_discover_followers "$primary")
+          fi
+          keymap_sync_write 1 "${serials[@]}"
+          keymap_sync_status
+          ;;
+        off|disable)
+          keymap_sync_write 0
+          keymap_sync_status
+          ;;
+        status|"")
+          keymap_sync_status
+          ;;
+        *)
+          die "usage: open-emu keymap sync on [serials]|off|status"
+          ;;
+      esac
+      ;;
     run)
       require_sdk
-      emulator_running || start_emulator 0
-      local name="" backend="auto"
+      local name="" backend="auto" device="" devices=""
       while (($#)); do
         case "$1" in
           --backend) backend="${2:-auto}"; shift 2 ;;
           --backend=*) backend="${1#*=}"; shift ;;
+          --device) device="${2:-}"; shift 2 ;;
+          --device=*) device="${1#*=}"; shift ;;
+          --devices) devices="${2:-}"; shift 2 ;;
+          --devices=*) devices="${1#*=}"; shift ;;
           -*) die "unknown option: $1" ;;
           *) name="$1"; shift ;;
         esac
       done
+      if [[ -z "$devices" && -z "$device" ]]; then
+        emulator_running || start_emulator 0
+        device="$(adb_device)"
+      fi
+      if [[ -z "$devices" ]] && keymap_sync_enabled; then
+        local followers=""
+        followers="$(keymap_sync_followers_csv)"
+        if [[ -n "$followers" ]]; then
+          devices="${device:+$device,}${followers}"
+        fi
+      fi
       echo "Starting keymap listener (backend=$backend). Ctrl+C to stop."
-      python3 "$daemon" --map "$(resolve_map "$name")" --backend "$backend" \
-        --adb "$ADB_BIN" --device "$(adb_device)"
+      if [[ -n "$devices" ]]; then
+        python3 "$daemon" --map "$(resolve_map "$name")" --backend "$backend" \
+          --adb "$ADB_BIN" --devices "$devices"
+      else
+        python3 "$daemon" --map "$(resolve_map "$name")" --backend "$backend" \
+          --adb "$ADB_BIN" --device "$device"
+      fi
       ;;
     *)
       keymap_usage
       die "unknown keymap command: $sub"
+      ;;
+  esac
+}
+
+cmd_instance() {
+  instance_main "$@"
+}
+
+cmd_macro() {
+  python3 "$ROOT/scripts/macro_engine.py" "$@"
+}
+
+write_performance_file() {
+  local cores="${1:-${ANDROID_CORES:-}}"
+  local memory="${2:-${ANDROID_MEMORY_MB:-}}"
+  local gpu="${3:-${ANDROID_GPU_MODE:-}}"
+  local fps="${4:-${ANDROID_FPS:-}}"
+  mkdir -p "$STATE_DIR"
+  {
+    [[ -n "$cores" ]] && echo "ANDROID_CORES=${cores}"
+    [[ -n "$memory" ]] && echo "ANDROID_MEMORY_MB=${memory}"
+    [[ -n "$gpu" ]] && echo "ANDROID_GPU_MODE=${gpu}"
+    [[ -n "$fps" ]] && echo "ANDROID_FPS=${fps}"
+  } > "$PERFORMANCE_FILE"
+  # shellcheck disable=SC1090
+  source "$PERFORMANCE_FILE"
+}
+
+apply_fps_live() {
+  local fps="$1" device="${2:-}"
+  [[ "$fps" =~ ^(30|60|90|120)$ ]] || die "fps must be one of: 30 60 90 120"
+  if [[ -z "$device" && -x "$ADB_BIN" ]]; then
+    device="$(adb_device || true)"
+  fi
+  if [[ -n "$device" ]]; then
+    "$ADB_BIN" -s "$device" shell settings put system peak_refresh_rate "$fps" >/dev/null 2>&1 || true
+    "$ADB_BIN" -s "$device" shell settings put system min_refresh_rate "$fps" >/dev/null 2>&1 || true
+    "$ADB_BIN" -s "$device" shell settings put global peak_refresh_rate "$fps" >/dev/null 2>&1 || true
+    "$ADB_BIN" -s "$device" shell settings put global min_refresh_rate "$fps" >/dev/null 2>&1 || true
+    "$ADB_BIN" -s "$device" shell setprop debug.hwui.refresh_rate "$fps" >/dev/null 2>&1 || true
+    echo "live_fps=${fps}"
+    echo "adb_device=${device}"
+  else
+    echo "emulator not running — saved FPS preference applies on next start"
+  fi
+  echo "note=TCG/software acceleration may not sustain high refresh rates"
+}
+
+cmd_fps() {
+  local fps="${1:-show}"
+  case "$fps" in
+    show|"")
+      echo "saved_fps=${ANDROID_FPS:-auto}"
+      if [[ -x "$ADB_BIN" ]]; then
+        local device
+        device="$(adb_device || true)"
+        if [[ -n "$device" ]]; then
+          echo "adb_device=${device}"
+          "$ADB_BIN" -s "$device" shell settings get system peak_refresh_rate 2>/dev/null | tr -d '\r' | awk '{print "system_peak_refresh_rate="$1}'
+          "$ADB_BIN" -s "$device" shell settings get system min_refresh_rate 2>/dev/null | tr -d '\r' | awk '{print "system_min_refresh_rate="$1}'
+          "$ADB_BIN" -s "$device" shell settings get global peak_refresh_rate 2>/dev/null | tr -d '\r' | awk '{print "global_peak_refresh_rate="$1}'
+          "$ADB_BIN" -s "$device" shell settings get global min_refresh_rate 2>/dev/null | tr -d '\r' | awk '{print "global_min_refresh_rate="$1}'
+        else
+          echo "emulator not running"
+        fi
+      else
+        echo "adb missing — run: make android-fetch"
+      fi
+      echo "note=TCG/software acceleration may not sustain high refresh rates"
+      ;;
+    30|60|90|120)
+      write_performance_file "${ANDROID_CORES:-}" "${ANDROID_MEMORY_MB:-}" "${ANDROID_GPU_MODE:-}" "$fps"
+      apply_fps_live "$fps"
+      ;;
+    *)
+      die "usage: open-emu fps [30|60|90|120|show]"
+      ;;
+  esac
+}
+
+cmd_performance() {
+  local action="${1:-show}"
+  shift || true
+  case "$action" in
+    show|"")
+      echo "performance_file=${PERFORMANCE_FILE}"
+      echo "saved_cores=${ANDROID_CORES:-auto}"
+      echo "saved_memory_mb=${ANDROID_MEMORY_MB:-auto}"
+      echo "saved_gpu=${ANDROID_GPU_MODE:-auto}"
+      echo "saved_fps=${ANDROID_FPS:-auto}"
+      detect_host_profile
+      # shellcheck disable=SC1090
+      source "$PROFILE_FILE"
+      echo "effective_accel=${ACCEL}"
+      echo "effective_gpu=${GPU_MODE}"
+      echo "effective_cores=${GUEST_CORES}"
+      echo "effective_memory_mb=${GUEST_RAM_MB}"
+      echo "avd_config=$AVD_HOME/${AVD_NAME}.avd/config.ini"
+      echo "note=TCG/software acceleration may limit FPS and GPU modes"
+      ;;
+    set)
+      local cores="${ANDROID_CORES:-}" memory="${ANDROID_MEMORY_MB:-}" gpu="${ANDROID_GPU_MODE:-}" fps="${ANDROID_FPS:-}"
+      local touched=0
+      while (($#)); do
+        case "$1" in
+          --cores) cores="${2:-}"; touched=1; shift 2 ;;
+          --cores=*) cores="${1#*=}"; touched=1; shift ;;
+          --memory) memory="${2:-}"; touched=1; shift 2 ;;
+          --memory=*) memory="${1#*=}"; touched=1; shift ;;
+          --gpu) gpu="${2:-}"; touched=1; shift 2 ;;
+          --gpu=*) gpu="${1#*=}"; touched=1; shift ;;
+          --fps) fps="${2:-}"; touched=1; shift 2 ;;
+          --fps=*) fps="${1#*=}"; touched=1; shift ;;
+          *) die "unknown option: $1" ;;
+        esac
+      done
+      (( touched )) || die "usage: open-emu performance set [--cores N] [--memory MB] [--gpu MODE] [--fps N]"
+      [[ -z "$cores" || "$cores" =~ ^[0-9]+$ ]] || die "--cores must be numeric"
+      [[ -z "$memory" || "$memory" =~ ^[0-9]+$ ]] || die "--memory must be numeric MB"
+      [[ -z "$fps" || "$fps" =~ ^(30|60|90|120)$ ]] || die "--fps must be one of: 30 60 90 120"
+      case "$gpu" in
+        ""|swiftshader|host|auto|guest) ;;
+        *) die "--gpu must be one of: swiftshader host auto guest" ;;
+      esac
+
+      write_performance_file "$cores" "$memory" "$gpu" "$fps"
+
+      local avd_config="$AVD_HOME/${AVD_NAME}.avd/config.ini"
+      local updates=()
+      [[ -n "$cores" ]] && updates+=("hw.cpu.ncore=${cores}")
+      [[ -n "$memory" ]] && updates+=("hw.ramSize=${memory}")
+      [[ -n "$gpu" ]] && updates+=("hw.gpu.mode=${gpu}")
+      [[ -n "$fps" ]] && updates+=("hw.displayRefreshRate=${fps}")
+      if [[ -f "$avd_config" && ${#updates[@]} -gt 0 ]]; then
+        instance_set_config_keys "$avd_config" "${updates[@]}"
+        echo "updated_avd_config=${avd_config}"
+      else
+        echo "avd_config_missing=${avd_config}"
+      fi
+      if [[ -n "$fps" ]]; then
+        apply_fps_live "$fps"
+      fi
+      echo "performance_saved=${PERFORMANCE_FILE}"
+      ;;
+    *)
+      die "usage: open-emu performance show|set [--cores N] [--memory MB] [--gpu MODE] [--fps N]"
+      ;;
+  esac
+}
+
+cmd_gpu() {
+  local mode="${1:-show}"
+  case "$mode" in
+    show|"")
+      echo "saved_gpu=${ANDROID_GPU_MODE:-auto}"
+      detect_host_profile
+      # shellcheck disable=SC1090
+      source "$PROFILE_FILE"
+      echo "effective_gpu=${GPU_MODE}"
+      echo "effective_accel=${ACCEL}"
+      ;;
+    swiftshader|host|auto|guest)
+      cmd_performance set --gpu "$mode"
+      ;;
+    *)
+      die "usage: open-emu gpu [swiftshader|host|auto|guest]"
+      ;;
+  esac
+}
+
+cmd_share() {
+  local action="${1:-}"
+  shift || true
+  local remote_base="/sdcard/OpenEmulator"
+  require_sdk
+  local device
+  device="$(adb_device)"
+  [[ -n "$device" ]] || die "no emulator device; start Android first"
+  "$ADB_BIN" -s "$device" shell mkdir -p "$remote_base" >/dev/null 2>&1 || true
+  case "$action" in
+    push)
+      local src="${1:-}" remote="${2:-}"
+      [[ -n "$src" && -e "$src" ]] || die "usage: open-emu share push <local> [remote-name]"
+      if [[ -z "$remote" ]]; then
+        remote="$remote_base/$(basename "$src")"
+      elif [[ "$remote" != /* ]]; then
+        remote="$remote_base/$remote"
+      fi
+      "$ADB_BIN" -s "$device" push "$src" "$remote"
+      echo "remote=${remote}"
+      ;;
+    pull)
+      local remote="${1:-}" dst="${2:-.}"
+      [[ -n "$remote" ]] || die "usage: open-emu share pull <remote-name> [local]"
+      [[ "$remote" == /* ]] || remote="$remote_base/$remote"
+      "$ADB_BIN" -s "$device" pull "$remote" "$dst"
+      echo "local=${dst}"
+      ;;
+    open)
+      "$ADB_BIN" -s "$device" shell am start \
+        -a android.intent.action.VIEW \
+        -d "file://${remote_base}/" >/dev/null 2>&1 || \
+        "$ADB_BIN" -s "$device" shell monkey -p com.google.android.documentsui 1 >/dev/null 2>&1 || true
+      echo "shared_dir=${remote_base}"
+      ;;
+    *)
+      die "usage: open-emu share push|pull|open"
+      ;;
+  esac
+}
+
+emulator_console_cmd() {
+  local port="$1" cmd="$2"
+  command -v nc >/dev/null 2>&1 || die "nc missing; install netcat for emulator console commands"
+  local token_file="$HOME/.emulator_console_auth_token"
+  local token=""
+  [[ -f "$token_file" ]] && token="$(<"$token_file")"
+  {
+    echo "auth ${token}"
+    echo "$cmd"
+    echo "quit"
+  } | timeout 10s nc 127.0.0.1 "$port"
+}
+
+cmd_gps() {
+  local arg="${1:-show}"
+  local gps_file="$STATE_DIR/gps.env"
+  case "$arg" in
+    show|"")
+      if [[ -f "$gps_file" ]]; then
+        # shellcheck disable=SC1090
+        source "$gps_file"
+        echo "saved_lat=${ANDROID_GPS_LAT:-unknown}"
+        echo "saved_lng=${ANDROID_GPS_LNG:-unknown}"
+      else
+        echo "saved_lat=unknown"
+        echo "saved_lng=unknown"
+      fi
+      if [[ -x "$ADB_BIN" ]]; then
+        local device
+        device="$(adb_device || true)"
+        if [[ -n "$device" ]]; then
+          echo "adb_device=${device}"
+          "$ADB_BIN" -s "$device" shell dumpsys location 2>/dev/null | awk '/last location|Last Known Locations|gps:|fused:/{print; if(++n>=8) exit}' || true
+        else
+          echo "emulator not running"
+        fi
+      fi
+      ;;
+    *)
+      local lat="$arg" lng="${2:-}"
+      [[ -n "$lng" ]] || die "usage: open-emu gps <lat> <lng> | gps show"
+      [[ "$lat" =~ ^-?[0-9]+([.][0-9]+)?$ && "$lng" =~ ^-?[0-9]+([.][0-9]+)?$ ]] || die "lat/lng must be numeric"
+      local device port
+      device="$(adb_device || true)"
+      [[ -n "$device" && "$device" =~ ^emulator-([0-9]+)$ ]] || die "no emulator console device; start Android first"
+      port="${BASH_REMATCH[1]}"
+      emulator_console_cmd "$port" "geo fix ${lng} ${lat}"
+      mkdir -p "$STATE_DIR"
+      {
+        echo "ANDROID_GPS_LAT=${lat}"
+        echo "ANDROID_GPS_LNG=${lng}"
+      } > "$gps_file"
+      echo "gps_lat=${lat}"
+      echo "gps_lng=${lng}"
+      echo "console_port=${port}"
+      echo "note=emulator console geo fix uses longitude before latitude"
       ;;
   esac
 }
@@ -720,6 +1149,13 @@ main() {
     network) cmd_network "$@" ;;
     bluetooth) cmd_bluetooth "$@" ;;
     keymap) cmd_keymap "$@" ;;
+    instance) cmd_instance "$@" ;;
+    macro) cmd_macro "$@" ;;
+    fps) cmd_fps "$@" ;;
+    performance) cmd_performance "$@" ;;
+    gpu) cmd_gpu "$@" ;;
+    share) cmd_share "$@" ;;
+    gps) cmd_gps "$@" ;;
     provision) cmd_provision "$@" ;;
     install) cmd_install "$@" ;;
     launch) cmd_launch "$@" ;;

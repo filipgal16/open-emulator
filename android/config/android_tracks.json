@@ -1,0 +1,31 @@
+{
+  "current": {
+    "id": "api30",
+    "apiLevel": 30,
+    "androidVersion": "11",
+    "avdName": "OpenEmulator_API30",
+    "systemImage": "system-images;android-30;google_apis;x86_64",
+    "status": "current",
+    "notes": "Default open-emulator track used by setup, provisioning, and LDPlayer parity commands."
+  },
+  "planned": [
+    {
+      "id": "api33",
+      "apiLevel": 33,
+      "androidVersion": "13",
+      "avdName": "OpenEmulator_API33",
+      "systemImage": "system-images;android-33;google_apis;x86_64",
+      "status": "planned",
+      "notes": "Planned compatibility track for apps targeting Android 13 behavior changes."
+    },
+    {
+      "id": "api34",
+      "apiLevel": 34,
+      "androidVersion": "14",
+      "avdName": "OpenEmulator_API34",
+      "systemImage": "system-images;android-34;google_apis;x86_64",
+      "status": "planned",
+      "notes": "Planned newer runtime track for Android 14 app compatibility testing."
+    }
+  ]
+}

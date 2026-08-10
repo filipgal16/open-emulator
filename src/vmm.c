@@ -2,6 +2,7 @@
 
 #include "vmm.h"
 #include "serial.h"
+#include "x86_long.h"
 #include "x86_soft.h"
 
 #include <errno.h>
@@ -196,6 +197,23 @@ static int kvm_handle_io(vmm_t *vmm, struct kvm_run *run)
     return 0;
 }
 
+static int kvm_handle_mmio(vmm_t *vmm, struct kvm_run *run)
+{
+    uint64_t addr = run->mmio.phys_addr;
+    size_t len = run->mmio.len;
+
+    if (!virtio_mmio_contains(&vmm->virtio_mmio, addr, len)) {
+        fprintf(stderr, "kvm: unhandled mmio addr=0x%llx len=%zu\n",
+                (unsigned long long)addr, len);
+        return -1;
+    }
+
+    if (run->mmio.is_write) {
+        return virtio_mmio_write(&vmm->virtio_mmio, addr, run->mmio.data, len);
+    }
+    return virtio_mmio_read(&vmm->virtio_mmio, addr, run->mmio.data, len);
+}
+
 static int kvm_run_loop(vmm_t *vmm)
 {
     struct kvm_run *run = vmm->kvm_run;
@@ -214,6 +232,13 @@ static int kvm_run_loop(vmm_t *vmm)
         switch (run->exit_reason) {
         case KVM_EXIT_IO:
             if (kvm_handle_io(vmm, run) != 0) {
+                vmm->exit_code = 1;
+                return -1;
+            }
+            break;
+
+        case KVM_EXIT_MMIO:
+            if (kvm_handle_mmio(vmm, run) != 0) {
                 vmm->exit_code = 1;
                 return -1;
             }
@@ -266,6 +291,12 @@ int vmm_init(vmm_t *vmm, size_t ram_size, vmm_backend_kind kind)
     if (vmm_alloc_ram(vmm, ram_size) != 0) {
         return -1;
     }
+    if (vmm_long_mode_prepare(vmm) != 0) {
+        vmm_destroy(vmm);
+        return -1;
+    }
+    virtio_mmio_init(&vmm->virtio_mmio, VMM_VIRTIO_MMIO_BASE,
+                     VIRTIO_MMIO_DEVICE_ID_NET);
 
     if (kind == VMM_BACKEND_AUTO) {
         kind = vmm_kvm_available() ? VMM_BACKEND_KVM : VMM_BACKEND_SOFT;
