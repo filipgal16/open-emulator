@@ -5,13 +5,16 @@ LDFLAGS  ?=
 BUILD    := build
 BIN      := $(BUILD)/open-vmm
 GUEST    := $(BUILD)/guest/hello.bin
+TEST_LONG := $(BUILD)/test_long_virtio
 
-SRC      := src/main.c src/vmm.c src/serial.c src/x86_soft.c
+SRC      := src/main.c src/vmm.c src/serial.c src/x86_soft.c src/x86_long.c src/virtio_mmio.c
 OBJ      := $(patsubst src/%.c,$(BUILD)/%.o,$(SRC))
+CORE_OBJ := $(filter-out $(BUILD)/main.o,$(OBJ))
 
-.PHONY: all clean test run guest \
+.PHONY: all clean test test-long run guest \
 	android-fetch android-setup android-run android \
-	android-provision android-start android-stop android-status android-doctor android-bench
+	android-provision android-start android-stop android-status android-doctor android-bench \
+	desktop-server
 
 all: $(BIN) $(GUEST)
 
@@ -45,6 +48,9 @@ android-bench:
 
 android: android-fetch android-setup android-provision android-start
 
+desktop-server:
+	cd desktop && npm install && npm run server
+
 $(BIN): $(OBJ) | $(BUILD)
 	$(CC) $(CFLAGS) -o $@ $(OBJ) $(LDFLAGS)
 
@@ -62,6 +68,12 @@ run: all
 
 test: all
 	@./scripts/smoke_test.sh
+
+test-long: $(TEST_LONG)
+	@./$(TEST_LONG)
+
+$(TEST_LONG): tests/test_long_virtio.c $(CORE_OBJ) | $(BUILD)
+	$(CC) $(CFLAGS) -o $@ $< $(CORE_OBJ) $(LDFLAGS)
 
 clean:
 	rm -rf $(BUILD)

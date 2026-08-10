@@ -1,0 +1,278 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>open-emulator desktop</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Syne:wght@600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <div class="ambient ambient-a"></div>
+    <div class="ambient ambient-b"></div>
+    <div class="shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <span class="brand-mark">oe</span>
+          <div>
+            <strong>open-emulator</strong>
+            <small>desktop control shell</small>
+          </div>
+        </div>
+        <nav class="nav" aria-label="Primary">
+          <button class="nav-item active" data-panel="home">Home</button>
+          <button class="nav-item" data-panel="keymap">Keymap</button>
+          <button class="nav-item" data-panel="instances">Instances</button>
+          <button class="nav-item" data-panel="macros">Macros</button>
+          <button class="nav-item" data-panel="performance">Performance</button>
+          <button class="nav-item" data-panel="files">Files</button>
+          <button class="nav-item" data-panel="location">Location</button>
+        </nav>
+        <div class="sidebar-card">
+          <span class="eyebrow">Runtime</span>
+          <strong id="side-status">checking...</strong>
+          <small id="side-device">adb: unknown</small>
+        </div>
+      </aside>
+
+      <main class="main">
+        <header class="topbar">
+          <div>
+            <span class="eyebrow">Android 11 guest cockpit</span>
+            <h1>LDPlayer-style controls for <span>open-emulator</span></h1>
+          </div>
+          <div class="top-actions">
+            <button class="ghost" id="refresh-status">Refresh</button>
+            <button class="primary" id="quick-start">Start</button>
+          </div>
+        </header>
+
+        <section class="panel active" id="panel-home">
+          <div class="grid two">
+            <article class="card hero-card">
+              <div class="card-head">
+                <div>
+                  <span class="eyebrow">Home</span>
+                  <h2>Runtime console</h2>
+                </div>
+                <span class="status-pill" id="runtime-pill">unknown</span>
+              </div>
+              <div class="runtime-actions">
+                <button class="primary" id="start-btn">Start emulator</button>
+                <button class="danger" id="stop-btn">Stop emulator</button>
+                <label class="check"><input type="checkbox" id="cold-start"> cold boot</label>
+              </div>
+              <pre class="status-box" id="status-output">Waiting for status...</pre>
+            </article>
+
+            <article class="card">
+              <div class="card-head">
+                <div>
+                  <span class="eyebrow">Live screen</span>
+                  <h2>Screenshot poll</h2>
+                </div>
+                <button class="ghost" id="shot-now">Capture</button>
+              </div>
+              <div class="screen-frame">
+                <img id="home-screenshot" alt="Android screenshot">
+                <div class="screen-glow"></div>
+              </div>
+            </article>
+          </div>
+
+          <article class="card drop-card" id="apk-drop">
+            <input id="apk-input" type="file" accept=".apk,application/vnd.android.package-archive" hidden>
+            <div>
+              <span class="eyebrow">APK drag-drop</span>
+              <h2>Install an app package</h2>
+              <p>Drop an APK here, choose a file, or paste a local APK path.</p>
+            </div>
+            <div class="install-row">
+              <input id="apk-path" placeholder="/absolute/path/to/app.apk">
+              <button class="ghost" id="choose-apk">Choose</button>
+              <button class="primary" id="install-apk">Install</button>
+            </div>
+            <pre class="mini-log" id="install-log"></pre>
+          </article>
+        </section>
+
+        <section class="panel" id="panel-keymap">
+          <div class="grid keymap-grid">
+            <article class="card">
+              <div class="card-head">
+                <div>
+                  <span class="eyebrow">Visual editor</span>
+                  <h2>Click to place binding dots</h2>
+                </div>
+                <button class="primary" id="save-keymap">Save keymap</button>
+              </div>
+              <div class="keymap-stage" id="keymap-stage">
+                <img id="keymap-screenshot" alt="Screenshot background">
+                <div id="binding-layer"></div>
+                <div class="stage-hint">Click the screen to add a tap binding</div>
+              </div>
+            </article>
+            <article class="card">
+              <div class="card-head">
+                <div>
+                  <span class="eyebrow">Bindings</span>
+                  <h2>Edit and test</h2>
+                </div>
+                <button class="ghost" id="reload-keymap">Reload</button>
+              </div>
+              <div class="binding-form">
+                <input id="binding-key" placeholder="key, e.g. j">
+                <input id="binding-label" placeholder="label">
+                <select id="binding-type">
+                  <option value="tap">tap</option>
+                  <option value="hold">hold</option>
+                  <option value="keyevent">keyevent</option>
+                </select>
+                <input id="binding-x" type="number" placeholder="x">
+                <input id="binding-y" type="number" placeholder="y">
+                <button class="primary" id="add-binding">Add / update</button>
+              </div>
+              <div class="binding-list" id="binding-list"></div>
+            </article>
+          </div>
+        </section>
+
+        <section class="panel" id="panel-instances">
+          <article class="card">
+            <div class="card-head">
+              <div>
+                <span class="eyebrow">Multi-instance</span>
+                <h2>Profiles and clones</h2>
+              </div>
+              <button class="ghost" id="refresh-instances">Refresh</button>
+            </div>
+            <div class="inline-form">
+              <input id="instance-name" placeholder="new-profile">
+              <button class="primary" id="create-instance">Create instance</button>
+            </div>
+            <div class="table-list" id="instance-list"></div>
+          </article>
+        </section>
+
+        <section class="panel" id="panel-macros">
+          <article class="card">
+            <div class="card-head">
+              <div>
+                <span class="eyebrow">Automation</span>
+                <h2>Macros</h2>
+              </div>
+              <button class="ghost" id="refresh-macros">Refresh</button>
+            </div>
+            <div class="inline-form">
+              <input id="macro-name" placeholder="macro-name">
+              <input id="macro-loop" type="number" min="1" value="1" placeholder="loop">
+              <button class="primary" id="run-macro">Run selected</button>
+            </div>
+            <div class="table-list" id="macro-list"></div>
+            <pre class="mini-log" id="macro-log"></pre>
+          </article>
+        </section>
+
+        <section class="panel" id="panel-performance">
+          <div class="grid two">
+            <article class="card">
+              <div class="card-head">
+                <div>
+                  <span class="eyebrow">Tuning</span>
+                  <h2>Performance profile</h2>
+                </div>
+                <button class="primary" id="save-performance">Apply</button>
+              </div>
+              <div class="form-grid">
+                <label>CPU cores<input id="perf-cores" type="number" min="1" max="16"></label>
+                <label>Memory MB<input id="perf-memory" type="number" min="512" step="256"></label>
+                <label>GPU mode<select id="perf-gpu"><option>swiftshader</option><option>auto</option><option>host</option><option>guest</option></select></label>
+                <label>FPS<input id="perf-fps" type="number" min="15" max="240"></label>
+              </div>
+            </article>
+            <article class="card">
+              <div class="card-head">
+                <div>
+                  <span class="eyebrow">Device toggles</span>
+                  <h2>Display, audio, network</h2>
+                </div>
+              </div>
+              <div class="stack">
+                <div class="inline-form">
+                  <input id="display-preset" placeholder="fhd, hd, qhd, or 1080x1920">
+                  <button class="ghost" id="apply-display">Display</button>
+                </div>
+                <div class="inline-form">
+                  <select id="audio-action"><option value="">status</option><option value="test">test</option></select>
+                  <button class="ghost" id="apply-audio">Audio</button>
+                </div>
+                <div class="inline-form">
+                  <select id="network-action"><option>status</option><option>on</option><option>dns</option></select>
+                  <button class="ghost" id="apply-network">Network</button>
+                </div>
+              </div>
+              <pre class="mini-log" id="device-log"></pre>
+            </article>
+          </div>
+        </section>
+
+        <section class="panel" id="panel-files">
+          <div class="grid two">
+            <article class="card">
+              <div class="card-head">
+                <div>
+                  <span class="eyebrow">Files</span>
+                  <h2>Push to Android</h2>
+                </div>
+              </div>
+              <div class="form-grid">
+                <label>Local path<input id="push-local" placeholder="/host/file"></label>
+                <label>Remote path<input id="push-remote" placeholder="/sdcard/Download/file"></label>
+              </div>
+              <button class="primary" id="push-file">Push</button>
+            </article>
+            <article class="card">
+              <div class="card-head">
+                <div>
+                  <span class="eyebrow">Files</span>
+                  <h2>Pull from Android</h2>
+                </div>
+              </div>
+              <div class="form-grid">
+                <label>Remote path<input id="pull-remote" placeholder="/sdcard/Download/file"></label>
+                <label>Local path<input id="pull-local" placeholder="/host/file"></label>
+              </div>
+              <button class="primary" id="pull-file">Pull</button>
+            </article>
+          </div>
+          <pre class="mini-log" id="files-log"></pre>
+        </section>
+
+        <section class="panel" id="panel-location">
+          <article class="card location-card">
+            <div class="card-head">
+              <div>
+                <span class="eyebrow">Location</span>
+                <h2>GPS spoofing</h2>
+              </div>
+              <button class="primary" id="send-gps">Send GPS</button>
+            </div>
+            <div class="form-grid">
+              <label>Latitude<input id="gps-lat" type="number" step="0.000001" value="37.7749"></label>
+              <label>Longitude<input id="gps-lng" type="number" step="0.000001" value="-122.4194"></label>
+            </div>
+            <div class="map-card">
+              <div class="map-pulse"></div>
+              <span>Virtual coordinate uplink</span>
+            </div>
+            <pre class="mini-log" id="gps-log"></pre>
+          </article>
+        </section>
+      </main>
+    </div>
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    <script src="/app.js"></script>
+  </body>
+</html>

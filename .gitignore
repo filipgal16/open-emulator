@@ -15,3 +15,8 @@ build/
 *.bin
 .open-vmm*
 .DS_Store
+
+# Desktop shell
+desktop/node_modules/
+desktop/data/
+*.log

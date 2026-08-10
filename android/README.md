@@ -29,6 +29,13 @@ make android-start          # subsequent calls reuse a running emulator
 | `doctor` | Network, storage, package manager checks |
 | `demo` | End-to-end verify path |
 | `keymap …` | Map host keys → on-screen taps/holds (LDPlayer-style) |
+| `instance …` | Create, clone, start, stop, delete, and batch-control AVD instances |
+| `macro …` | List, record, show, and run JSON tap/wait macros |
+| `fps [30\|60\|90\|120\|show]` | Save/apply guest refresh-rate preference |
+| `performance show\|set` | Save cores, memory, GPU, and FPS preferences |
+| `gpu [swiftshader\|host\|auto\|guest]` | Shortcut for GPU mode preference |
+| `share push\|pull\|open` | Move files through `/sdcard/OpenEmulator/` |
+| `gps <lat> <lng>` / `gps show` | Set emulator location through `geo fix <lng> <lat>` |
 
 ## Performance model
 
@@ -39,19 +46,80 @@ make android-start          # subsequent calls reuse a running emulator
 
 ### Keyboard → on-screen buttons
 
-Map host keys to touch points (LDPlayer-style):
+Map host keys, mouse JSON events, or a gamepad to touch points (LDPlayer-style):
 
 ```bash
 open-emu keymap use default
-open-emu keymap set w 270 1450 hold MoveUp
 open-emu keymap set j 940 1550 tap Attack
 open-emu keymap fire j          # test one binding
 open-emu keymap run             # press keys in this terminal
 # On a Linux desktop with a real keyboard:
 open-emu keymap run --backend evdev
+# Fan out to multiple adb devices:
+open-emu keymap run --devices emulator-5554,emulator-5556
+open-emu keymap sync on emulator-5556
 ```
 
-Profiles live in `android/config/keymaps/`. Active edits go to `android/state/custom_keymap.json`.
+The default profile uses one joystick binding (`cx`, `cy`, `radius`) for WASD
+movement, including diagonals, plus taps for keyboard and gamepad buttons.
+Backends are `auto`, `evdev`, `tty`, `line`, `mouse` (JSON lines), and
+`gamepad` (left stick + A/B/X/Y). Profiles live in
+`android/config/keymaps/`; active edits go to `android/state/custom_keymap.json`,
+and follower sync state is saved in `android/state/keymap_sync.json`.
+
+### LDPlayer-style instances
+
+Create named AVD clones from the API 30 base image:
+
+```bash
+./android/bin/open-emu instance list
+./android/bin/open-emu instance create game1 --cores 2 --memory 3072
+./android/bin/open-emu instance clone game1 game2
+./android/bin/open-emu instance start game1
+./android/bin/open-emu instance batch start game1 game2
+./android/bin/open-emu instance stop game1
+./android/bin/open-emu instance delete game2
+```
+
+Instance state is stored in `android/state/instances.json` and each clone is named
+`OpenEmulator_<name>`. Console/adb ports are allocated in emulator pairs:
+`5554/5555`, `5556/5557`, and so on.
+
+### Macros
+
+Macros live in `android/config/macros/*.json`:
+
+```bash
+./android/bin/open-emu macro list
+./android/bin/open-emu macro show demo-tap
+./android/bin/open-emu macro record my-flow
+./android/bin/open-emu macro run demo-tap --loop 3
+./android/bin/open-emu macro run demo-tap --device emulator-5556
+```
+
+Supported steps include `tap`, `wait`, `swipe`, `keyevent`, and `text`.
+
+### Performance, FPS, GPU, sharing, and GPS
+
+```bash
+./android/bin/open-emu performance show
+./android/bin/open-emu performance set --cores 4 --memory 4096 --gpu host --fps 60
+./android/bin/open-emu fps show
+./android/bin/open-emu fps 90
+./android/bin/open-emu gpu swiftshader
+
+./android/bin/open-emu share push ./file.txt
+./android/bin/open-emu share pull file.txt .
+./android/bin/open-emu share open
+
+./android/bin/open-emu gps 37.7749 -122.4194
+./android/bin/open-emu gps show
+```
+
+Preferences are saved in `android/state/performance.env` and applied to the base
+AVD `config.ini` when set. Live FPS updates use Android `settings put` where the
+guest permits it. TCG/software acceleration can cap real-world FPS even when a
+higher preference is saved.
 
 ```bash
 ./android/bin/open-emu audio          # status + max volumes
@@ -83,7 +151,11 @@ Profiles live in `android/config/keymaps/`. Active edits go to `android/state/cu
 android/
   bin/open-emu           Control plane CLI
   lib/common.sh          Shared helpers
+  lib/instances.sh       Multi-instance manager
   scripts/               fetch / setup / provision / bench
+  scripts/macro_engine.py Macro record/run helper
+  config/android_tracks.json  API 30 current + API 33/34 planned tracks
+  config/macros/         JSON macros
   config/avd_config.ini  AVD hardware profile
   apps/                  Drop APKs here
   sdk/                   Local SDK + system image (gitignored)

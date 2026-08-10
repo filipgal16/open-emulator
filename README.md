@@ -10,6 +10,8 @@ Step-by-step open Android emulator. **This repository currently implements step 
 2. Loads a flat guest binary into that memory
 3. Runs a virtual CPU until the guest executes `HLT`
 4. Emulates a serial port (`COM1` / `0x3f8`) so the guest can print output
+5. Prepares long-mode page-table/GDT scaffolding and a virtio-mmio stub for
+   future 64-bit guests
 
 Two backends:
 
@@ -56,16 +58,20 @@ open-emulator: guest is alive
 
 ```bash
 make test
+make test-long
 ```
 
 ## Layout
 
 ```text
-include/     Public headers (vmm, serial, soft CPU)
-src/         VMM, KVM backend, soft CPU, serial device
+include/     Public headers (vmm, serial, soft CPU, long mode, virtio-mmio)
+src/         VMM, KVM backend, soft CPU, serial, long-mode, virtio-mmio
 guest/       Guest assembly source
 android/     Android 11 guest import + run scripts
+desktop/     Desktop shell prototype
+docs/        Design notes and implementation status
 scripts/     Guest assembler + smoke test
+tests/       Native C tests
 build/       Build outputs
 ```
 
@@ -87,12 +93,13 @@ make android-start        # snapshot boot (seconds–minutes depending on KVM)
 ./android/bin/open-emu launch com.android.settings/.Settings
 ./android/bin/open-emu keymap run          # host key → on-screen tap
 ./android/bin/open-emu doctor
+cd desktop && npm install && npm run server   # LDPlayer-style control UI
 ```
 
-See [`android/README.md`](android/README.md).
+See [`android/README.md`](android/README.md) and [`desktop/README.md`](desktop/README.md).
 
 ## Next steps
 
-1. Grow `open-vmm` toward long mode + virtio/goldfish (replace Emulator QEMU)
-2. Desktop UI: APK drag-drop, visual key-map editor, audio routing
-3. Multi-instance / profiles
+1. Finish long-mode CPU entry and concrete virtio/goldfish devices (boot Linux/Android on open-vmm)
+2. Harden multi-instance sync under real multi-AVD load
+3. Package the desktop shell for Windows/Linux installers

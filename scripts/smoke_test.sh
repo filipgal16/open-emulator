@@ -16,14 +16,14 @@ echo "$out"
 grep -q "open-emulator: guest is alive" <<<"$out"
 grep -q "backend=soft" /tmp/open-vmm-soft.err
 
-if [[ -e /dev/kvm ]]; then
+if [[ -r /dev/kvm && -w /dev/kvm ]]; then
   echo "== kvm backend =="
   out="$("$BIN" --backend=kvm "$GUEST" 2>/tmp/open-vmm-kvm.err)"
   echo "$out"
   grep -q "open-emulator: guest is alive" <<<"$out"
   grep -q "backend=kvm" /tmp/open-vmm-kvm.err
 else
-  echo "== kvm backend skipped (/dev/kvm missing) =="
+  echo "== kvm backend skipped (/dev/kvm unavailable) =="
 fi
 
 echo "smoke test passed"
