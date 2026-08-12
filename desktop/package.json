@@ -1,0 +1,17 @@
+{
+  "name": "open-emulator-desktop",
+  "version": "0.2.0",
+  "private": true,
+  "description": "Mint-branded desktop control shell for open-emulator.",
+  "main": "main.js",
+  "scripts": {
+    "start": "node server.js",
+    "server": "node server.js",
+    "electron": "electron ."
+  },
+  "dependencies": {
+    "electron": "^37.2.0",
+    "express": "^5.1.0",
+    "multer": "^2.0.1"
+  }
+}

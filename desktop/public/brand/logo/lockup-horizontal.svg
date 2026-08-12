@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 420 80" role="img" aria-label="open-emulator">
+  <defs>
+    <linearGradient id="oeMint" x1="10" y1="8" x2="70" y2="72" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#7FDCB3"/>
+      <stop offset="0.55" stop-color="#26B87A"/>
+      <stop offset="1" stop-color="#117651"/>
+    </linearGradient>
+    <linearGradient id="oeLeaf" x1="48" y1="10" x2="78" y2="42" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#B4EBD3"/>
+      <stop offset="1" stop-color="#149563"/>
+    </linearGradient>
+  </defs>
+  <rect width="420" height="80" rx="20" fill="#F2FBF7"/>
+  <g transform="translate(14,8)">
+    <rect x="6" y="4" width="44" height="56" rx="13" fill="url(#oeMint)"/>
+    <rect x="12.5" y="11" width="31" height="42" rx="7" fill="#FFFFFF" opacity="0.94"/>
+    <rect x="23" y="50" width="9" height="3" rx="1.5" fill="#0F4B37" opacity="0.35"/>
+    <path d="M48 31c9.5-1.6 16.5-9.5 17.5-19-9.8 1.4-17.5 8.5-19 18-.2 1.4.8 2.4 1.5 1z" fill="url(#oeLeaf)"/>
+    <text x="28" y="41" text-anchor="middle" font-family="Fraunces, Georgia, serif" font-size="16" font-weight="700" fill="#0B241C">oe</text>
+  </g>
+  <text x="92" y="38" font-family="Fraunces, Georgia, serif" font-size="30" font-weight="650" fill="#0B241C">open-emulator</text>
+  <text x="94" y="58" font-family="Sora, Avenir Next, sans-serif" font-size="12" font-weight="500" fill="#5A7268" letter-spacing="0.08em">MINT HOST CONTROL</text>
+</svg>
