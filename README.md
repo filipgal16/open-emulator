@@ -101,9 +101,9 @@ See [`android/README.md`](android/README.md).
 ## Brand & desktop shell
 
 Host-side identity (mint palette, logo, fonts) lives in [`brand/`](brand/).
-The control GUI for non-Android features is under [`desktop/`](desktop/):
+The control GUI is a **native sidebar** beside the guest screen in
+[`desktop/`](desktop/) — not a web page:
 
 ```bash
-cd desktop && npm install && npm run server
-# → http://127.0.0.1:8787
+cd desktop && npm install && npm start
 ```

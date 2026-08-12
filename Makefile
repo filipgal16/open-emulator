@@ -12,7 +12,7 @@ OBJ      := $(patsubst src/%.c,$(BUILD)/%.o,$(SRC))
 .PHONY: all clean test run guest \
 	android-fetch android-setup android-run android \
 	android-provision android-start android-stop android-status android-doctor android-bench \
-	desktop-install desktop-server
+	desktop-install desktop
 
 all: $(BIN) $(GUEST)
 
@@ -49,8 +49,8 @@ android: android-fetch android-setup android-provision android-start
 desktop-install:
 	cd desktop && npm install
 
-desktop-server:
-	cd desktop && npm run server
+desktop:
+	cd desktop && npm start
 
 $(BIN): $(OBJ) | $(BUILD)
 	$(CC) $(CFLAGS) -o $@ $(OBJ) $(LDFLAGS)

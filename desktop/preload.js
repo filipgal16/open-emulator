@@ -1,9 +1,7 @@
-const { contextBridge } = require("electron");
+const { contextBridge, ipcRenderer } = require("electron");
 
-contextBridge.exposeInMainWorld("openEmulatorDesktop", {
-  versions: {
-    node: process.versions.node,
-    chrome: process.versions.chrome,
-    electron: process.versions.electron
+contextBridge.exposeInMainWorld("oe", {
+  invoke(channel, payload) {
+    return ipcRenderer.invoke(`oe:${channel}`, payload);
   }
 });

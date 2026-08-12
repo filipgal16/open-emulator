@@ -64,14 +64,11 @@ wordmark (`wordmark-on-dark.svg`).
 
 ## UI rules (host shell)
 
-1. Brand is visible in the first viewport without relying on nav alone.
-2. Interaction surfaces may use soft panels; decorative “card stacks” are not
-   the visual idea — the mint atmosphere and live Android preview are.
-3. One primary CTA per view region (usually mint-filled).
-4. Motion is sparse: brand mark breath, panel enter, status pulse — no glow
-   storms or bouncing pills.
-5. Ads, if present, sit in a quiet footer rail and never cover the guest
-   screen.
+1. Controls live in a **sidebar** docked beside the Android guest viewport — not
+   a separate browser page or marketing site.
+2. The guest screen is always visible; sidebar panels swap in place.
+3. One primary CTA per panel region (usually mint-filled).
+4. Motion is sparse: status pulse, panel fade — no glow storms.
 
 ## Non-goals
 

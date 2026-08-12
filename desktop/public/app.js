@@ -7,30 +7,22 @@ const state = {
   selectedMacro: "",
   statusTimer: null,
   screenshotTimer: null,
-  adsTimer: null,
   bootStartedAt: 0,
-  bootTimer: null
+  bootTimer: null,
+  activePanel: "runtime"
 };
 
-async function api(path, options = {}) {
-  const response = await fetch(path, {
-    headers: options.body instanceof FormData ? undefined : { "Content-Type": "application/json" },
-    ...options,
-    body: options.body instanceof FormData ? options.body : options.body ? JSON.stringify(options.body) : undefined
-  });
-  const type = response.headers.get("content-type") || "";
-  const payload = type.includes("application/json") ? await response.json() : await response.text();
-  if (!response.ok) {
-    const message = payload && payload.error ? payload.error : `Request failed: ${response.status}`;
-    throw new Error(message);
+function invoke(channel, payload) {
+  if (!window.oe || typeof window.oe.invoke !== "function") {
+    return Promise.reject(new Error("Desktop shell is not available outside Electron."));
   }
-  return payload;
+  return window.oe.invoke(channel, payload);
 }
 
 function toast(message, tone = "ok") {
   const node = $("#toast");
   node.textContent = message;
-  node.className = `toast show ${tone}`;
+  node.className = `toast show ${tone === "warn" || tone === "err" ? tone : ""}`;
   clearTimeout(node._timer);
   node._timer = setTimeout(() => {
     node.className = "toast";
@@ -39,6 +31,7 @@ function toast(message, tone = "ok") {
 
 function logTo(selector, value) {
   const node = $(selector);
+  if (!node) return;
   node.textContent = typeof value === "string" ? value : JSON.stringify(value, null, 2);
 }
 
@@ -54,37 +47,33 @@ function setBusy(button, busy, label) {
   }
 }
 
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
 function wireNavigation() {
-  const hero = $("#home-hero");
   const activate = (panelName) => {
-    $$(".nav-item").forEach((item) => {
-      item.classList.toggle("active", item.dataset.panel === panelName);
-    });
-    $$(".panel").forEach((panel) => {
-      panel.classList.toggle("active", panel.id === `panel-${panelName}`);
-    });
-    if (hero) hero.hidden = panelName !== "home";
-    if (panelName === "keymap") {
-      refreshScreenshot();
-    }
+    state.activePanel = panelName;
+    $$(".tool-tab").forEach((tab) => tab.classList.toggle("active", tab.dataset.panel === panelName));
+    $$(".tool-panel").forEach((panel) => panel.classList.toggle("active", panel.id === `panel-${panelName}`));
+    $("#screen-frame").classList.toggle("keymap-mode", panelName === "keymap");
+    renderDots();
+    if (panelName === "keymap") refreshScreenshot();
   };
 
-  $$(".nav-item").forEach((button) => {
+  $$(".tool-tab").forEach((button) => {
     button.addEventListener("click", () => activate(button.dataset.panel));
-  });
-
-  $$("[data-panel-link]").forEach((link) => {
-    link.addEventListener("click", (event) => {
-      event.preventDefault();
-      activate(link.dataset.panelLink);
-    });
   });
 }
 
 async function refreshStatus() {
-  const status = await api("/api/status");
-  const pretty = JSON.stringify(status, null, 2);
-  $("#status-output").textContent = pretty;
+  const status = await invoke("status");
+  logTo("#status-output", status);
   const stage = status.stage || (status.running ? "booting" : "stopped");
   const running = stage === "ready" || stage === "booted" || status.running;
   $("#side-status").textContent = stage;
@@ -134,41 +123,36 @@ function stopBootTimer() {
   state.bootStartedAt = 0;
 }
 
-function refreshScreenshot() {
-  const stamp = Date.now();
-  $("#home-screenshot").src = `/api/screenshot?t=${stamp}`;
-  $("#keymap-screenshot").src = `/api/screenshot?t=${stamp}`;
+async function refreshScreenshot() {
+  const result = await invoke("screenshot");
+  if (result && result.dataUrl) {
+    $("#guest-screen").src = result.dataUrl;
+  }
+  renderDots();
 }
 
-function wireHome() {
+function wireViewport() {
   $("#refresh-status").addEventListener("click", () => refreshStatus().catch(showError));
-  $("#shot-now").addEventListener("click", refreshScreenshot);
+  $("#shot-now").addEventListener("click", () => refreshScreenshot().catch(showError));
   $("#quick-start").addEventListener("click", () => startEmulator($("#quick-start")));
+  $("#quick-stop").addEventListener("click", () => stopEmulator($("#quick-stop")));
   $("#start-btn").addEventListener("click", () => startEmulator($("#start-btn")));
   $("#stop-btn").addEventListener("click", () => stopEmulator($("#stop-btn")));
-  $("#choose-apk").addEventListener("click", () => $("#apk-input").click());
-  $("#apk-input").addEventListener("change", () => {
-    const file = $("#apk-input").files[0];
-    if (file) installApkFile(file);
-  });
-  $("#install-apk").addEventListener("click", () => installApkPath($("#apk-path").value));
 
-  const drop = $("#apk-drop");
-  ["dragenter", "dragover"].forEach((eventName) => {
-    drop.addEventListener(eventName, (event) => {
-      event.preventDefault();
-      drop.classList.add("dragging");
-    });
-  });
-  ["dragleave", "drop"].forEach((eventName) => {
-    drop.addEventListener(eventName, (event) => {
-      event.preventDefault();
-      drop.classList.remove("dragging");
-    });
-  });
-  drop.addEventListener("drop", (event) => {
-    const file = event.dataTransfer.files[0];
-    if (file) installApkFile(file);
+  $("#screen-frame").addEventListener("click", (event) => {
+    if (state.activePanel !== "keymap" || !state.keymap) return;
+    if (event.target.classList.contains("binding-dot")) return;
+    const rect = $("#screen-frame").getBoundingClientRect();
+    const display = state.keymap.display || { width: 1080, height: 1920 };
+    const x = Math.round(((event.clientX - rect.left) / rect.width) * display.width);
+    const y = Math.round(((event.clientY - rect.top) / rect.height) * display.height);
+    state.selectedBinding = -1;
+    $("#binding-x").value = x;
+    $("#binding-y").value = y;
+    $$(".tool-tab").forEach((tab) => tab.classList.toggle("active", tab.dataset.panel === "keymap"));
+    $$(".tool-panel").forEach((panel) => panel.classList.toggle("active", panel.id === "panel-keymap"));
+    $("#binding-key").focus();
+    toast(`Placed point at ${x}, ${y}`);
   });
 }
 
@@ -178,7 +162,7 @@ async function startEmulator(button) {
   $("#boot-overlay").hidden = false;
   $("#boot-stage").textContent = "spawning";
   try {
-    const result = await api("/api/start", { method: "POST", body: { cold: $("#cold-start").checked, async: true } });
+    const result = await invoke("start", { cold: $("#cold-start").checked, async: true });
     logTo("#status-output", result);
     toast(result.message || "Emulator start requested");
     await refreshStatus();
@@ -201,7 +185,7 @@ async function startEmulator(button) {
 async function stopEmulator(button) {
   setBusy(button, true, "Stopping...");
   try {
-    const result = await api("/api/stop", { method: "POST", body: {} });
+    const result = await invoke("stop");
     logTo("#status-output", result);
     toast("Emulator stopped");
     await refreshStatus();
@@ -212,26 +196,56 @@ async function stopEmulator(button) {
   }
 }
 
+function wireInstall() {
+  $("#choose-apk").addEventListener("click", async () => {
+    try {
+      const path = await invoke("pick-apk");
+      if (path) {
+        $("#apk-path").value = path;
+        await installApkPath(path);
+      }
+    } catch (err) {
+      showError(err, "#install-log");
+    }
+  });
+  $("#apk-input").addEventListener("change", () => {
+    const file = $("#apk-input").files[0];
+    if (file && file.path) {
+      $("#apk-path").value = file.path;
+      installApkPath(file.path);
+    }
+  });
+  $("#install-apk").addEventListener("click", () => installApkPath($("#apk-path").value));
+
+  const drop = $("#apk-drop");
+  ["dragenter", "dragover"].forEach((eventName) => {
+    drop.addEventListener(eventName, (event) => {
+      event.preventDefault();
+      drop.classList.add("dragging");
+    });
+  });
+  ["dragleave", "drop"].forEach((eventName) => {
+    drop.addEventListener(eventName, (event) => {
+      event.preventDefault();
+      drop.classList.remove("dragging");
+    });
+  });
+  drop.addEventListener("drop", (event) => {
+    const file = event.dataTransfer.files[0];
+    if (file && file.path) {
+      $("#apk-path").value = file.path;
+      installApkPath(file.path);
+    }
+  });
+}
+
 async function installApkPath(apkPath) {
   if (!apkPath) return toast("Enter an APK path first", "warn");
   logTo("#install-log", "Installing...");
   try {
-    const result = await api("/api/install", { method: "POST", body: { path: apkPath } });
+    const result = await invoke("install", apkPath);
     logTo("#install-log", result);
     toast("APK install complete");
-  } catch (err) {
-    showError(err, "#install-log");
-  }
-}
-
-async function installApkFile(file) {
-  const form = new FormData();
-  form.append("apk", file);
-  logTo("#install-log", `Uploading ${file.name}...`);
-  try {
-    const result = await api("/api/install", { method: "POST", body: form });
-    logTo("#install-log", result);
-    toast("APK uploaded and install requested");
   } catch (err) {
     showError(err, "#install-log");
   }
@@ -241,30 +255,17 @@ function wireKeymap() {
   $("#reload-keymap").addEventListener("click", () => loadKeymap().catch(showError));
   $("#save-keymap").addEventListener("click", () => saveKeymap().catch(showError));
   $("#add-binding").addEventListener("click", addOrUpdateBinding);
-  $("#keymap-stage").addEventListener("click", (event) => {
-    if (event.target.classList.contains("binding-dot")) return;
-    if (!state.keymap) return;
-    const rect = $("#keymap-stage").getBoundingClientRect();
-    const display = state.keymap.display || { width: 1080, height: 1920 };
-    const x = Math.round(((event.clientX - rect.left) / rect.width) * display.width);
-    const y = Math.round(((event.clientY - rect.top) / rect.height) * display.height);
-    state.selectedBinding = -1;
-    $("#binding-x").value = x;
-    $("#binding-y").value = y;
-    $("#binding-key").focus();
-    toast(`Placed point at ${x}, ${y}`);
-  });
 }
 
 async function loadKeymap() {
-  state.keymap = await api("/api/keymap");
+  state.keymap = await invoke("keymap-get");
   state.selectedBinding = -1;
   renderBindings();
   renderDots();
 }
 
 async function saveKeymap() {
-  const saved = await api("/api/keymap", { method: "PUT", body: state.keymap });
+  const saved = await invoke("keymap-save", state.keymap);
   state.keymap = saved;
   renderBindings();
   renderDots();
@@ -312,77 +313,78 @@ function renderBindings() {
         <button class="ghost small" data-action="edit">Edit</button>
         <button class="ghost small" data-action="fire">Fire</button>
         <button class="danger small" data-action="delete">Del</button>
-      </div>
-    `;
+      </div>`;
     row.querySelector('[data-action="edit"]').addEventListener("click", () => selectBinding(index));
     row.querySelector('[data-action="fire"]').addEventListener("click", () => fireBinding(binding.key));
     row.querySelector('[data-action="delete"]').addEventListener("click", () => {
       state.keymap.bindings.splice(index, 1);
+      state.selectedBinding = -1;
       renderBindings();
       renderDots();
     });
+    if (index === state.selectedBinding) row.classList.add("active");
     list.appendChild(row);
   });
 }
 
-function renderDots() {
-  const layer = $("#binding-layer");
-  layer.innerHTML = "";
-  if (!state.keymap) return;
-  const display = state.keymap.display || { width: 1080, height: 1920 };
-  (state.keymap.bindings || [])
-    .filter((binding) => Number.isFinite(Number(binding.x)) && Number.isFinite(Number(binding.y)))
-    .forEach((binding, index) => {
-      const dot = document.createElement("button");
-      dot.className = "binding-dot";
-      dot.style.left = `${(Number(binding.x) / display.width) * 100}%`;
-      dot.style.top = `${(Number(binding.y) / display.height) * 100}%`;
-      dot.textContent = binding.key;
-      dot.title = binding.label || binding.key;
-      dot.addEventListener("click", (event) => {
-        event.stopPropagation();
-        selectBinding(index);
-      });
-      layer.appendChild(dot);
-    });
-}
-
 function selectBinding(index) {
-  const binding = state.keymap.bindings[index];
   state.selectedBinding = index;
+  const binding = state.keymap.bindings[index];
   $("#binding-key").value = binding.key || "";
   $("#binding-label").value = binding.label || "";
   $("#binding-type").value = binding.type || "tap";
   $("#binding-x").value = binding.x || "";
   $("#binding-y").value = binding.y || "";
+  renderBindings();
+  renderDots();
 }
 
 async function fireBinding(key) {
   try {
-    toast(`Firing ${key}...`);
-    await api("/api/keymap/fire", { method: "POST", body: { key } });
+    await invoke("keymap-fire", key);
     toast(`Fired ${key}`);
   } catch (err) {
     showError(err);
   }
 }
 
+function renderDots() {
+  const frame = $("#screen-frame");
+  frame.querySelectorAll(".binding-dot").forEach((node) => node.remove());
+  if (state.activePanel !== "keymap" || !state.keymap) return;
+  const display = state.keymap.display || { width: 1080, height: 1920 };
+  (state.keymap.bindings || []).forEach((binding, index) => {
+    if (!Number.isFinite(binding.x) || !Number.isFinite(binding.y)) return;
+    const dot = document.createElement("button");
+    dot.type = "button";
+    dot.className = "binding-dot";
+    dot.textContent = String(binding.key || "?").slice(0, 2);
+    dot.style.left = `${(binding.x / display.width) * 100}%`;
+    dot.style.top = `${(binding.y / display.height) * 100}%`;
+    if (index === state.selectedBinding) dot.classList.add("active");
+    dot.addEventListener("click", (event) => {
+      event.stopPropagation();
+      selectBinding(index);
+    });
+    frame.appendChild(dot);
+  });
+}
+
 function wireInstances() {
-  $("#refresh-instances").addEventListener("click", () => loadInstances().catch(showError));
   $("#create-instance").addEventListener("click", async () => {
     try {
-      await api("/api/instances", { method: "POST", body: { name: $("#instance-name").value } });
-      $("#instance-name").value = "";
-      await loadInstances();
+      await invoke("instance-create", { name: $("#instance-name").value });
       toast("Instance created");
+      await loadInstances();
     } catch (err) {
       showError(err);
     }
   });
+  $("#refresh-instances").addEventListener("click", () => loadInstances().catch(showError));
 }
 
 async function loadInstances() {
-  const instances = await api("/api/instances");
+  const instances = await invoke("instances");
   const list = $("#instance-list");
   list.innerHTML = "";
   instances.forEach((instance) => {
@@ -391,14 +393,13 @@ async function loadInstances() {
     row.innerHTML = `
       <div>
         <strong>${escapeHtml(instance.name)}</strong>
-        <small>${escapeHtml(instance.status || "stopped")} · base ${escapeHtml(instance.base || "none")}</small>
+        <small>${escapeHtml(instance.status || "stopped")} · base ${escapeHtml(instance.base || "main")}</small>
       </div>
       <div class="row-actions">
         <button class="ghost small" data-action="start">Start</button>
         <button class="ghost small" data-action="stop">Stop</button>
         <button class="ghost small" data-action="clone">Clone</button>
-      </div>
-    `;
+      </div>`;
     row.querySelector('[data-action="start"]').addEventListener("click", () => instanceAction(instance.name, "start"));
     row.querySelector('[data-action="stop"]').addEventListener("click", () => instanceAction(instance.name, "stop"));
     row.querySelector('[data-action="clone"]').addEventListener("click", () => cloneInstance(instance.name));
@@ -408,22 +409,21 @@ async function loadInstances() {
 
 async function instanceAction(name, action) {
   try {
-    await api(`/api/instances/${encodeURIComponent(name)}/${action}`, { method: "POST", body: {} });
+    await invoke(action === "start" ? "instance-start" : "instance-stop", name);
+    toast(`${action} ${name}`);
     await loadInstances();
     await refreshStatus();
-    toast(`${name} ${action} requested`);
   } catch (err) {
     showError(err);
   }
 }
 
 async function cloneInstance(name) {
-  const target = prompt("Clone name", `${name}-clone`);
-  if (!target) return;
+  const target = `${name}-clone`;
   try {
-    await api(`/api/instances/${encodeURIComponent(name)}/clone`, { method: "POST", body: { name: target } });
+    await invoke("instance-clone", { name, target });
+    toast(`Cloned ${name} → ${target}`);
     await loadInstances();
-    toast("Instance cloned");
   } catch (err) {
     showError(err);
   }
@@ -431,104 +431,96 @@ async function cloneInstance(name) {
 
 function wireMacros() {
   $("#refresh-macros").addEventListener("click", () => loadMacros().catch(showError));
-  $("#run-macro").addEventListener("click", () => runSelectedMacro().catch((err) => showError(err, "#macro-log")));
+  $("#run-macro").addEventListener("click", async () => {
+    const name = $("#macro-name").value.trim() || state.selectedMacro;
+    if (!name) return toast("Select or enter a macro", "warn");
+    try {
+      logTo("#macro-log", "Running...");
+      const result = await invoke("macro-run", { name, loop: $("#macro-loop").value });
+      logTo("#macro-log", result);
+      toast(`Macro ${name} finished`);
+    } catch (err) {
+      showError(err, "#macro-log");
+    }
+  });
 }
 
 async function loadMacros() {
-  const macros = await api("/api/macros");
+  const macros = await invoke("macros");
   const list = $("#macro-list");
   list.innerHTML = "";
   macros.forEach((macro) => {
-    const row = document.createElement("button");
-    row.className = "table-row selectable";
+    const row = document.createElement("div");
+    row.className = "table-row";
     row.innerHTML = `
       <div>
         <strong>${escapeHtml(macro.name)}</strong>
-        <small>${escapeHtml(macro.description || "")} · ${(macro.steps || []).length} steps</small>
-      </div>
-    `;
+        <small>${escapeHtml(macro.description || "")}</small>
+      </div>`;
     row.addEventListener("click", () => {
       state.selectedMacro = macro.name;
       $("#macro-name").value = macro.name;
-      $$("#macro-list .table-row").forEach((item) => item.classList.remove("selected"));
+      $$(".table-row").forEach((node) => node.classList.remove("selected"));
       row.classList.add("selected");
     });
     list.appendChild(row);
   });
 }
 
-async function runSelectedMacro() {
-  const name = $("#macro-name").value || state.selectedMacro;
-  if (!name) return toast("Choose a macro first", "warn");
-  logTo("#macro-log", "Running macro...");
-  const result = await api(`/api/macros/${encodeURIComponent(name)}/run`, {
-    method: "POST",
-    body: { loop: $("#macro-loop").value }
-  });
-  logTo("#macro-log", result);
-  toast("Macro complete");
-}
-
 function wirePerformance() {
-  $("#save-performance").addEventListener("click", savePerformance);
-  $("#apply-display").addEventListener("click", () => deviceAction("/api/display", { preset: $("#display-preset").value }));
-  $("#apply-audio").addEventListener("click", () => {
-    const value = $("#audio-action").value;
-    deviceAction("/api/audio", { action: value, test: value === "test" });
-  });
-  $("#apply-network").addEventListener("click", () => deviceAction("/api/network", { action: $("#network-action").value }));
-}
-
-async function loadPerformance() {
-  const perf = await api("/api/performance");
-  $("#perf-cores").value = perf.cores;
-  $("#perf-memory").value = perf.memory;
-  $("#perf-gpu").value = perf.gpu;
-  $("#perf-fps").value = perf.fps;
-}
-
-async function savePerformance() {
-  try {
+  $("#save-performance").addEventListener("click", async () => {
     const perf = {
       cores: $("#perf-cores").value,
       memory: $("#perf-memory").value,
       gpu: $("#perf-gpu").value,
       fps: $("#perf-fps").value
     };
-    const result = await api("/api/performance", { method: "POST", body: perf });
-    toast("Performance profile saved");
-    logTo("#device-log", result);
-  } catch (err) {
-    showError(err, "#device-log");
-  }
+    try {
+      const result = await invoke("performance-set", perf);
+      logTo("#device-log", result);
+      toast("Performance profile saved");
+    } catch (err) {
+      showError(err, "#device-log");
+    }
+  });
+  $("#apply-display").addEventListener("click", () => deviceAction("display", { preset: $("#display-preset").value }));
+  $("#apply-audio").addEventListener("click", () => deviceAction("audio", { action: $("#audio-action").value }));
+  $("#apply-network").addEventListener("click", () => deviceAction("network", { action: $("#network-action").value }));
 }
 
-async function deviceAction(path, body) {
+async function loadPerformance() {
+  const perf = await invoke("performance-get");
+  $("#perf-cores").value = perf.cores;
+  $("#perf-memory").value = perf.memory;
+  $("#perf-gpu").value = perf.gpu;
+  $("#perf-fps").value = perf.fps;
+}
+
+async function deviceAction(channel, body) {
   try {
-    logTo("#device-log", "Sending command...");
-    const result = await api(path, { method: "POST", body });
+    const result = await invoke(channel, body);
     logTo("#device-log", result);
-    toast("Device command complete");
+    toast(`${channel} command sent`);
   } catch (err) {
     showError(err, "#device-log");
   }
 }
 
 function wireFiles() {
-  $("#push-file").addEventListener("click", () => fileAction("/api/files/push", {
+  $("#push-file").addEventListener("click", () => fileAction("files-push", {
     local: $("#push-local").value,
     remote: $("#push-remote").value
   }));
-  $("#pull-file").addEventListener("click", () => fileAction("/api/files/pull", {
+  $("#pull-file").addEventListener("click", () => fileAction("files-pull", {
     remote: $("#pull-remote").value,
     local: $("#pull-local").value
   }));
 }
 
-async function fileAction(path, body) {
+async function fileAction(channel, body) {
   try {
     logTo("#files-log", "Transferring...");
-    const result = await api(path, { method: "POST", body });
+    const result = await invoke(channel, body);
     logTo("#files-log", result);
     toast("File transfer complete");
   } catch (err) {
@@ -540,10 +532,7 @@ function wireLocation() {
   $("#send-gps").addEventListener("click", async () => {
     try {
       logTo("#gps-log", "Sending GPS fix...");
-      const result = await api("/api/gps", {
-        method: "POST",
-        body: { lat: $("#gps-lat").value, lng: $("#gps-lng").value }
-      });
+      const result = await invoke("gps", { lat: $("#gps-lat").value, lng: $("#gps-lng").value });
       logTo("#gps-log", result);
       toast(result.ok ? "GPS sent" : "GPS saved; emulator console unavailable", result.ok ? "ok" : "warn");
     } catch (err) {
@@ -557,74 +546,16 @@ function showError(err, logSelector) {
   if (logSelector) logTo(logSelector, err.message || String(err));
 }
 
-function escapeHtml(value) {
-  return String(value ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
-}
-
-function wireAds() {
-  const rail = $("#ad-rail");
-  const hit = $("#ad-hit");
-  let currentId = "";
-
-  async function refreshAd() {
-    try {
-      const payload = await api("/api/ads/current");
-      if (!payload.enabled || !payload.campaign) {
-        rail.hidden = true;
-        return;
-      }
-      rail.hidden = false;
-      const c = payload.campaign;
-      currentId = c.id;
-      $("#ad-title").textContent = c.title;
-      $("#ad-cta").textContent = c.cta || "";
-      hit.href = c.url || "#";
-      await api("/api/ads/impression", { method: "POST", body: { id: c.id } });
-    } catch {
-      rail.hidden = true;
-    }
-  }
-
-  hit.addEventListener("click", () => {
-    if (currentId) {
-      api("/api/ads/click", { method: "POST", body: { id: currentId } }).catch(() => {});
-    }
-    if (hit.href.startsWith("#")) {
-      const panel = hit.href.slice(1);
-      const nav = document.querySelector(`.nav-item[data-panel="${panel}"]`);
-      if (nav) nav.click();
-    }
-  });
-
-  $("#ad-dismiss").addEventListener("click", async () => {
-    await api("/api/ads/dismiss", { method: "POST", body: {} });
-    rail.hidden = true;
-    toast("Ads hidden for 24 hours");
-  });
-
-  $("#ad-info").addEventListener("click", () => {
-    toast("Edit campaigns in android/config/ads.json", "ok");
-  });
-
-  refreshAd();
-  state.adsTimer = setInterval(refreshAd, 30000);
-}
-
 async function boot() {
   wireNavigation();
-  wireHome();
+  wireViewport();
+  wireInstall();
   wireKeymap();
   wireInstances();
   wireMacros();
   wirePerformance();
   wireFiles();
   wireLocation();
-  wireAds();
 
   await Promise.allSettled([
     refreshStatus(),
@@ -635,7 +566,7 @@ async function boot() {
   ]);
   refreshScreenshot();
   state.statusTimer = setInterval(() => refreshStatus().catch(() => {}), 3000);
-  state.screenshotTimer = setInterval(refreshScreenshot, 9000);
+  state.screenshotTimer = setInterval(() => refreshScreenshot().catch(() => {}), 9000);
 }
 
 window.addEventListener("DOMContentLoaded", () => {
