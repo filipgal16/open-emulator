@@ -9,7 +9,10 @@ const state = {
   screenshotTimer: null,
   bootStartedAt: 0,
   bootTimer: null,
-  activePanel: "runtime"
+  activePanel: "runtime",
+  activeInstance: "main",
+  instances: [],
+  openTabs: ["main"]
 };
 
 function invoke(channel, payload) {
@@ -17,6 +20,10 @@ function invoke(channel, payload) {
     return Promise.reject(new Error("Desktop shell is not available outside Electron."));
   }
   return window.oe.invoke(channel, payload);
+}
+
+function activeName() {
+  return state.activeInstance || "main";
 }
 
 function toast(message, tone = "ok") {
@@ -72,11 +79,11 @@ function wireNavigation() {
 }
 
 async function refreshStatus() {
-  const status = await invoke("status");
+  const status = await invoke("status", activeName());
   logTo("#status-output", status);
   const stage = status.stage || (status.running ? "booting" : "stopped");
   const running = stage === "ready" || stage === "booted" || status.running;
-  $("#side-status").textContent = stage;
+  $("#side-status").textContent = `${activeName()} · ${stage}`;
   $("#side-device").textContent = `adb: ${status.adbDevice || "none"}`;
   $("#runtime-pill").textContent = stage;
   $("#runtime-pill").classList.toggle("on", stage === "ready" || stage === "booted");
@@ -124,7 +131,7 @@ function stopBootTimer() {
 }
 
 async function refreshScreenshot() {
-  const result = await invoke("screenshot");
+  const result = await invoke("screenshot", activeName());
   if (result && result.dataUrl) {
     $("#guest-screen").src = result.dataUrl;
   }
@@ -162,7 +169,7 @@ async function startEmulator(button) {
   $("#boot-overlay").hidden = false;
   $("#boot-stage").textContent = "spawning";
   try {
-    const result = await invoke("start", { cold: $("#cold-start").checked, async: true });
+    const result = await invoke("start", { cold: $("#cold-start").checked, async: true, instance: activeName() });
     logTo("#status-output", result);
     toast(result.message || "Emulator start requested");
     await refreshStatus();
@@ -185,7 +192,7 @@ async function startEmulator(button) {
 async function stopEmulator(button) {
   setBusy(button, true, "Stopping...");
   try {
-    const result = await invoke("stop");
+    const result = await invoke("stop", activeName());
     logTo("#status-output", result);
     toast("Emulator stopped");
     await refreshStatus();
@@ -243,7 +250,7 @@ async function installApkPath(apkPath) {
   if (!apkPath) return toast("Enter an APK path first", "warn");
   logTo("#install-log", "Installing...");
   try {
-    const result = await invoke("install", apkPath);
+    const result = await invoke("install", { path: apkPath, instance: activeName() });
     logTo("#install-log", result);
     toast("APK install complete");
   } catch (err) {
@@ -341,7 +348,7 @@ function selectBinding(index) {
 
 async function fireBinding(key) {
   try {
-    await invoke("keymap-fire", key);
+    await invoke("keymap-fire", { key, instance: activeName() });
     toast(`Fired ${key}`);
   } catch (err) {
     showError(err);
@@ -370,12 +377,102 @@ function renderDots() {
   });
 }
 
+function findInstance(name) {
+  return state.instances.find((item) => item.name === name);
+}
+
+function openTab(name) {
+  if (!state.openTabs.includes(name)) state.openTabs.push(name);
+  state.activeInstance = name;
+  renderTabs();
+  refreshStatus().catch(() => {});
+  refreshScreenshot().catch(() => {});
+}
+
+function renderTabs() {
+  const strip = $("#tab-strip");
+  strip.innerHTML = "";
+  state.openTabs.forEach((name) => {
+    const inst = findInstance(name) || { name, status: "stopped" };
+    const tab = document.createElement("button");
+    tab.type = "button";
+    tab.className = `machine-tab${name === state.activeInstance ? " active" : ""}`;
+    tab.setAttribute("role", "tab");
+    tab.innerHTML = `
+      <span>
+        <strong>${escapeHtml(name)}</strong>
+        <small>${escapeHtml(inst.lastApp || inst.status || "stopped")}</small>
+      </span>
+      <span class="tab-close" data-close="${escapeHtml(name)}" title="Close tab">×</span>`;
+    tab.addEventListener("click", (event) => {
+      if (event.target.dataset.close) {
+        event.stopPropagation();
+        closeTab(event.target.dataset.close);
+        return;
+      }
+      openTab(name);
+    });
+    strip.appendChild(tab);
+  });
+}
+
+function closeTab(name) {
+  state.openTabs = state.openTabs.filter((item) => item !== name);
+  if (!state.openTabs.length) state.openTabs = ["main"];
+  if (state.activeInstance === name) {
+    state.activeInstance = state.openTabs[0];
+  }
+  renderTabs();
+  refreshStatus().catch(() => {});
+  refreshScreenshot().catch(() => {});
+}
+
+function fillSourceSelect() {
+  const select = $("#new-machine-source");
+  select.innerHTML = "";
+  const names = state.instances.length ? state.instances.map((item) => item.name) : ["main"];
+  names.forEach((name) => {
+    const option = document.createElement("option");
+    option.value = name;
+    option.textContent = name;
+    select.appendChild(option);
+  });
+}
+
+function wireTabs() {
+  $("#tab-add").addEventListener("click", () => {
+    fillSourceSelect();
+    $("#new-machine-name").value = "";
+    $("#new-machine-modal").hidden = false;
+    $("#new-machine-name").focus();
+  });
+  $("#new-machine-cancel").addEventListener("click", () => {
+    $("#new-machine-modal").hidden = true;
+  });
+  $("#new-machine-create").addEventListener("click", async () => {
+    const name = $("#new-machine-name").value.trim();
+    const source = $("#new-machine-source").value || "main";
+    if (!name) return toast("Name is required", "warn");
+    try {
+      await invoke("instance-clone", { name: source, target: name });
+      $("#new-machine-modal").hidden = true;
+      toast(`Created isolated machine ${name}`);
+      await loadInstances();
+      openTab(name);
+    } catch (err) {
+      showError(err);
+    }
+  });
+}
+
 function wireInstances() {
   $("#create-instance").addEventListener("click", async () => {
     try {
-      await invoke("instance-create", { name: $("#instance-name").value });
-      toast("Instance created");
+      const name = $("#instance-name").value;
+      await invoke("instance-create", { name });
+      toast("Isolated machine created");
       await loadInstances();
+      openTab(name);
     } catch (err) {
       showError(err);
     }
@@ -385,24 +482,37 @@ function wireInstances() {
 
 async function loadInstances() {
   const instances = await invoke("instances");
+  state.instances = Array.isArray(instances) ? instances : [];
+  if (!state.openTabs.length) state.openTabs = ["main"];
+  const known = new Set(state.instances.map((item) => item.name));
+  if (known.size) {
+    state.openTabs = state.openTabs.filter((name) => known.has(name));
+    if (!state.openTabs.length) state.openTabs = [state.instances[0].name];
+    if (!known.has(state.activeInstance)) state.activeInstance = state.openTabs[0];
+  }
+  renderTabs();
   const list = $("#instance-list");
   list.innerHTML = "";
-  instances.forEach((instance) => {
+  state.instances.forEach((instance) => {
     const row = document.createElement("div");
     row.className = "table-row";
     row.innerHTML = `
       <div>
         <strong>${escapeHtml(instance.name)}</strong>
-        <small>${escapeHtml(instance.status || "stopped")} · base ${escapeHtml(instance.base || "main")}</small>
+        <small>${escapeHtml(instance.status || "stopped")} · ${escapeHtml(instance.avd || "")} · port ${escapeHtml(instance.consolePort || "")}</small>
       </div>
       <div class="row-actions">
+        <button class="ghost small" data-action="open">Tab</button>
         <button class="ghost small" data-action="start">Start</button>
         <button class="ghost small" data-action="stop">Stop</button>
         <button class="ghost small" data-action="clone">Clone</button>
+        <button class="danger small" data-action="delete">Del</button>
       </div>`;
+    row.querySelector('[data-action="open"]').addEventListener("click", () => openTab(instance.name));
     row.querySelector('[data-action="start"]').addEventListener("click", () => instanceAction(instance.name, "start"));
     row.querySelector('[data-action="stop"]').addEventListener("click", () => instanceAction(instance.name, "stop"));
     row.querySelector('[data-action="clone"]').addEventListener("click", () => cloneInstance(instance.name));
+    row.querySelector('[data-action="delete"]').addEventListener("click", () => deleteMachine(instance.name));
     list.appendChild(row);
   });
 }
@@ -411,6 +521,7 @@ async function instanceAction(name, action) {
   try {
     await invoke(action === "start" ? "instance-start" : "instance-stop", name);
     toast(`${action} ${name}`);
+    openTab(name);
     await loadInstances();
     await refreshStatus();
   } catch (err) {
@@ -423,6 +534,19 @@ async function cloneInstance(name) {
   try {
     await invoke("instance-clone", { name, target });
     toast(`Cloned ${name} → ${target}`);
+    await loadInstances();
+    openTab(target);
+  } catch (err) {
+    showError(err);
+  }
+}
+
+async function deleteMachine(name) {
+  if (name === "main") return toast("The main machine cannot be deleted", "warn");
+  try {
+    await invoke("instance-delete", name);
+    closeTab(name);
+    toast(`Deleted ${name}`);
     await loadInstances();
   } catch (err) {
     showError(err);
@@ -509,11 +633,13 @@ async function deviceAction(channel, body) {
 function wireFiles() {
   $("#push-file").addEventListener("click", () => fileAction("files-push", {
     local: $("#push-local").value,
-    remote: $("#push-remote").value
+    remote: $("#push-remote").value,
+    instance: activeName()
   }));
   $("#pull-file").addEventListener("click", () => fileAction("files-pull", {
     remote: $("#pull-remote").value,
-    local: $("#pull-local").value
+    local: $("#pull-local").value,
+    instance: activeName()
   }));
 }
 
@@ -532,7 +658,11 @@ function wireLocation() {
   $("#send-gps").addEventListener("click", async () => {
     try {
       logTo("#gps-log", "Sending GPS fix...");
-      const result = await invoke("gps", { lat: $("#gps-lat").value, lng: $("#gps-lng").value });
+      const result = await invoke("gps", {
+        lat: $("#gps-lat").value,
+        lng: $("#gps-lng").value,
+        instance: activeName()
+      });
       logTo("#gps-log", result);
       toast(result.ok ? "GPS sent" : "GPS saved; emulator console unavailable", result.ok ? "ok" : "warn");
     } catch (err) {
@@ -551,6 +681,7 @@ async function boot() {
   wireViewport();
   wireInstall();
   wireKeymap();
+  wireTabs();
   wireInstances();
   wireMacros();
   wirePerformance();
@@ -565,7 +696,14 @@ async function boot() {
     loadPerformance()
   ]);
   refreshScreenshot();
-  state.statusTimer = setInterval(() => refreshStatus().catch(() => {}), 3000);
+  state.statusTimer = setInterval(async () => {
+    try {
+      await loadInstances();
+      await refreshStatus();
+    } catch {
+      /* ignore poll errors */
+    }
+  }, 3000);
   state.screenshotTimer = setInterval(() => refreshScreenshot().catch(() => {}), 9000);
 }
 

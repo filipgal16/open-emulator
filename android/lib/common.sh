@@ -22,6 +22,9 @@ android_env() {
   PID_FILE="$STATE_DIR/emulator.pid"
   DEVICE_FILE="$STATE_DIR/device"
   PROFILE_FILE="$STATE_DIR/host_profile.env"
+  CONSOLE_PORT="${ANDROID_CONSOLE_PORT:-5554}"
+  EXPECTED_SERIAL="emulator-${CONSOLE_PORT}"
+  INSTANCE_NAME="${ANDROID_INSTANCE:-main}"
 
   export ANDROID_SDK_ROOT="$SDK_ROOT"
   export ANDROID_HOME="$SDK_ROOT"
@@ -106,6 +109,10 @@ adb_device() {
       return 0
     fi
   fi
+  if [[ -n "${EXPECTED_SERIAL:-}" ]] && "$ADB_BIN" devices | awk '{print $1}' | grep -qx "$EXPECTED_SERIAL"; then
+    echo "$EXPECTED_SERIAL"
+    return 0
+  fi
   "$ADB_BIN" devices | awk '/^emulator-/{ if ($2 ~ /^device/) { print $1; exit } }'
 }
 
@@ -120,9 +127,14 @@ wait_for_adb_device() {
   local timeout="${1:-300}"
   local deadline=$((SECONDS + timeout))
   local d=""
+  local want="${EXPECTED_SERIAL:-}"
   adb_start
   while (( SECONDS < deadline )); do
-    d="$("$ADB_BIN" devices | awk '/^emulator-/{ if ($2 ~ /^device/) { print $1; exit } }')"
+    if [[ -n "$want" ]]; then
+      d="$("$ADB_BIN" devices | awk -v s="$want" '$1==s && $2 ~ /^device/ { print $1; exit }')"
+    else
+      d="$("$ADB_BIN" devices | awk '/^emulator-/{ if ($2 ~ /^device/) { print $1; exit } }')"
+    fi
     if [[ -n "$d" ]]; then
       echo "$d" > "$DEVICE_FILE"
       echo "$d"

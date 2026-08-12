@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# Launch the open-emulator desktop shell (Electron).
+set -euo pipefail
+
+DESKTOP_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+ELECTRON="$DESKTOP_ROOT/node_modules/.bin/electron"
+
+if [[ ! -x "$ELECTRON" ]]; then
+  echo "Electron is not installed. Run: cd $DESKTOP_ROOT && npm install" >&2
+  exit 1
+fi
+
+cd "$DESKTOP_ROOT"
+exec "$ELECTRON" .

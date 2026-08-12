@@ -76,12 +76,18 @@ function commandEnv(extra = {}) {
   const perf = readJsonSync(PERFORMANCE_FILE, DEFAULT_PERFORMANCE);
   const env = {
     ...process.env,
+    ANDROID_HEADLESS: extra.ANDROID_HEADLESS || process.env.ANDROID_HEADLESS || "1",
     ANDROID_CORES: String(perf.cores || DEFAULT_PERFORMANCE.cores),
     ANDROID_MEMORY_MB: String(perf.memory || DEFAULT_PERFORMANCE.memory),
     ANDROID_GPU_MODE: String(perf.gpu || DEFAULT_PERFORMANCE.gpu),
     ...extra
   };
   return env;
+}
+
+function instanceFlag(name) {
+  const clean = cleanName(name || "") || "main";
+  return ["--instance", clean];
 }
 
 function runOpenEmu(args, options = {}) {
@@ -168,8 +174,12 @@ function parseStatus(text) {
       status.running = status.emulator === "running";
     } else if (line.startsWith("adb_device=")) {
       status.adbDevice = line.slice("adb_device=".length);
+    } else if (line.startsWith("instance=")) {
+      status.instance = line.slice("instance=".length);
     } else if (line.startsWith("avd=")) {
       status.avd = line.slice("avd=".length);
+    } else if (line.startsWith("console_port=")) {
+      status.consolePort = line.slice("console_port=".length);
     } else if (line.startsWith("pid=")) {
       status.pid = line.slice("pid=".length);
     } else if (line.startsWith("boot_completed=")) {
@@ -225,19 +235,18 @@ async function writeJson(file, value) {
   return value;
 }
 
-async function status() {
+async function status(name) {
   await ensureDirs();
   try {
-    const result = await runOpenEmu(["status"], { timeoutMs: 12000 });
-    return parseStatus(result.stdout);
+    const result = await runOpenEmu([...instanceFlag(name), "status"], { timeoutMs: 12000 });
+    return { ...parseStatus(result.stdout), instance: cleanName(name) || "main" };
   } catch (err) {
     const parsed = parseStatus(err.stdout || "");
-    // open-emu may exit non-zero when SDK/adb tooling is incomplete, while
-    // still printing a usable status block — prefer that over a hard failure.
     if (parsed.emulator && parsed.emulator !== "unknown") {
       return {
         ...parsed,
         ok: true,
+        instance: cleanName(name) || "main",
         warning: err.message,
         stderr: err.stderr || ""
       };
@@ -245,6 +254,7 @@ async function status() {
     return {
       ...parsed,
       ...errorPayload(err),
+      instance: cleanName(name) || "main",
       running: parsed.running || false,
       emulator: parsed.emulator === "unknown" ? "unavailable" : parsed.emulator,
       adbDevice: parsed.adbDevice || "none"
@@ -253,50 +263,49 @@ async function status() {
 }
 
 async function start(options = {}) {
-  const args = ["start"];
+  const name = cleanName(options.instance) || "main";
+  const args = [...instanceFlag(name), "start"];
   if (options.cold) args.push("--cold");
-  // Prefer background spawn so the desktop UI stays responsive. Mainline
-  // open-emu has no --async flag; detached spawn is the portable path.
-  if (options.async !== false) {
-    spawn(OPEN_EMU, args, {
-      cwd: REPO_ROOT,
-      env: commandEnv(),
-      stdio: "ignore",
-      detached: true
-    }).unref();
-    await new Promise((resolve) => setTimeout(resolve, 600));
-    const statusNow = await status();
-    return {
-      ok: true,
-      async: true,
-      status: statusNow,
-      message: "Emulator spawning — guest boots in background"
-    };
-  }
-  const result = await runOpenEmu(args, { timeoutMs: 30 * 60 * 1000 });
-  return { ok: true, output: result.stdout, stderr: result.stderr, status: parseStatus(result.stdout) };
+  spawn(OPEN_EMU, args, {
+    cwd: REPO_ROOT,
+    env: commandEnv({ ANDROID_INSTANCE: name }),
+    stdio: "ignore",
+    detached: true
+  }).unref();
+  await new Promise((resolve) => setTimeout(resolve, 600));
+  const statusNow = await status(name);
+  return {
+    ok: true,
+    async: true,
+    instance: name,
+    status: statusNow,
+    message: `Machine ${name} spawning — guest boots in background`
+  };
 }
 
-async function stop() {
-  const result = await runOpenEmu(["stop"], { timeoutMs: 120000 });
-  return { ok: true, output: result.stdout, stderr: result.stderr };
+async function stop(name) {
+  const result = await runOpenEmu([...instanceFlag(name), "stop"], { timeoutMs: 120000 });
+  return { ok: true, instance: cleanName(name) || "main", output: result.stdout, stderr: result.stderr };
 }
 
-async function install(apkPath) {
+async function install(apkPath, name) {
   if (!apkPath) {
     throw new Error("APK path is required");
   }
   const resolved = path.resolve(apkPath);
   await fsp.access(resolved, fs.constants.R_OK);
-  const result = await runOpenEmu(["install", resolved], { timeoutMs: 10 * 60 * 1000 });
-  return { ok: true, apk: resolved, output: result.stdout, stderr: result.stderr };
+  const result = await runOpenEmu([...instanceFlag(name), "install", resolved], { timeoutMs: 10 * 60 * 1000 });
+  return { ok: true, apk: resolved, instance: cleanName(name) || "main", output: result.stdout, stderr: result.stderr };
 }
 
-async function screenshot() {
+async function screenshot(name) {
   await ensureDirs();
+  const inst = cleanName(name) || "main";
+  const file = path.join(ANDROID_STATE, "instances", inst, "screen.png");
+  await fsp.mkdir(path.dirname(file), { recursive: true });
   try {
-    await runOpenEmu(["screenshot", SCREENSHOT_FILE], { timeoutMs: 45000 });
-    return await fsp.readFile(SCREENSHOT_FILE);
+    await runOpenEmu([...instanceFlag(inst), "screenshot", file], { timeoutMs: 45000 });
+    return await fsp.readFile(file);
   } catch (err) {
     err.placeholder = PLACEHOLDER_PNG;
     throw err;
@@ -321,13 +330,12 @@ async function saveKeymap(value) {
   return { ...next, source: CUSTOM_KEYMAP };
 }
 
-async function fireKey(key) {
+async function fireKey(key, name) {
   if (!key) throw new Error("key is required");
-  // Prefer native open-emu keymap when available; otherwise fire from the
-  // desktop keymap JSON via adb shell input (works on mainline CLI).
+  const inst = cleanName(name) || "main";
   try {
-    const result = await runOpenEmu(["keymap", "fire", key], { timeoutMs: 5 * 60 * 1000 });
-    return { ok: true, key, output: result.stdout, stderr: result.stderr };
+    const result = await runOpenEmu([...instanceFlag(inst), "keymap", "fire", key], { timeoutMs: 5 * 60 * 1000 });
+    return { ok: true, key, instance: inst, output: result.stdout, stderr: result.stderr };
   } catch (err) {
     const unknown = /unknown command|usage:/i.test(`${err.stderr || ""}\n${err.stdout || ""}\n${err.message || ""}`);
     if (!unknown && err.code !== 1) throw err;
@@ -335,14 +343,17 @@ async function fireKey(key) {
     const binding = (map.bindings || []).find((item) => String(item.key).toLowerCase() === String(key).toLowerCase());
     if (!binding) throw new Error(`no keymap binding for key: ${key}`);
     if (binding.type === "keyevent" && binding.code) {
-      const result = await runOpenEmu(["shell", "input", "keyevent", String(binding.code)], { timeoutMs: 30000 });
-      return { ok: true, key, via: "shell", output: result.stdout, stderr: result.stderr };
+      const result = await runOpenEmu(
+        [...instanceFlag(inst), "shell", "input", "keyevent", String(binding.code)],
+        { timeoutMs: 30000 }
+      );
+      return { ok: true, key, via: "shell", instance: inst, output: result.stdout, stderr: result.stderr };
     }
     const result = await runOpenEmu(
-      ["shell", "input", "tap", String(binding.x || 0), String(binding.y || 0)],
+      [...instanceFlag(inst), "shell", "input", "tap", String(binding.x || 0), String(binding.y || 0)],
       { timeoutMs: 30000 }
     );
-    return { ok: true, key, via: "shell", output: result.stdout, stderr: result.stderr };
+    return { ok: true, key, via: "shell", instance: inst, output: result.stdout, stderr: result.stderr };
   }
 }
 
@@ -401,65 +412,62 @@ function emptyKeymap() {
 }
 
 async function instances() {
-  const list = await readJson(INSTANCES_FILE, DEFAULT_INSTANCES);
-  const current = await status();
-  return list.map((instance) => ({
-    ...instance,
-    status: instance.name === "main" && current.running ? "running" : instance.status || "stopped"
-  }));
+  try {
+    const result = await runOpenEmu(["instance", "list", "--json"], { timeoutMs: 15000 });
+    const parsed = JSON.parse(result.stdout);
+    if (Array.isArray(parsed.instances) && parsed.instances.length) {
+      return parsed.instances;
+    }
+  } catch {
+    /* fall through to ensure-main */
+  }
+  try {
+    await runOpenEmu(["instance", "ensure-main"], { timeoutMs: 15000 });
+    const result = await runOpenEmu(["instance", "list", "--json"], { timeoutMs: 15000 });
+    const parsed = JSON.parse(result.stdout);
+    return parsed.instances || [];
+  } catch {
+    return [
+      {
+        name: "main",
+        status: "stopped",
+        running: false,
+        avd: "OpenEmulator_API30",
+        isolated: true
+      }
+    ];
+  }
 }
 
 async function createInstance(input = {}) {
   const name = cleanName(input.name);
   if (!name) throw new Error("instance name is required");
-  const list = await instances();
-  if (list.some((instance) => instance.name === name)) {
-    throw new Error(`instance already exists: ${name}`);
-  }
-  const next = [
-    ...list,
-    {
-      name,
-      base: input.base || "main",
-      status: "stopped",
-      createdAt: new Date().toISOString()
-    }
-  ];
-  await writeJson(INSTANCES_FILE, next);
-  return next;
+  const args = ["instance", "create", name];
+  if (input.cores) args.push("--cores", String(input.cores));
+  if (input.memory) args.push("--memory", String(input.memory));
+  const result = await runOpenEmu(args, { timeoutMs: 10 * 60 * 1000 });
+  return { ok: true, name, output: result.stdout, instances: await instances() };
 }
 
 async function startInstance(name) {
-  if (cleanName(name) !== "main") {
-    await setInstanceStatus(name, "selected");
-    return { ok: true, name, output: "open-emu currently runs one Android AVD; selected instance profile only." };
-  }
-  return start();
+  return start({ instance: name });
 }
 
 async function stopInstance(name) {
-  if (cleanName(name) !== "main") {
-    await setInstanceStatus(name, "stopped");
-    return { ok: true, name, output: "instance profile stopped" };
-  }
-  return stop();
+  return stop(name);
 }
 
 async function cloneInstance(name, target) {
-  const list = await instances();
-  const source = list.find((instance) => instance.name === cleanName(name));
-  if (!source) throw new Error(`instance not found: ${name}`);
-  return createInstance({ name: target || `${source.name}-clone`, base: source.name });
+  const source = cleanName(name) || "main";
+  const dest = cleanName(target) || `${source}-clone`;
+  const result = await runOpenEmu(["instance", "clone", source, dest], { timeoutMs: 10 * 60 * 1000 });
+  return { ok: true, name: dest, source, output: result.stdout, instances: await instances() };
 }
 
-async function setInstanceStatus(name, nextStatus) {
+async function deleteInstance(name) {
   const clean = cleanName(name);
-  const list = await instances();
-  const next = list.map((instance) =>
-    instance.name === clean ? { ...instance, status: nextStatus } : instance
-  );
-  await writeJson(INSTANCES_FILE, next);
-  return next;
+  const result = await runOpenEmu(["instance", "delete", clean], { timeoutMs: 120000 });
+  return { ok: true, name: clean, output: result.stdout, instances: await instances() };
 }
 
 function cleanName(name) {
@@ -553,29 +561,38 @@ function clamp(value, min, max, fallback) {
   return Math.max(min, Math.min(max, Math.round(numeric)));
 }
 
-async function sharePush(local, remote) {
+async function sharePush(local, remote, name) {
   if (!local || !remote) throw new Error("local and remote paths are required");
-  const result = await runOpenEmu(["push", path.resolve(local), remote], { timeoutMs: 5 * 60 * 1000 });
-  return { ok: true, local, remote, output: result.stdout, stderr: result.stderr };
+  const result = await runOpenEmu(
+    [...instanceFlag(name), "push", path.resolve(local), remote],
+    { timeoutMs: 5 * 60 * 1000 }
+  );
+  return { ok: true, local, remote, instance: cleanName(name) || "main", output: result.stdout, stderr: result.stderr };
 }
 
-async function sharePull(remote, local) {
+async function sharePull(remote, local, name) {
   if (!local || !remote) throw new Error("remote and local paths are required");
-  const result = await runOpenEmu(["pull", remote, path.resolve(local)], { timeoutMs: 5 * 60 * 1000 });
-  return { ok: true, local, remote, output: result.stdout, stderr: result.stderr };
+  const result = await runOpenEmu(
+    [...instanceFlag(name), "pull", remote, path.resolve(local)],
+    { timeoutMs: 5 * 60 * 1000 }
+  );
+  return { ok: true, local, remote, instance: cleanName(name) || "main", output: result.stdout, stderr: result.stderr };
 }
 
-async function gps(lat, lng) {
+async function gps(lat, lng, name) {
   const next = { lat: Number(lat), lng: Number(lng), updatedAt: new Date().toISOString() };
   if (!Number.isFinite(next.lat) || !Number.isFinite(next.lng)) {
     throw new Error("lat and lng must be numbers");
   }
   await writeJson(GPS_FILE, next);
+  const list = await instances();
+  const inst = list.find((item) => item.name === (cleanName(name) || "main")) || list[0];
+  const port = Number(inst && inst.consolePort) || 5554;
   try {
-    const output = await emulatorConsole([`geo fix ${next.lng} ${next.lat}`], 10000);
-    return { ok: true, ...next, output };
+    const output = await emulatorConsole([`geo fix ${next.lng} ${next.lat}`], 10000, port);
+    return { ok: true, ...next, port, output };
   } catch (err) {
-    return { ok: false, ...next, error: err.message };
+    return { ok: false, ...next, port, error: err.message };
   }
 }
 
@@ -611,7 +628,7 @@ async function network(input = {}) {
   return softCommand(args, { action: input.action || "status" });
 }
 
-async function emulatorConsole(commands, timeoutMs) {
+async function emulatorConsole(commands, timeoutMs, port = 5554) {
   const tokenPath = path.join(process.env.HOME || "", ".emulator_console_auth_token");
   let token = "";
   try {
@@ -621,7 +638,7 @@ async function emulatorConsole(commands, timeoutMs) {
   }
   const payload = [`auth ${token}`, ...commands, "quit"].join("\n") + "\n";
   return new Promise((resolve, reject) => {
-    const socket = net.createConnection({ host: "127.0.0.1", port: 5554 });
+    const socket = net.createConnection({ host: "127.0.0.1", port });
     let output = "";
     const timer = setTimeout(() => {
       socket.destroy();
@@ -660,6 +677,7 @@ module.exports = {
   startInstance,
   stopInstance,
   cloneInstance,
+  deleteInstance,
   macros,
   saveMacro,
   runMacro,

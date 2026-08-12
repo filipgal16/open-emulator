@@ -28,6 +28,11 @@ make android-start          # subsequent calls reuse a running emulator
 | `shell` / `push` / `pull` / `logcat` / `screenshot` | Device I/O |
 | `doctor` | Network, storage, package manager checks |
 | `demo` | End-to-end verify path |
+| `host-check` | KVM / RAM / disk without requiring the SDK |
+| `instance …` | Isolated VMs: `list`, `create`, `clone`, `start`, `stop`, `delete` |
+
+Target a machine with `--instance name` or `ANDROID_INSTANCE=name`. Each
+instance is a separate AVD (own `/data`, sdcard, console/adb ports).
 
 ## Performance model
 

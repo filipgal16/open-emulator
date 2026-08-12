@@ -20,6 +20,7 @@ rebuild. Adaptations are AVD/runtime only, aimed at **speed + real workloads**:
 - **TCG**: skip unloadable named snapshots; optimize cold boot; leave process up
 - Setup wizard completed; network verified; third-party installs allowed
 - APK install uses timeouts so TCG stalls cannot hang the control plane forever
+- Isolated machines: `open-emu instance create|clone|start|stop|delete` copies AVD userdata onto unique console/adb ports
 
 ## Verified (agent host, TCG)
 

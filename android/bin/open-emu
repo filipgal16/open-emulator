@@ -6,6 +6,8 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/../lib/common.sh"
 android_env
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/../lib/instances.sh"
 
 usage() {
   cat <<EOF
@@ -27,6 +29,8 @@ Commands:
   logcat [args...]     adb logcat
   doctor               Run connectivity / readiness checks
   demo                 Boot (if needed), launch Settings, verify network
+  instance …           Isolated VMs (list/create/clone/start/stop/delete)
+  host-check           Print host KVM/RAM profile without requiring the SDK
 
 Environment:
   ANDROID_HEADLESS=1   Force -no-window (default in CI / no DISPLAY)
@@ -34,6 +38,7 @@ Environment:
   ANDROID_MEMORY_MB=N  Override guest RAM
   ANDROID_GPU_MODE=... auto|swiftshader|host|guest
   ANDROID_SNAPSHOT_NAME=booted
+  ANDROID_INSTANCE=name  Target an isolated machine (also: --instance name)
 EOF
 }
 
@@ -88,6 +93,7 @@ start_emulator() {
 
   local args=(
     -avd "$AVD_NAME"
+    -port "${CONSOLE_PORT:-5554}"
     -gpu "$gpu"
     -accel "$ACCEL"
     -no-boot-anim
@@ -158,12 +164,28 @@ cmd_start() {
   local cold=0
   [[ "${1:-}" == "--cold" ]] && cold=1
   local t0=$SECONDS
-  start_emulator "$cold"
+  local name="${ANDROID_INSTANCE:-main}"
+  instance_ensure_main >/dev/null 2>&1 || true
+  if instance_exists "$name"; then
+    instance_start "$name"
+    bind_active_instance
+    if emulator_running; then
+      wait_for_adb_device 180 >/dev/null || true
+    fi
+  else
+    start_emulator "$cold"
+  fi
   log "start finished in $((SECONDS - t0))s"
   cmd_status
 }
 
 cmd_stop() {
+  local name="${ANDROID_INSTANCE:-main}"
+  if instance_exists "$name"; then
+    instance_stop "$name"
+    log "emulator stopped"
+    return 0
+  fi
   local device=""
   device="$(adb_device || true)"
   if [[ -n "$device" ]]; then
@@ -184,8 +206,28 @@ cmd_stop() {
   log "emulator stopped"
 }
 
+cmd_host_check() {
+  detect_host_profile
+  local disk_gb
+  disk_gb="$(df -BG --output=avail "$ROOT" 2>/dev/null | awk 'NR==2{gsub(/G/,""); print $1}')"
+  echo "ok=1"
+  echo "kvm=${HAS_KVM:-0}"
+  echo "accel=${ACCEL:-off}"
+  echo "host_cpus=${HOST_CPUS:-}"
+  echo "host_ram_mb=${HOST_RAM_MB:-}"
+  echo "guest_cores=${GUEST_CORES:-}"
+  echo "guest_ram_mb=${GUEST_RAM_MB:-}"
+  echo "gpu=${GPU_MODE:-}"
+  echo "disk_free_gb=${disk_gb:-unknown}"
+  echo "sdk=$([ -x "$EMULATOR_BIN" ] && echo yes || echo no)"
+  echo "adb=$([ -x "$ADB_BIN" ] && echo yes || echo no)"
+  echo "avd=$([ -d "$AVD_HOME/${AVD_NAME}.avd" ] && echo yes || echo no)"
+}
+
 cmd_status() {
+  echo "instance=${INSTANCE_NAME:-main}"
   echo "avd=${AVD_NAME}"
+  echo "console_port=${CONSOLE_PORT:-5554}"
   if emulator_running; then
     echo "emulator=running"
     [[ -f "$PID_FILE" ]] && echo "pid=$(cat "$PID_FILE")"
@@ -263,6 +305,9 @@ cmd_launch() {
   "$ADB_BIN" -s "$device" shell am start -n "$comp"
   sleep 2
   "$ADB_BIN" -s "$device" shell dumpsys activity activities | awk '/mResumedActivity/{print; exit}'
+  if [[ -n "${INSTANCE_NAME:-}" ]]; then
+    instance_set_last_app "$INSTANCE_NAME" "$comp" >/dev/null 2>&1 || true
+  fi
 }
 
 cmd_shell() {
@@ -288,10 +333,11 @@ cmd_pull() {
 }
 
 cmd_screenshot() {
-  local out="${1:-$LOG_DIR/screen.png}"
+  local out="${1:-${SCREENSHOT_FILE:-$LOG_DIR/screen.png}}"
   require_sdk
   local device
   device="$(adb_device)"
+  mkdir -p "$(dirname "$out")"
   "$ADB_BIN" -s "$device" exec-out screencap -p > "$out"
   log "screenshot written to $out"
   echo "$out"
@@ -355,10 +401,20 @@ EOF
 }
 
 main() {
+  while (($#)); do
+    case "$1" in
+      --instance) export ANDROID_INSTANCE="${2:-}"; shift 2 ;;
+      --instance=*) export ANDROID_INSTANCE="${1#*=}"; shift ;;
+      *) break ;;
+    esac
+  done
+  bind_active_instance
+
   local cmd="${1:-}"
   shift || true
   case "$cmd" in
     profile) cmd_profile "$@" ;;
+    host-check) cmd_host_check "$@" ;;
     setup) cmd_setup "$@" ;;
     start) cmd_start "$@" ;;
     stop) cmd_stop "$@" ;;
@@ -373,6 +429,7 @@ main() {
     logcat) cmd_logcat "$@" ;;
     doctor) cmd_doctor "$@" ;;
     demo) cmd_demo "$@" ;;
+    instance) instance_main "$@" ;;
     -h|--help|help|"") usage ;;
     *) die "unknown command: $cmd" ;;
   esac

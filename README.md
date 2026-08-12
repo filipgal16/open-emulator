@@ -96,14 +96,22 @@ See [`android/README.md`](android/README.md).
 
 1. Grow `open-vmm` toward long mode + virtio/goldfish (replace Emulator QEMU)
 2. Desktop UI: APK drag-drop, key mapping, audio routing — see [`desktop/`](desktop/) (mint brand)
-3. Multi-instance / profiles
+3. Isolated machines via `open-emu instance` and the top tab bar
 
 ## Brand & desktop shell
 
 Host-side identity (mint palette, logo, fonts) lives in [`brand/`](brand/).
-The control GUI is a **native sidebar** beside the guest screen in
-[`desktop/`](desktop/) — not a web page:
+The control GUI is a **native window**: guest screen, **top tabs** (one per
+isolated machine), and a mint **sidebar**. First launch opens a themed
+install wizard. A desktop shortcut is optional.
 
 ```bash
 cd desktop && npm install && npm start
+# or: make desktop
+```
+
+```bash
+./android/bin/open-emu instance list
+./android/bin/open-emu instance create game-2
+./android/bin/open-emu --instance game-2 start
 ```
