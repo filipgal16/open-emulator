@@ -18,4 +18,3 @@ build/
 desktop/node_modules/
 desktop/data/
 desktop/uploads/
-desktop/package-lock.json
