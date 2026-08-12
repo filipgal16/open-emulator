@@ -6,7 +6,10 @@ const state = {
   selectedBinding: -1,
   selectedMacro: "",
   statusTimer: null,
-  screenshotTimer: null
+  screenshotTimer: null,
+  adsTimer: null,
+  bootStartedAt: 0,
+  bootTimer: null
 };
 
 async function api(path, options = {}) {
@@ -69,12 +72,53 @@ async function refreshStatus() {
   const status = await api("/api/status");
   const pretty = JSON.stringify(status, null, 2);
   $("#status-output").textContent = pretty;
-  $("#side-status").textContent = status.running ? "running" : status.emulator || "stopped";
+  const stage = status.stage || (status.running ? "booting" : "stopped");
+  const running = stage === "ready" || stage === "booted" || status.running;
+  $("#side-status").textContent = stage;
   $("#side-device").textContent = `adb: ${status.adbDevice || "none"}`;
-  $("#runtime-pill").textContent = status.running ? "running" : "stopped";
-  $("#runtime-pill").classList.toggle("on", Boolean(status.running));
-  $("#quick-start").textContent = status.running ? "Running" : "Start";
+  $("#runtime-pill").textContent = stage;
+  $("#runtime-pill").classList.toggle("on", stage === "ready" || stage === "booted");
+  $("#quick-start").textContent = running && stage !== "stopped" ? "Running" : "Start";
+  updateBootOverlay(stage, status);
   return status;
+}
+
+function updateBootOverlay(stage, status) {
+  const overlay = $("#boot-overlay");
+  const readyStages = new Set(["ready", "booted"]);
+  const booting = ["spawning", "adb", "booting", "hibernating"].includes(stage);
+  if (!booting && readyStages.has(stage)) {
+    overlay.hidden = true;
+    stopBootTimer();
+    return;
+  }
+  if (booting || (status && status.emulator === "running" && stage !== "ready")) {
+    overlay.hidden = false;
+    $("#boot-stage").textContent = stage;
+    if (!state.bootStartedAt) state.bootStartedAt = Date.now();
+    startBootTimer();
+  } else {
+    overlay.hidden = true;
+    stopBootTimer();
+  }
+}
+
+function startBootTimer() {
+  if (state.bootTimer) return;
+  state.bootTimer = setInterval(() => {
+    const elapsed = Math.floor((Date.now() - state.bootStartedAt) / 1000);
+    const m = Math.floor(elapsed / 60);
+    const s = String(elapsed % 60).padStart(2, "0");
+    $("#boot-timer").textContent = `${m}:${s}`;
+  }, 500);
+}
+
+function stopBootTimer() {
+  if (state.bootTimer) {
+    clearInterval(state.bootTimer);
+    state.bootTimer = null;
+  }
+  state.bootStartedAt = 0;
 }
 
 function refreshScreenshot() {
@@ -117,12 +161,23 @@ function wireHome() {
 
 async function startEmulator(button) {
   setBusy(button, true, "Starting...");
+  state.bootStartedAt = Date.now();
+  $("#boot-overlay").hidden = false;
+  $("#boot-stage").textContent = "spawning";
   try {
-    const result = await api("/api/start", { method: "POST", body: { cold: $("#cold-start").checked } });
+    const result = await api("/api/start", { method: "POST", body: { cold: $("#cold-start").checked, async: true } });
     logTo("#status-output", result);
-    toast("Emulator start requested");
+    toast(result.message || "Emulator start requested");
     await refreshStatus();
     refreshScreenshot();
+    const poll = setInterval(async () => {
+      try {
+        const s = await refreshStatus();
+        if (s.stage === "ready" || s.stage === "booted") clearInterval(poll);
+      } catch {
+        clearInterval(poll);
+      }
+    }, 2000);
   } catch (err) {
     showError(err);
   } finally {
@@ -498,6 +553,55 @@ function escapeHtml(value) {
     .replace(/'/g, "&#039;");
 }
 
+function wireAds() {
+  const rail = $("#ad-rail");
+  const hit = $("#ad-hit");
+  let currentId = "";
+
+  async function refreshAd() {
+    try {
+      const payload = await api("/api/ads/current");
+      if (!payload.enabled || !payload.campaign) {
+        rail.hidden = true;
+        return;
+      }
+      rail.hidden = false;
+      const c = payload.campaign;
+      currentId = c.id;
+      $("#ad-title").textContent = c.title;
+      $("#ad-cta").textContent = c.cta || "";
+      hit.href = c.url || "#";
+      await api("/api/ads/impression", { method: "POST", body: { id: c.id } });
+    } catch {
+      rail.hidden = true;
+    }
+  }
+
+  hit.addEventListener("click", () => {
+    if (currentId) {
+      api("/api/ads/click", { method: "POST", body: { id: currentId } }).catch(() => {});
+    }
+    if (hit.href.startsWith("#")) {
+      const panel = hit.href.slice(1);
+      const nav = document.querySelector(`.nav-item[data-panel="${panel}"]`);
+      if (nav) nav.click();
+    }
+  });
+
+  $("#ad-dismiss").addEventListener("click", async () => {
+    await api("/api/ads/dismiss", { method: "POST", body: {} });
+    rail.hidden = true;
+    toast("Ads hidden for 24 hours");
+  });
+
+  $("#ad-info").addEventListener("click", () => {
+    toast("Edit campaigns in android/config/ads.json", "ok");
+  });
+
+  refreshAd();
+  state.adsTimer = setInterval(refreshAd, 30000);
+}
+
 async function boot() {
   wireNavigation();
   wireHome();
@@ -507,6 +611,7 @@ async function boot() {
   wirePerformance();
   wireFiles();
   wireLocation();
+  wireAds();
 
   await Promise.allSettled([
     refreshStatus(),
@@ -516,7 +621,7 @@ async function boot() {
     loadPerformance()
   ]);
   refreshScreenshot();
-  state.statusTimer = setInterval(() => refreshStatus().catch(() => {}), 6000);
+  state.statusTimer = setInterval(() => refreshStatus().catch(() => {}), 3000);
   state.screenshotTimer = setInterval(refreshScreenshot, 9000);
 }
 

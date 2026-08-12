@@ -1,6 +1,6 @@
 android_api=30
 android_version=11
 system_image=system-images;android-30;google_apis;x86_64
-imported_at=2026-07-27T13:12:00Z
+imported_at=2026-08-12T18:35:46Z
 sdk_root=android/sdk
 notes=Google AOSP/Google APIs x86_64 system image for QEMU-based Android Emulator

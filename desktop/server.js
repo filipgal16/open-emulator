@@ -2,6 +2,7 @@ const express = require("express");
 const multer = require("multer");
 const path = require("path");
 const openemu = require("./lib/openemu");
+const ads = require("./lib/ads");
 
 const PORT = Number(process.env.OPEN_EMULATOR_DESKTOP_PORT || 8787);
 const PUBLIC_DIR = path.join(__dirname, "public");
@@ -27,7 +28,12 @@ app.get("/api/status", asyncRoute(async (_req, res) => {
 }));
 
 app.post("/api/start", asyncRoute(async (req, res) => {
-  ok(res, await openemu.start(req.body || {}));
+  const result = await openemu.start(req.body || {});
+  if (result.async) {
+    res.status(202).json(result);
+    return;
+  }
+  ok(res, result);
 }));
 
 app.post("/api/stop", asyncRoute(async (_req, res) => {
@@ -124,6 +130,32 @@ app.post("/api/audio", asyncRoute(async (req, res) => {
 
 app.post("/api/network", asyncRoute(async (req, res) => {
   ok(res, await openemu.network(req.body || {}));
+}));
+
+app.get("/api/ads/current", asyncRoute(async (_req, res) => {
+  ok(res, await ads.current());
+}));
+
+app.get("/api/ads/settings", asyncRoute(async (_req, res) => {
+  ok(res, await ads.settings());
+}));
+
+app.post("/api/ads/settings", asyncRoute(async (req, res) => {
+  ok(res, await ads.settings(req.body || {}));
+}));
+
+app.post("/api/ads/impression", asyncRoute(async (req, res) => {
+  await ads.impression(req.body && req.body.id);
+  ok(res, { ok: true });
+}));
+
+app.post("/api/ads/click", asyncRoute(async (req, res) => {
+  await ads.click(req.body && req.body.id);
+  ok(res, { ok: true });
+}));
+
+app.post("/api/ads/dismiss", asyncRoute(async (_req, res) => {
+  ok(res, await ads.dismiss());
 }));
 
 app.get(/.*/, (_req, res) => {
