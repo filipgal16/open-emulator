@@ -182,6 +182,10 @@ function parseStatus(text) {
       status.density = line.slice("density=".length);
     } else if (line.startsWith("snapshot=")) {
       status.snapshot = line.slice("snapshot=".length);
+    } else if (line.startsWith("stage=")) {
+      status.stage = line.slice("stage=".length);
+    } else if (line.startsWith("ads=")) {
+      status.ads = line.slice("ads=".length);
     } else if (line.startsWith("profile=")) {
       status.profile = line.slice("profile=".length);
     }
@@ -241,6 +245,24 @@ async function status() {
 async function start(options = {}) {
   const args = ["start"];
   if (options.cold) args.push("--cold");
+  if (options.async !== false) {
+    args.push("--async");
+    spawn(OPEN_EMU, args, {
+      cwd: REPO_ROOT,
+      env: commandEnv({ ANDROID_START_WAIT: "spawn" }),
+      stdio: "ignore",
+      detached: true
+    }).unref();
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    const statusNow = await status();
+    return {
+      ok: true,
+      async: true,
+      status: statusNow,
+      message: "Emulator spawning — guest boots in background"
+    };
+  }
+  args.push("--wait=ready");
   const result = await runOpenEmu(args, { timeoutMs: 30 * 60 * 1000 });
   return { ok: true, output: result.stdout, stderr: result.stderr, status: parseStatus(result.stdout) };
 }

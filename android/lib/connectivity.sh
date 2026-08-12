@@ -44,43 +44,43 @@ detect_audio_backend() {
   fi
 }
 
-apply_guest_network() {
+apply_guest_tuning() {
   local device="$1"
   local adb="${ADB_BIN:-adb}"
-  "$adb" -s "$device" shell settings put global airplane_mode_on 0 >/dev/null 2>&1 || true
-  "$adb" -s "$device" shell svc wifi enable >/dev/null 2>&1 || true
-  "$adb" -s "$device" shell svc data enable >/dev/null 2>&1 || true
-  "$adb" -s "$device" shell cmd wifi set-wifi-enabled enabled >/dev/null 2>&1 || true
-  "$adb" -s "$device" shell settings put global mobile_data 1 >/dev/null 2>&1 || true
-  "$adb" -s "$device" shell settings put global wifi_on 1 >/dev/null 2>&1 || true
-  # Prefer automatic DNS; fall back to public resolvers if private DNS is stuck.
-  "$adb" -s "$device" shell settings put global private_dns_mode opportunistic >/dev/null 2>&1 || \
-    "$adb" -s "$device" shell settings put global private_dns_mode off >/dev/null 2>&1 || true
-  # Unmetered Wi-Fi for downloads / Play.
-  "$adb" -s "$device" shell cmd netpolicy set restrict-background false >/dev/null 2>&1 || true
+  # Single adb shell session — much faster than dozens of one-liners on TCG.
+  "$adb" -s "$device" shell <<'EOF' || true
+settings put global airplane_mode_on 0
+svc wifi enable
+svc data enable
+cmd wifi set-wifi-enabled enabled
+settings put global mobile_data 1
+settings put global wifi_on 1
+settings put global private_dns_mode opportunistic
+cmd netpolicy set restrict-background false
+settings put global bluetooth_on 1
+svc bluetooth enable
+cmd bluetooth_manager enable
+settings put global ble_scan_always_enabled 1
+media volume --stream 3 --set 15
+media volume --stream 5 --set 15
+media volume --stream 1 --set 7
+settings put system volume_music 15
+start audioserver
+exit 0
+EOF
+}
+
+apply_guest_network() {
+  local device="$1"
+  apply_guest_tuning "$device"
 }
 
 apply_guest_audio() {
-  local device="$1"
-  local adb="${ADB_BIN:-adb}"
-  # Max media / notification / system volumes (stream types 3/5/1).
-  "$adb" -s "$device" shell media volume --show --stream 3 --set 15 >/dev/null 2>&1 || true
-  "$adb" -s "$device" shell media volume --show --stream 5 --set 15 >/dev/null 2>&1 || true
-  "$adb" -s "$device" shell media volume --show --stream 1 --set 7 >/dev/null 2>&1 || true
-  "$adb" -s "$device" shell settings put system volume_music 15 >/dev/null 2>&1 || true
-  "$adb" -s "$device" shell settings put system notification_sound_enabled 1 >/dev/null 2>&1 || true
-  # Ensure audioserver is up.
-  "$adb" -s "$device" shell start audioserver >/dev/null 2>&1 || true
+  :
 }
 
 apply_guest_bluetooth() {
-  local device="$1"
-  local adb="${ADB_BIN:-adb}"
-  "$adb" -s "$device" shell settings put global bluetooth_on 1 >/dev/null 2>&1 || true
-  "$adb" -s "$device" shell svc bluetooth enable >/dev/null 2>&1 || true
-  "$adb" -s "$device" shell cmd bluetooth_manager enable >/dev/null 2>&1 || true
-  # Allow scanning / connections from apps.
-  "$adb" -s "$device" shell settings put global ble_scan_always_enabled 1 >/dev/null 2>&1 || true
+  :
 }
 
 guest_network_report() {

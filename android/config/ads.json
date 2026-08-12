@@ -1,0 +1,34 @@
+{
+  "enabled": true,
+  "placement": "bottom",
+  "height_px": 72,
+  "rotate_s": 30,
+  "dismiss_hours": 24,
+  "feed_url": null,
+  "campaigns": [
+    {
+      "id": "keymap-wasd",
+      "title": "Map WASD to on-screen buttons",
+      "cta": "Open keymap editor",
+      "url": "#keymap",
+      "image": "",
+      "weight": 3
+    },
+    {
+      "id": "performance-fhd",
+      "title": "Crank up resolution to FHD",
+      "cta": "Performance panel",
+      "url": "#performance",
+      "image": "",
+      "weight": 2
+    },
+    {
+      "id": "multi-instance",
+      "title": "Run multiple accounts at once",
+      "cta": "Instances",
+      "url": "#instances",
+      "image": "",
+      "weight": 1
+    }
+  ]
+}

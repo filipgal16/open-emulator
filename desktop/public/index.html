@@ -75,8 +75,16 @@
                 </div>
                 <button class="ghost" id="shot-now">Capture</button>
               </div>
-              <div class="screen-frame">
+              <div class="screen-frame player-frame">
                 <img id="home-screenshot" alt="Android screenshot">
+                <div class="boot-overlay" id="boot-overlay" hidden>
+                  <div class="boot-card">
+                    <span class="boot-spinner"></span>
+                    <strong id="boot-title">Starting Android…</strong>
+                    <small id="boot-stage">spawning</small>
+                    <span class="boot-timer" id="boot-timer">0:00</span>
+                  </div>
+                </div>
                 <div class="screen-glow"></div>
               </div>
             </article>
@@ -273,6 +281,19 @@
       </main>
     </div>
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    <footer class="ad-rail" id="ad-rail" hidden>
+      <a class="ad-hit" id="ad-hit" href="#" target="_blank" rel="noopener noreferrer">
+        <span class="ad-badge">Ad</span>
+        <span class="ad-copy">
+          <strong id="ad-title">open-emulator</strong>
+          <small id="ad-cta">Promotional slot</small>
+        </span>
+      </a>
+      <div class="ad-actions">
+        <button class="ad-info" id="ad-info" type="button" title="About ads">i</button>
+        <button class="ad-dismiss" id="ad-dismiss" type="button" title="Hide for 24h">×</button>
+      </div>
+    </footer>
     <script src="/app.js"></script>
   </body>
 </html>

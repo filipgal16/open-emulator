@@ -22,6 +22,9 @@ android_env() {
   PID_FILE="$STATE_DIR/emulator.pid"
   DEVICE_FILE="$STATE_DIR/device"
   PROFILE_FILE="$STATE_DIR/host_profile.env"
+  BOOT_STAGE_FILE="$STATE_DIR/boot_stage"
+  GUEST_TUNED_FILE="$STATE_DIR/guest_tuned"
+  BOOT_WORKER_PID_FILE="$STATE_DIR/boot_worker.pid"
 
   export ANDROID_SDK_ROOT="$SDK_ROOT"
   export ANDROID_HOME="$SDK_ROOT"
@@ -82,7 +85,13 @@ detect_host_profile() {
   # Display profile: guest framebuffer resolution (Qt window scales freely on resize).
   # ANDROID_DISPLAY=hd|fhd|qhd|native  or ANDROID_LCD_WIDTH/HEIGHT/DENSITY
   local lcd_w lcd_h lcd_dpi
-  case "${ANDROID_DISPLAY:-fhd}" in
+  # Until a Quick Boot snapshot exists, default to HD for faster first cold boot (TCG).
+  local display_preset="${ANDROID_DISPLAY:-}"
+  if [[ -z "$display_preset" && "${ANDROID_FAST_FIRST_BOOT:-1}" == "1" ]]; then
+    local snap_dir="$AVD_HOME/${AVD_NAME}.avd/snapshots/${SNAPSHOT_NAME}"
+    [[ -d "$snap_dir" ]] || display_preset=hd
+  fi
+  case "${display_preset:-fhd}" in
     hd)   lcd_w=720;  lcd_h=1280; lcd_dpi=320 ;;
     fhd)  lcd_w=1080; lcd_h=1920; lcd_dpi=420 ;;
     qhd)  lcd_w=1440; lcd_h=2560; lcd_dpi=560 ;;
@@ -139,19 +148,61 @@ adb_sh() {
   "$ADB_BIN" -s "$d" "$@"
 }
 
+set_boot_stage() {
+  local stage="$1"
+  mkdir -p "$STATE_DIR"
+  echo "$stage" > "$BOOT_STAGE_FILE"
+}
+
+get_boot_stage() {
+  if [[ -f "$BOOT_STAGE_FILE" ]]; then
+    cat "$BOOT_STAGE_FILE"
+    return 0
+  fi
+  echo "stopped"
+}
+
+detect_boot_stage() {
+  if ! emulator_running; then
+    echo "stopped"
+    return 0
+  fi
+  local d boot
+  d="$(adb_device || true)"
+  if [[ -z "$d" ]]; then
+    if [[ -f "$BOOT_STAGE_FILE" ]]; then
+      cat "$BOOT_STAGE_FILE"
+    else
+      echo "spawning"
+    fi
+    return 0
+  fi
+  boot="$("$ADB_BIN" -s "$d" shell -n getprop sys.boot_completed </dev/null 2>/dev/null | tr -d '\r')"
+  if [[ "$boot" != "1" ]]; then
+    echo "booting"
+    return 0
+  fi
+  if [[ -f "$GUEST_TUNED_FILE" ]]; then
+    echo "ready"
+  else
+    echo "booted"
+  fi
+}
+
 wait_for_adb_device() {
   local timeout="${1:-300}"
   local deadline=$((SECONDS + timeout))
   local d=""
   adb_start
   while (( SECONDS < deadline )); do
-    d="$("$ADB_BIN" devices | awk '/^emulator-/{ if ($2 ~ /^device/) { print $1; exit } }')"
+    d="$("$ADB_BIN" devices 2>/dev/null | awk '/^emulator-/{ if ($2 ~ /^device/) { print $1; exit } }')"
     if [[ -n "$d" ]]; then
       echo "$d" > "$DEVICE_FILE"
+      set_boot_stage "adb"
       echo "$d"
       return 0
     fi
-    sleep 1
+    sleep 0.2
   done
   return 1
 }
@@ -161,15 +212,14 @@ wait_for_boot() {
   local timeout="${2:-1800}"
   local deadline=$((SECONDS + timeout))
   local boot=""
+  set_boot_stage "booting"
   while (( SECONDS < deadline )); do
-    boot="$("$ADB_BIN" -s "$device" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')"
+    boot="$("$ADB_BIN" -s "$device" shell -n getprop sys.boot_completed </dev/null 2>/dev/null | tr -d '\r')"
     if [[ "$boot" == "1" ]]; then
-      # Package manager must answer before real work.
-      if "$ADB_BIN" -s "$device" shell pm path android >/dev/null 2>&1; then
-        return 0
-      fi
+      set_boot_stage "booted"
+      return 0
     fi
-    sleep 2
+    sleep 0.5
   done
   return 1
 }

@@ -96,6 +96,7 @@ pre {
   grid-template-columns: 280px 1fr;
   min-height: 100vh;
   position: relative;
+  padding-bottom: 72px;
 }
 
 .sidebar {
@@ -628,6 +629,149 @@ h2 {
   80%,
   100% {
     box-shadow: 0 0 0 90px rgba(40, 242, 207, 0);
+  }
+}
+
+.ad-rail {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 40;
+  height: 72px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 18px;
+  background: linear-gradient(180deg, rgba(10, 16, 20, 0.92), rgba(7, 12, 15, 0.98));
+  border-top: 1px solid var(--stroke-strong);
+  box-shadow: 0 -12px 40px rgba(0, 0, 0, 0.35);
+}
+
+.ad-hit {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  text-decoration: none;
+  color: inherit;
+  min-width: 0;
+}
+
+.ad-badge {
+  flex: 0 0 auto;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--teal);
+  border: 1px solid var(--stroke-strong);
+  border-radius: 999px;
+  padding: 4px 10px;
+}
+
+.ad-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.ad-copy strong {
+  font-family: "Syne", sans-serif;
+  font-size: 15px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ad-copy small {
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ad-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.ad-info,
+.ad-dismiss {
+  width: 36px;
+  height: 36px;
+  border-radius: 12px;
+  border: 1px solid var(--stroke);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--muted);
+}
+
+.ad-info:hover,
+.ad-dismiss:hover {
+  color: var(--teal);
+  border-color: var(--stroke-strong);
+}
+
+.player-frame {
+  position: relative;
+}
+
+.boot-overlay {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgba(4, 8, 10, 0.72);
+  backdrop-filter: blur(6px);
+  z-index: 3;
+}
+
+.boot-card {
+  text-align: center;
+  padding: 24px 28px;
+  border-radius: 18px;
+  border: 1px solid var(--stroke);
+  background: rgba(12, 20, 24, 0.92);
+  box-shadow: var(--shadow);
+}
+
+.boot-spinner {
+  display: inline-block;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 3px solid rgba(40, 242, 207, 0.2);
+  border-top-color: var(--teal);
+  animation: spin 0.9s linear infinite;
+  margin-bottom: 12px;
+}
+
+.boot-card strong {
+  display: block;
+  font-family: "Syne", sans-serif;
+  font-size: 18px;
+}
+
+.boot-card small {
+  display: block;
+  margin-top: 6px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 11px;
+}
+
+.boot-timer {
+  display: block;
+  margin-top: 10px;
+  font-variant-numeric: tabular-nums;
+  color: var(--teal-2);
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
   }
 }
 

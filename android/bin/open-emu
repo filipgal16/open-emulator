@@ -23,8 +23,12 @@ Usage: open-emu <command> [args]
 Commands:
   profile              Detect host and write performance profile
   setup                Create/refresh AVD with project config
-  start [--cold]       Start Android (warm if already running)
-  stop                 Stop the emulator cleanly
+  start [--cold] [--wait=spawn|adb|boot|ready] [--async]
+                        Start Android (default wait=adb; --async = spawn only)
+  stop [--poweroff]     Hibernate to snapshot (default) or hard power-off
+  wait-ready [--timeout SEC]
+                        Block until guest is booted+tuned (background worker)
+  ads on|off|show       Promotional bottom bar settings
   status               Show runtime status
   display [preset]     Set/show display resolution (hd|fhd|qhd|WxH)
   audio [test]         Show audio status; 'test' plays a short UI sound
@@ -59,6 +63,9 @@ Environment:
   ANDROID_AUDIO_BACKEND=auto|pulse|alsa|none
   ANDROID_DNS_SERVERS=8.8.8.8,1.1.1.1
   ANDROID_SNAPSHOT_NAME=booted
+  ANDROID_START_WAIT=adb|boot|ready|spawn   Start wait level (desktop uses adb)
+  ANDROID_FAST_FIRST_BOOT=1                 HD resolution until snapshot exists
+  ANDROID_ADS=1|0                           Promotional bar in desktop shell
 EOF
 }
 
@@ -71,8 +78,35 @@ cmd_setup() {
   "$ROOT/scripts/setup_avd.sh"
 }
 
+launch_boot_worker() {
+  local device="$1"
+  local save_snap="${2:-0}"
+  local fps="${3:-}"
+  chmod +x "$ROOT/lib/boot_worker.sh"
+  nohup "$ROOT/lib/boot_worker.sh" "$device" "$save_snap" "$fps" >>"$RUNTIME_LOG" 2>&1 &
+  echo "$!" > "$BOOT_WORKER_PID_FILE"
+}
+
+maybe_save_snapshot() {
+  local device="$1"
+  [[ -n "$device" ]] || return 0
+  if snapshot_exists; then
+    return 0
+  fi
+  log "saving first snapshot '${SNAPSHOT_NAME}' for Quick Boot"
+  timeout 180s "$ADB_BIN" -s "$device" emu avd snapshot save "$SNAPSHOT_NAME" </dev/null >/dev/null 2>&1 \
+    && log "snapshot saved" || log "snapshot save skipped/failed"
+}
+
+snapshot_load_failed() {
+  [[ -f "$EMULATOR_LOG" ]] || return 1
+  grep -q "Failed to load snapshot\|cannot load snapshot\|Snapshot not found" "$EMULATOR_LOG"
+}
+
 start_emulator() {
   local cold="${1:-0}"
+  local wait_mode="${2:-${ANDROID_START_WAIT:-adb}}"
+  local snapshot_attempt=0
   require_sdk
   detect_host_profile
   # shellcheck disable=SC1090
@@ -80,19 +114,33 @@ start_emulator() {
 
   if emulator_running; then
     log "emulator already running (warm path — no reboot)"
+    set_boot_stage "$(detect_boot_stage)"
     local d
-    d="$(wait_for_adb_device 60)" || die "running emulator has no adb device"
-    echo "$d" > "$DEVICE_FILE"
-    apply_guest_network "$d"
-    apply_guest_audio "$d"
-    apply_guest_bluetooth "$d"
-    if [[ -n "${ANDROID_FPS:-}" ]]; then
-      apply_fps_live "$ANDROID_FPS" "$d"
+    d="$(adb_device || true)"
+    if [[ -n "$d" ]]; then
+      echo "$d" > "$DEVICE_FILE"
+      if [[ -f "$GUEST_TUNED_FILE" ]]; then
+        set_boot_stage "ready"
+        return 0
+      fi
+      if [[ "$wait_mode" == "ready" ]]; then
+        apply_guest_tuning "$d"
+        [[ -n "${ANDROID_FPS:-}" ]] && apply_fps_live "$ANDROID_FPS" "$d"
+        touch "$GUEST_TUNED_FILE"
+        set_boot_stage "ready"
+      elif [[ "$wait_mode" != "spawn" && "$wait_mode" != "adb" ]]; then
+        launch_boot_worker "$d" 0 "${ANDROID_FPS:-}"
+      fi
+      return 0
     fi
+    d="$(wait_for_adb_device 30)" || die "running emulator has no adb device"
+    echo "$d" > "$DEVICE_FILE"
     return 0
   fi
 
   adb_start
+  rm -f "$GUEST_TUNED_FILE"
+  set_boot_stage "spawning"
 
   local headless=0
   if [[ "${ANDROID_HEADLESS:-}" == "1" || -z "${DISPLAY:-}" ]]; then
@@ -111,7 +159,6 @@ start_emulator() {
       -e "s/^skin.dynamic=.*/skin.dynamic=yes/" \
       -e "s/^showDeviceFrame=.*/showDeviceFrame=no/" \
       "$avd_dir/config.ini"
-    # Ensure lcd.depth exists for crisp rendering.
     if grep -q '^hw.lcd.depth=' "$avd_dir/config.ini"; then
       sed -i "s/^hw.lcd.depth=.*/hw.lcd.depth=32/" "$avd_dir/config.ini"
     else
@@ -132,7 +179,6 @@ start_emulator() {
   audio_backend="$(detect_audio_backend)"
   local dns_servers="${ANDROID_DNS_SERVERS:-8.8.8.8,1.1.1.1}"
 
-  # Keep AVD connectivity bits explicit.
   if [[ -f "$avd_dir/config.ini" ]]; then
     sed -i \
       -e "s/^hw.audioInput=.*/hw.audioInput=yes/" \
@@ -165,18 +211,16 @@ start_emulator() {
   if (( headless )); then
     args+=(-no-window)
   fi
-  # Intentionally omit -fixed-scale so the Qt window scales with resize.
 
   log "connectivity: audio=${audio_backend} dns=${dns_servers} wifi=virtio netspeed=full"
 
-  # KVM: load named snapshot for fast boot.
-  # TCG: skip snapshot load (Emulator often rejects/segfaults without KVM).
-  if (( cold == 0 )) && snapshot_exists && (( HAS_KVM )); then
-    log "fast boot from snapshot '${SNAPSHOT_NAME}' (KVM)"
+  if (( cold == 0 )) && snapshot_exists; then
+    log "fast boot from snapshot '${SNAPSHOT_NAME}'"
+    snapshot_attempt=1
     args+=(-snapshot "$SNAPSHOT_NAME" -no-snapshot-save)
   else
     if (( HAS_KVM == 0 )) && (( cold == 0 )); then
-      log "TCG host: optimized cold boot (keep process alive for warm reuse)"
+      log "TCG host: cold boot (hibernate on stop enables Quick Boot next time)"
     else
       log "cold boot"
     fi
@@ -190,7 +234,9 @@ start_emulator() {
   echo "$pid" > "$PID_FILE"
   log "emulator pid=${pid}"
 
-  sleep 5
+  if [[ "$wait_mode" == "spawn" ]]; then
+    return 0
+  fi
 
   local device
   device="$(wait_for_adb_device 180)" || {
@@ -199,18 +245,21 @@ start_emulator() {
   }
   log "adb device=${device}"
 
-  if (( cold == 0 )) && (( HAS_KVM )) && snapshot_exists; then
-    if grep -q "Failed to load snapshot\|cannot load snapshot" "$EMULATOR_LOG"; then
-      log "snapshot load failed — cold booting"
-      kill "$pid" 2>/dev/null || true
-      sleep 2
-      kill -9 "$pid" 2>/dev/null || true
-      rm -f "$PID_FILE"
-      pkill -f "qemu-system-x86_64.*${AVD_NAME}" 2>/dev/null || true
-      sleep 2
-      start_emulator 1
-      return $?
-    fi
+  if (( snapshot_attempt )) && snapshot_load_failed; then
+    log "snapshot load failed — cold booting"
+    kill "$pid" 2>/dev/null || true
+    sleep 2
+    kill -9 "$pid" 2>/dev/null || true
+    rm -f "$PID_FILE"
+    pkill -f "qemu-system-x86_64.*${AVD_NAME}" 2>/dev/null || true
+    sleep 2
+    start_emulator 1 "$wait_mode"
+    return $?
+  fi
+
+  if [[ "$wait_mode" == "adb" ]]; then
+    launch_boot_worker "$device" "$(( cold == 0 && snapshot_attempt == 0 ))" "${ANDROID_FPS:-}"
+    return 0
   fi
 
   local boot_timeout=1800
@@ -222,47 +271,135 @@ start_emulator() {
   }
   log "Android boot_completed=1"
 
-  # Bring up audio / network / bluetooth for real workloads.
-  apply_guest_network "$device"
-  apply_guest_audio "$device"
-  apply_guest_bluetooth "$device"
-  if [[ -n "${ANDROID_FPS:-}" ]]; then
-    apply_fps_live "$ANDROID_FPS" "$device"
+  if [[ "$wait_mode" == "boot" ]]; then
+    launch_boot_worker "$device" "$(( cold == 0 && snapshot_attempt == 0 ))" "${ANDROID_FPS:-}"
+    return 0
   fi
+
+  apply_guest_tuning "$device"
+  [[ -n "${ANDROID_FPS:-}" ]] && apply_fps_live "$ANDROID_FPS" "$device"
+  touch "$GUEST_TUNED_FILE"
+  set_boot_stage "ready"
+  maybe_save_snapshot "$device"
 }
 
 cmd_start() {
-  local cold=0
-  [[ "${1:-}" == "--cold" ]] && cold=1
+  local cold=0 wait_mode="${ANDROID_START_WAIT:-adb}"
+  while (($#)); do
+    case "$1" in
+      --cold) cold=1; shift ;;
+      --async) wait_mode=spawn; shift ;;
+      --wait=*) wait_mode="${1#*=}"; shift ;;
+      --wait)
+        wait_mode="${2:-adb}"
+        shift 2
+        ;;
+      *) shift ;;
+    esac
+  done
+  case "$wait_mode" in
+    spawn|adb|boot|ready) ;;
+    *) die "invalid --wait=$wait_mode (use spawn|adb|boot|ready)" ;;
+  esac
   local t0=$SECONDS
-  start_emulator "$cold"
-  log "start finished in $((SECONDS - t0))s"
+  start_emulator "$cold" "$wait_mode"
+  log "start finished in $((SECONDS - t0))s (wait=${wait_mode})"
   cmd_status
 }
 
+cmd_wait_ready() {
+  local timeout=1800
+  while (($#)); do
+    case "$1" in
+      --timeout) timeout="${2:-1800}"; shift 2 ;;
+      *) shift ;;
+    esac
+  done
+  local deadline=$((SECONDS + timeout))
+  while (( SECONDS < deadline )); do
+    local stage
+    stage="$(detect_boot_stage)"
+    if [[ "$stage" == "ready" ]]; then
+      echo "stage=ready"
+      return 0
+    fi
+    sleep 1
+  done
+  die "wait-ready timeout (${timeout}s) stage=$(detect_boot_stage)"
+}
+
 cmd_stop() {
+  local poweroff=0
+  [[ "${1:-}" == "--poweroff" ]] && poweroff=1
+
+  if [[ -f "$BOOT_WORKER_PID_FILE" ]]; then
+    local wpid
+    wpid="$(cat "$BOOT_WORKER_PID_FILE")"
+    kill "$wpid" 2>/dev/null || true
+    rm -f "$BOOT_WORKER_PID_FILE"
+  fi
+
   local device=""
   device="$(adb_device || true)"
+  if [[ -n "$device" && "$poweroff" == "0" ]]; then
+    set_boot_stage "hibernating"
+    log "hibernating to snapshot '${SNAPSHOT_NAME}'"
+    if timeout 120s "$ADB_BIN" -s "$device" emu avd snapshot save "$SNAPSHOT_NAME" </dev/null >/dev/null 2>&1; then
+      log "snapshot saved for Quick Boot"
+      echo "snapshot_kind=ram" > "$STATE_DIR/snapshot_kind"
+    else
+      log "snapshot save failed — stopping without hibernate"
+    fi
+  fi
+
   if [[ -n "$device" ]]; then
     log "requesting emulator kill via adb"
     "$ADB_BIN" -s "$device" emu kill >/dev/null 2>&1 || true
-    sleep 2
+    sleep 1
   fi
   if [[ -f "$PID_FILE" ]]; then
     local pid
     pid="$(cat "$PID_FILE")"
     kill "$pid" 2>/dev/null || true
-    sleep 2
+    sleep 1
     kill -9 "$pid" 2>/dev/null || true
     rm -f "$PID_FILE"
   fi
   pkill -f "qemu-system-x86_64.*${AVD_NAME}" 2>/dev/null || true
-  rm -f "$DEVICE_FILE"
+  rm -f "$DEVICE_FILE" "$GUEST_TUNED_FILE"
+  set_boot_stage "stopped"
   log "emulator stopped"
+}
+
+cmd_ads() {
+  local sub="${1:-show}"
+  local cfg="$ROOT/config/ads.json"
+  local state="$STATE_DIR/ads.json"
+  mkdir -p "$STATE_DIR"
+  case "$sub" in
+    on)
+      echo '{"enabled":true}' > "$state"
+      echo "ads=enabled"
+      ;;
+    off)
+      echo '{"enabled":false}' > "$state"
+      echo "ads=disabled"
+      ;;
+    show)
+      echo "config=$cfg"
+      [[ -f "$state" ]] && cat "$state" || echo '{"enabled":true}'
+      ;;
+    *)
+      die "usage: open-emu ads on|off|show"
+      ;;
+  esac
 }
 
 cmd_status() {
   echo "avd=${AVD_NAME}"
+  local stage
+  stage="$(detect_boot_stage)"
+  echo "stage=${stage}"
   if emulator_running; then
     echo "emulator=running"
     [[ -f "$PID_FILE" ]] && echo "pid=$(cat "$PID_FILE")"
@@ -274,11 +411,11 @@ cmd_status() {
   echo "adb_device=${d:-none}"
   if [[ -n "$d" ]]; then
     local boot ver sdk size dens
-    boot="$("$ADB_BIN" -s "$d" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')"
-    ver="$("$ADB_BIN" -s "$d" shell getprop ro.build.version.release 2>/dev/null | tr -d '\r')"
-    sdk="$("$ADB_BIN" -s "$d" shell getprop ro.build.version.sdk 2>/dev/null | tr -d '\r')"
-    size="$("$ADB_BIN" -s "$d" shell wm size 2>/dev/null | tr -d '\r' | paste -sd' / ' -)"
-    dens="$("$ADB_BIN" -s "$d" shell wm density 2>/dev/null | tr -d '\r' | paste -sd' / ' -)"
+    boot="$("$ADB_BIN" -s "$d" shell -n getprop sys.boot_completed </dev/null 2>/dev/null | tr -d '\r')"
+    ver="$("$ADB_BIN" -s "$d" shell -n getprop ro.build.version.release </dev/null 2>/dev/null | tr -d '\r')"
+    sdk="$("$ADB_BIN" -s "$d" shell -n getprop ro.build.version.sdk </dev/null 2>/dev/null | tr -d '\r')"
+    size="$("$ADB_BIN" -s "$d" shell -n wm size </dev/null 2>/dev/null | tr -d '\r' | paste -sd' / ' -)"
+    dens="$("$ADB_BIN" -s "$d" shell -n wm density </dev/null 2>/dev/null | tr -d '\r' | paste -sd' / ' -)"
     echo "boot_completed=${boot:-unknown}"
     echo "android=${ver:-unknown} api=${sdk:-unknown}"
     echo "display=${size:-unknown}"
@@ -291,7 +428,17 @@ cmd_status() {
   fi
   [[ -f "$STATE_DIR/provisioned_at" ]] && echo "provisioned_at=$(cat "$STATE_DIR/provisioned_at")"
   [[ -f "$PROFILE_FILE" ]] && echo "profile=$(tr '\n' ' ' < "$PROFILE_FILE")"
+  if [[ -f "$STATE_DIR/ads.json" ]]; then
+    if python3 -c "import json;print('enabled' if json.load(open('$STATE_DIR/ads.json')).get('enabled',True) else 'disabled')" 2>/dev/null | grep -q disabled; then
+      echo "ads=disabled"
+    else
+      echo "ads=enabled"
+    fi
+  else
+    echo "ads=enabled"
+  fi
 }
+
 
 # Apply or show display resolution. Presets: hd, fhd, qhd, or WIDTHxHEIGHT.
 # Updates AVD config for next cold boot and live wm size/density when running.
@@ -1143,6 +1290,8 @@ main() {
     setup) cmd_setup "$@" ;;
     start) cmd_start "$@" ;;
     stop) cmd_stop "$@" ;;
+    wait-ready) cmd_wait_ready "$@" ;;
+    ads) cmd_ads "$@" ;;
     status) cmd_status "$@" ;;
     display) cmd_display "$@" ;;
     audio) cmd_audio "$@" ;;
