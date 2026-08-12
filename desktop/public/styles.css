@@ -95,6 +95,121 @@ pre {
   border-bottom: 1px solid rgba(127, 220, 179, 0.18);
 }
 
+.tab-chrome {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+  min-height: 48px;
+  padding: 6px 10px 0;
+  background: rgba(11, 36, 28, 0.94);
+  border-bottom: 1px solid rgba(127, 220, 179, 0.18);
+}
+
+.tab-brand {
+  display: grid;
+  place-items: center;
+  padding: 0 6px 6px;
+}
+
+.tab-brand img {
+  width: 28px;
+  height: 28px;
+}
+
+.tab-strip {
+  display: flex;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  align-items: flex-end;
+}
+
+.machine-tab {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 120px;
+  max-width: 200px;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 10px 10px 0 0;
+  background: rgba(255, 255, 255, 0.06);
+  color: #d9f5e8;
+  cursor: pointer;
+  text-align: left;
+}
+
+.machine-tab small {
+  display: block;
+  color: rgba(232, 251, 244, 0.65);
+  font-size: 0.68rem;
+}
+
+.machine-tab.active {
+  background: #f4fbf8;
+  color: #0b241c;
+}
+
+.machine-tab.active small {
+  color: #5a7268;
+}
+
+.machine-tab .tab-close {
+  margin-left: auto;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  opacity: 0.6;
+  cursor: pointer;
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.tab-add {
+  width: 32px;
+  height: 32px;
+  margin-bottom: 6px;
+  border: 1px solid rgba(127, 220, 179, 0.28);
+  border-radius: 8px;
+  background: transparent;
+  color: #7fdcb3;
+  font-size: 1.2rem;
+  line-height: 1;
+}
+
+.tab-add:hover {
+  background: rgba(38, 184, 122, 0.16);
+}
+
+.modal {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  background: rgba(11, 36, 28, 0.45);
+}
+
+.modal[hidden] {
+  display: none;
+}
+
+.modal-card {
+  width: min(420px, 92vw);
+  padding: 22px;
+  background: #f4fbf8;
+  border-radius: 20px;
+  border: 1px solid var(--stroke);
+  display: grid;
+  gap: 12px;
+}
+
+.modal-card h2 {
+  margin: 0;
+  font-family: var(--oe-font-display, "Fraunces", serif);
+}
+
 .viewport-brand {
   display: flex;
   align-items: center;

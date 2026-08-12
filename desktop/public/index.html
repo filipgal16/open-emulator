@@ -15,11 +15,12 @@
   <body>
     <div class="emu-window">
       <section class="guest-viewport" aria-label="Android guest screen">
-        <header class="viewport-bar">
-          <div class="viewport-brand">
-            <img src="brand/logo/mark.svg" width="36" height="36" alt="">
-            <span>open-emulator</span>
+        <header class="tab-chrome">
+          <div class="tab-brand" title="open-emulator">
+            <img src="brand/logo/mark.svg" width="28" height="28" alt="">
           </div>
+          <div class="tab-strip" id="tab-strip" role="tablist" aria-label="Machines"></div>
+          <button class="tab-add" id="tab-add" type="button" title="New isolated machine">+</button>
           <div class="viewport-actions">
             <button class="ghost small" id="refresh-status" title="Refresh status">Refresh</button>
             <button class="primary small" id="quick-start">Start</button>
@@ -112,11 +113,12 @@
 
           <section class="tool-panel" id="panel-instances">
             <header class="panel-head">
-              <span class="eyebrow">Instances</span>
-              <h2>Profiles</h2>
+              <span class="eyebrow">Machines</span>
+              <h2>Isolated VMs</h2>
             </header>
+            <p class="panel-hint">Each name is a separate Android disk. Clone to fork userdata.</p>
             <div class="inline-form">
-              <input id="instance-name" placeholder="new-profile">
+              <input id="instance-name" placeholder="new-machine">
               <button class="primary" id="create-instance">Create</button>
             </div>
             <button class="ghost" id="refresh-instances">Refresh</button>
@@ -205,6 +207,19 @@
           <small id="side-device">adb: unknown</small>
         </footer>
       </aside>
+    </div>
+
+    <div class="modal" id="new-machine-modal" hidden>
+      <div class="modal-card">
+        <span class="eyebrow">New machine</span>
+        <h2>Isolated virtual machine</h2>
+        <label>Name<input id="new-machine-name" placeholder="game-2"></label>
+        <label>Clone from<select id="new-machine-source"></select></label>
+        <div class="panel-actions">
+          <button class="ghost" id="new-machine-cancel">Cancel</button>
+          <button class="primary" id="new-machine-create">Create &amp; open tab</button>
+        </div>
+      </div>
     </div>
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>

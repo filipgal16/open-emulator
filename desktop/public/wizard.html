@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>open-emulator setup</title>
+    <link rel="icon" href="brand/logo/mark.svg" type="image/svg+xml">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=IBM+Plex+Mono:wght@400;500&family=Sora:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="brand/tokens.css">
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="wizard.css">
+  </head>
+  <body class="wizard-body">
+    <main class="wizard">
+      <header class="wizard-brand">
+        <img src="brand/logo/wordmark.svg" width="280" height="56" alt="open-emulator">
+        <p>Install wizard</p>
+      </header>
+
+      <ol class="wizard-steps" id="step-dots" aria-label="Setup steps">
+        <li class="active" data-step="0">Welcome</li>
+        <li data-step="1">Host</li>
+        <li data-step="2">SDK</li>
+        <li data-step="3">Machine</li>
+        <li data-step="4">Shortcut</li>
+        <li data-step="5">Done</li>
+      </ol>
+
+      <section class="wizard-card" id="step-welcome">
+        <span class="eyebrow">First run</span>
+        <h1>Set up your mint machine</h1>
+        <p>This wizard downloads the Android 11 guest, creates an isolated virtual machine, and can pin a desktop shortcut so you start like LDPlayer — one click, then tabs for every machine.</p>
+        <button class="primary" id="begin">Begin</button>
+      </section>
+
+      <section class="wizard-card" id="step-host" hidden>
+        <span class="eyebrow">Host check</span>
+        <h1>Look at this computer</h1>
+        <p>KVM acceleration, RAM, and free disk decide how many isolated machines you can run at once.</p>
+        <pre class="status-box" id="host-log">Checking…</pre>
+        <button class="primary" id="host-next" disabled>Continue</button>
+      </section>
+
+      <section class="wizard-card" id="step-fetch" hidden>
+        <span class="eyebrow">Android SDK</span>
+        <h1>Fetch the guest image</h1>
+        <p>About 4 GiB the first time. Already-installed packages are skipped.</p>
+        <pre class="status-box" id="fetch-log">Waiting…</pre>
+        <button class="primary" id="fetch-run">Download SDK</button>
+        <button class="ghost" id="fetch-next" disabled>Continue</button>
+      </section>
+
+      <section class="wizard-card" id="step-avd" hidden>
+        <span class="eyebrow">Virtual machine</span>
+        <h1>Create machine <em>main</em></h1>
+        <p>An isolated AVD with its own userdata disk. Later you can clone more machines from the tab bar.</p>
+        <pre class="status-box" id="avd-log">Waiting…</pre>
+        <button class="primary" id="avd-run">Create machine</button>
+        <button class="ghost" id="avd-next" disabled>Continue</button>
+      </section>
+
+      <section class="wizard-card" id="step-shortcut" hidden>
+        <span class="eyebrow">Shortcut</span>
+        <h1>Start from the desktop</h1>
+        <p>Writes an application menu entry (and a Desktop icon if that folder exists) that launches this shell.</p>
+        <label class="check"><input type="checkbox" id="want-shortcut" checked> Install open-emulator shortcut</label>
+        <pre class="mini-log" id="shortcut-log"></pre>
+        <button class="primary" id="shortcut-next">Continue</button>
+      </section>
+
+      <section class="wizard-card" id="step-done" hidden>
+        <span class="eyebrow">Ready</span>
+        <h1>Machines live in tabs</h1>
+        <p>The top bar multiplexes isolated VMs. Use <strong>+</strong> to clone a new machine. The mint sidebar stays scoped to the active tab.</p>
+        <label class="check"><input type="checkbox" id="start-now" checked> Start machine main now</label>
+        <button class="primary" id="finish">Open emulator</button>
+      </section>
+    </main>
+    <script src="wizard.js"></script>
+  </body>
+</html>
