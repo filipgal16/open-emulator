@@ -1,0 +1,338 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>open-emulator</title>
+    <meta name="theme-color" content="#26B87A">
+    <link rel="icon" href="/brand/logo/mark.svg" type="image/svg+xml">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=IBM+Plex+Mono:wght@400;500&family=Sora:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/brand/tokens.css">
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <div class="leaf-field" aria-hidden="true"></div>
+    <div class="mint-wash mint-wash-a" aria-hidden="true"></div>
+    <div class="mint-wash mint-wash-b" aria-hidden="true"></div>
+
+    <div class="shell">
+      <aside class="sidebar">
+        <a class="brand" href="#home" data-panel-link="home" aria-label="open-emulator home">
+          <img class="brand-mark" src="/brand/logo/mark.svg" width="52" height="52" alt="">
+          <div class="brand-copy">
+            <strong>open-emulator</strong>
+            <small>mint host control</small>
+          </div>
+        </a>
+
+        <nav class="nav" aria-label="Primary">
+          <button class="nav-item active" data-panel="home">Home</button>
+          <button class="nav-item" data-panel="keymap">Keymap</button>
+          <button class="nav-item" data-panel="instances">Instances</button>
+          <button class="nav-item" data-panel="macros">Macros</button>
+          <button class="nav-item" data-panel="performance">Performance</button>
+          <button class="nav-item" data-panel="files">Files</button>
+          <button class="nav-item" data-panel="location">Location</button>
+        </nav>
+
+        <div class="sidebar-status">
+          <span class="eyebrow">Runtime</span>
+          <strong id="side-status">checking…</strong>
+          <small id="side-device">adb: unknown</small>
+        </div>
+      </aside>
+
+      <main class="main">
+        <header class="hero-top" id="home-hero">
+          <div class="hero-brand-block">
+            <img class="hero-wordmark" src="/brand/logo/wordmark.svg" width="320" height="64" alt="open-emulator">
+            <p class="hero-lede">Host controls for your Android guest — start, install, map keys, and tune performance without leaving the mint shell.</p>
+            <div class="top-actions">
+              <button class="ghost" id="refresh-status">Refresh</button>
+              <button class="primary" id="quick-start">Start</button>
+            </div>
+          </div>
+        </header>
+
+        <section class="panel active" id="panel-home">
+          <div class="stage-grid">
+            <article class="surface runtime-surface">
+              <div class="surface-head">
+                <div>
+                  <span class="eyebrow">Runtime</span>
+                  <h2>Console</h2>
+                </div>
+                <span class="status-chip" id="runtime-pill">unknown</span>
+              </div>
+              <div class="runtime-actions">
+                <button class="primary" id="start-btn">Start emulator</button>
+                <button class="danger" id="stop-btn">Stop</button>
+                <label class="check"><input type="checkbox" id="cold-start"> cold boot</label>
+              </div>
+              <pre class="status-box" id="status-output">Waiting for status…</pre>
+            </article>
+
+            <article class="surface preview-surface">
+              <div class="surface-head">
+                <div>
+                  <span class="eyebrow">Live preview</span>
+                  <h2>Guest screen</h2>
+                </div>
+                <button class="ghost" id="shot-now">Capture</button>
+              </div>
+              <div class="screen-frame" id="screen-frame">
+                <img id="home-screenshot" alt="Android screenshot">
+                <div class="boot-overlay" id="boot-overlay" hidden>
+                  <div class="boot-card">
+                    <span class="boot-spinner" aria-hidden="true"></span>
+                    <strong id="boot-title">Starting Android…</strong>
+                    <small id="boot-stage">spawning</small>
+                    <span class="boot-timer" id="boot-timer">0:00</span>
+                  </div>
+                </div>
+              </div>
+            </article>
+          </div>
+
+          <article class="surface drop-surface" id="apk-drop">
+            <input id="apk-input" type="file" accept=".apk,application/vnd.android.package-archive" hidden>
+            <div>
+              <span class="eyebrow">Install</span>
+              <h2>Drop an APK</h2>
+              <p>Drag a package here, choose a file, or paste a local path.</p>
+            </div>
+            <div class="install-row">
+              <input id="apk-path" placeholder="/absolute/path/to/app.apk">
+              <button class="ghost" id="choose-apk">Choose</button>
+              <button class="primary" id="install-apk">Install</button>
+            </div>
+            <pre class="mini-log" id="install-log"></pre>
+          </article>
+        </section>
+
+        <section class="panel" id="panel-keymap">
+          <header class="panel-intro">
+            <span class="eyebrow">Keymap</span>
+            <h1>On-screen bindings</h1>
+            <p>Click the guest preview to place a tap target, then bind a keyboard key.</p>
+          </header>
+          <div class="stage-grid keymap-grid">
+            <article class="surface">
+              <div class="surface-head">
+                <div>
+                  <span class="eyebrow">Editor</span>
+                  <h2>Place dots</h2>
+                </div>
+                <button class="primary" id="save-keymap">Save keymap</button>
+              </div>
+              <div class="keymap-stage" id="keymap-stage">
+                <img id="keymap-screenshot" alt="Screenshot background">
+                <div id="binding-layer"></div>
+                <div class="stage-hint">Click to add a tap binding</div>
+              </div>
+            </article>
+            <article class="surface">
+              <div class="surface-head">
+                <div>
+                  <span class="eyebrow">Bindings</span>
+                  <h2>Edit &amp; test</h2>
+                </div>
+                <button class="ghost" id="reload-keymap">Reload</button>
+              </div>
+              <div class="binding-form">
+                <input id="binding-key" placeholder="key, e.g. j">
+                <input id="binding-label" placeholder="label">
+                <select id="binding-type">
+                  <option value="tap">tap</option>
+                  <option value="hold">hold</option>
+                  <option value="keyevent">keyevent</option>
+                </select>
+                <input id="binding-x" type="number" placeholder="x">
+                <input id="binding-y" type="number" placeholder="y">
+                <button class="primary" id="add-binding">Add / update</button>
+              </div>
+              <div class="binding-list" id="binding-list"></div>
+            </article>
+          </div>
+        </section>
+
+        <section class="panel" id="panel-instances">
+          <header class="panel-intro">
+            <span class="eyebrow">Instances</span>
+            <h1>Profiles</h1>
+            <p>Named host profiles for multi-instance workflows. The active AVD remains the live guest.</p>
+          </header>
+          <article class="surface">
+            <div class="surface-head">
+              <div>
+                <span class="eyebrow">List</span>
+                <h2>Create &amp; clone</h2>
+              </div>
+              <button class="ghost" id="refresh-instances">Refresh</button>
+            </div>
+            <div class="inline-form">
+              <input id="instance-name" placeholder="new-profile">
+              <button class="primary" id="create-instance">Create instance</button>
+            </div>
+            <div class="table-list" id="instance-list"></div>
+          </article>
+        </section>
+
+        <section class="panel" id="panel-macros">
+          <header class="panel-intro">
+            <span class="eyebrow">Macros</span>
+            <h1>Automation</h1>
+            <p>Replay tap and keyevent sequences against the running guest.</p>
+          </header>
+          <article class="surface">
+            <div class="surface-head">
+              <div>
+                <span class="eyebrow">Library</span>
+                <h2>Run a macro</h2>
+              </div>
+              <button class="ghost" id="refresh-macros">Refresh</button>
+            </div>
+            <div class="inline-form">
+              <input id="macro-name" placeholder="macro-name">
+              <input id="macro-loop" type="number" min="1" value="1" placeholder="loop">
+              <button class="primary" id="run-macro">Run selected</button>
+            </div>
+            <div class="table-list" id="macro-list"></div>
+            <pre class="mini-log" id="macro-log"></pre>
+          </article>
+        </section>
+
+        <section class="panel" id="panel-performance">
+          <header class="panel-intro">
+            <span class="eyebrow">Performance</span>
+            <h1>Host tuning</h1>
+            <p>Cores, memory, and GPU mode applied on the next emulator start.</p>
+          </header>
+          <div class="stage-grid">
+            <article class="surface">
+              <div class="surface-head">
+                <div>
+                  <span class="eyebrow">Profile</span>
+                  <h2>Resources</h2>
+                </div>
+                <button class="primary" id="save-performance">Apply</button>
+              </div>
+              <div class="form-grid">
+                <label>CPU cores<input id="perf-cores" type="number" min="1" max="16"></label>
+                <label>Memory MB<input id="perf-memory" type="number" min="512" step="256"></label>
+                <label>GPU mode<select id="perf-gpu"><option>swiftshader</option><option>auto</option><option>host</option><option>guest</option></select></label>
+                <label>FPS<input id="perf-fps" type="number" min="15" max="240"></label>
+              </div>
+            </article>
+            <article class="surface">
+              <div class="surface-head">
+                <div>
+                  <span class="eyebrow">Devices</span>
+                  <h2>Display · audio · network</h2>
+                </div>
+              </div>
+              <div class="stack">
+                <div class="inline-form">
+                  <input id="display-preset" placeholder="fhd, hd, qhd, or 1080x1920">
+                  <button class="ghost" id="apply-display">Display</button>
+                </div>
+                <div class="inline-form">
+                  <select id="audio-action"><option value="">status</option><option value="test">test</option></select>
+                  <button class="ghost" id="apply-audio">Audio</button>
+                </div>
+                <div class="inline-form">
+                  <select id="network-action"><option>status</option><option>on</option><option>dns</option></select>
+                  <button class="ghost" id="apply-network">Network</button>
+                </div>
+              </div>
+              <pre class="mini-log" id="device-log"></pre>
+            </article>
+          </div>
+        </section>
+
+        <section class="panel" id="panel-files">
+          <header class="panel-intro">
+            <span class="eyebrow">Files</span>
+            <h1>Share with guest</h1>
+            <p>Push and pull paths through the open-emu control plane.</p>
+          </header>
+          <div class="stage-grid">
+            <article class="surface">
+              <div class="surface-head">
+                <div>
+                  <span class="eyebrow">Push</span>
+                  <h2>Host → Android</h2>
+                </div>
+              </div>
+              <div class="form-grid">
+                <label>Local path<input id="push-local" placeholder="/host/file"></label>
+                <label>Remote path<input id="push-remote" placeholder="/sdcard/Download/file"></label>
+              </div>
+              <button class="primary" id="push-file">Push</button>
+            </article>
+            <article class="surface">
+              <div class="surface-head">
+                <div>
+                  <span class="eyebrow">Pull</span>
+                  <h2>Android → host</h2>
+                </div>
+              </div>
+              <div class="form-grid">
+                <label>Remote path<input id="pull-remote" placeholder="/sdcard/Download/file"></label>
+                <label>Local path<input id="pull-local" placeholder="/host/file"></label>
+              </div>
+              <button class="primary" id="pull-file">Pull</button>
+            </article>
+          </div>
+          <pre class="mini-log" id="files-log"></pre>
+        </section>
+
+        <section class="panel" id="panel-location">
+          <header class="panel-intro">
+            <span class="eyebrow">Location</span>
+            <h1>GPS spoof</h1>
+            <p>Send a virtual fix to the emulator console.</p>
+          </header>
+          <article class="surface location-surface">
+            <div class="surface-head">
+              <div>
+                <span class="eyebrow">Coordinates</span>
+                <h2>Set fix</h2>
+              </div>
+              <button class="primary" id="send-gps">Send GPS</button>
+            </div>
+            <div class="form-grid">
+              <label>Latitude<input id="gps-lat" type="number" step="0.000001" value="37.7749"></label>
+              <label>Longitude<input id="gps-lng" type="number" step="0.000001" value="-122.4194"></label>
+            </div>
+            <div class="map-panel">
+              <div class="map-pulse" aria-hidden="true"></div>
+              <span>Virtual coordinate uplink</span>
+            </div>
+            <pre class="mini-log" id="gps-log"></pre>
+          </article>
+        </section>
+      </main>
+    </div>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+    <footer class="ad-rail" id="ad-rail" hidden>
+      <a class="ad-hit" id="ad-hit" href="#" target="_blank" rel="noopener noreferrer">
+        <span class="ad-badge">Ad</span>
+        <span class="ad-copy">
+          <strong id="ad-title">open-emulator</strong>
+          <small id="ad-cta">Promotional slot</small>
+        </span>
+      </a>
+      <div class="ad-actions">
+        <button class="ad-info" id="ad-info" type="button" title="About ads">i</button>
+        <button class="ad-dismiss" id="ad-dismiss" type="button" title="Hide for 24h">×</button>
+      </div>
+    </footer>
+
+    <script src="/app.js"></script>
+  </body>
+</html>

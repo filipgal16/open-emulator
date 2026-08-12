@@ -1,0 +1,14 @@
+{
+  "name": "default",
+  "description": "Joystick + action buttons for portrait FHD (1080x1920).",
+  "display": { "width": 1080, "height": 1920 },
+  "bindings": [
+    {"key": "j", "type": "tap", "x": 820, "y": 1550, "label": "Action A"},
+    {"key": "k", "type": "tap", "x": 940, "y": 1450, "label": "Action B"},
+    {"key": "l", "type": "tap", "x": 940, "y": 1650, "label": "Action C"},
+    {"key": "space", "type": "tap", "x": 540, "y": 1700, "label": "Jump / Confirm"},
+    {"key": "escape", "type": "keyevent", "code": "KEYCODE_BACK", "label": "Back"},
+    {"key": "h", "type": "keyevent", "code": "KEYCODE_HOME", "label": "Home"},
+    {"key": "enter", "type": "tap", "x": 540, "y": 960, "label": "Center tap"}
+  ]
+}

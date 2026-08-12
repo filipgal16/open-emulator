@@ -1,0 +1,46 @@
+/**
+ * open-emulator — Mint brand tokens
+ * Import or mirror these in product UI. Keep names stable across surfaces.
+ */
+:root {
+  /* Core mint */
+  --oe-mint-50: #f2fbf7;
+  --oe-mint-100: #d9f5e8;
+  --oe-mint-200: #b4ebd3;
+  --oe-mint-300: #7fdcb3;
+  --oe-mint-400: #4ecf97;
+  --oe-mint-500: #26b87a;
+  --oe-mint-600: #149563;
+  --oe-mint-700: #117651;
+  --oe-mint-800: #115c42;
+  --oe-mint-900: #0f4b37;
+
+  /* Neutrals (cool green undertone) */
+  --oe-ink: #0b241c;
+  --oe-ink-soft: #1d3d32;
+  --oe-muted: #5a7268;
+  --oe-line: rgba(17, 92, 66, 0.14);
+  --oe-line-strong: rgba(17, 92, 66, 0.28);
+  --oe-paper: #f4fbf8;
+  --oe-panel: rgba(255, 255, 255, 0.72);
+  --oe-panel-solid: #ffffff;
+
+  /* Semantic */
+  --oe-danger: #c23b52;
+  --oe-warn: #b87a1d;
+  --oe-ok: var(--oe-mint-600);
+
+  /* Type */
+  --oe-font-display: "Fraunces", "Iowan Old Style", Georgia, serif;
+  --oe-font-ui: "Sora", "Avenir Next", "Segoe UI", sans-serif;
+  --oe-font-mono: "IBM Plex Mono", "SF Mono", ui-monospace, monospace;
+
+  /* Motion */
+  --oe-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --oe-duration: 280ms;
+
+  /* Radii */
+  --oe-radius-sm: 10px;
+  --oe-radius-md: 16px;
+  --oe-radius-lg: 24px;
+}

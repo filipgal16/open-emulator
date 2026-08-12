@@ -13,3 +13,9 @@ build/
 *.bin
 .open-vmm*
 .DS_Store
+
+# Desktop shell runtime
+desktop/node_modules/
+desktop/data/
+desktop/uploads/
+desktop/package-lock.json

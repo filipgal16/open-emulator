@@ -65,6 +65,8 @@ include/     Public headers (vmm, serial, soft CPU)
 src/         VMM, KVM backend, soft CPU, serial device
 guest/       Guest assembly source
 android/     Android 11 guest import + run scripts
+desktop/     Mint-branded host control shell (GUI)
+brand/       Color tokens, logo, typography guidelines
 scripts/     Guest assembler + smoke test
 build/       Build outputs
 ```
@@ -93,5 +95,15 @@ See [`android/README.md`](android/README.md).
 ## Next steps
 
 1. Grow `open-vmm` toward long mode + virtio/goldfish (replace Emulator QEMU)
-2. Desktop UI: APK drag-drop, key mapping, audio routing
+2. Desktop UI: APK drag-drop, key mapping, audio routing — see [`desktop/`](desktop/) (mint brand)
 3. Multi-instance / profiles
+
+## Brand & desktop shell
+
+Host-side identity (mint palette, logo, fonts) lives in [`brand/`](brand/).
+The control GUI for non-Android features is under [`desktop/`](desktop/):
+
+```bash
+cd desktop && npm install && npm run server
+# → http://127.0.0.1:8787
+```
