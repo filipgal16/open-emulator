@@ -1,16 +1,32 @@
-# Monetization — examples and a plan, not yet implemented
+# Monetization — what's implemented and how it's used
 
-**Current state: this product ships with zero ads and zero monetization
-code.** No ad server, no ad rendering, no license/entitlement checks, no
-paid tier. This document is deliberately forward-looking — it exists so
-the next pass has a concrete menu to choose from instead of starting from
-a blank page, and so nothing here gets mistaken for something already
-wired up. Every code reference below describes a **future file that does
-not exist yet**, not something shipping today.
+**Current state: the code for all six options below exists and is wired
+up, but ships off by default.** No repo clone or fresh install shows an
+ad, calls an ad server, or enforces a paid tier until an operator
+explicitly deploys [`monetize/server/`](../monetize/server/) and points
+the app at it, and even then, a person has to accept the wizard's ads
+consent step before anything renders. This document doubles as the
+implementation map (what hooks into what) and the deployment guide
+(what to turn on, in what order) — see [`docs/ROADMAP.md`](ROADMAP.md)
+for what's still genuinely unbuilt (real checkout automation, a signed
+public rate card).
 
-For the "next steps" sequencing and effort/risk breakdown, see
-[`docs/ROADMAP.md`](ROADMAP.md). This file is about *what the options are*
-and *how each would technically hook in*.
+## The two constraints that shaped the design
+
+1. **No Google AdSense/Ad Manager inside the desktop app.** Google's ad
+   placement policy is explicit: "Publishers are not permitted to
+   distribute Google ads or AdSense for search boxes through software
+   applications including, but not limited to ... desktop applications."
+   The mobile-only "WebView API for Ads" doesn't cover desktop Electron
+   apps either. This is why every in-app option below is self-served or a
+   direct/affiliate integration through [`monetize/server/`](../monetize/server/)
+   — never a Google tag loaded in a hidden webview. Programmatic Google
+   ads are, however, fine on the **website** ([`web/`](../web/)), since
+   that's an ordinary browser-served page — see `web/public/ads.js`.
+2. **The Android SDK can't be bundled**, so monetization can't be tied to
+   "faster setup" or "premium SDK access" — see [`docs/LEGAL.md`](LEGAL.md).
+   Every option below is about the product experience around the
+   emulator, never the SDK itself.
 
 ## The two constraints that shape every option
 
@@ -29,96 +45,128 @@ and *how each would technically hook in*.
    [`docs/LEGAL.md`](LEGAL.md). Monetization has to be about the product
    experience around the emulator, not the SDK itself.
 
-## Example 1 — Self-hosted native ad rail (house + direct + affiliate)
+## Example 1 — Self-hosted native ad rail (house + direct + affiliate) — implemented
 
-The most LDPlayer/BlueStacks-like option, and the one with a working
-reference to start from: a **native**, non-web ad unit rendered from your
-own JSON feed, not a third-party script or iframe.
+A **native**, non-web ad unit rendered from a JSON feed, not a
+third-party script or iframe.
 
-- **Server side (future `monetize/server/`):** `GET /v1/campaigns` returns
-  weighted creatives (`title`, `body`, `imageUrl`, `cta`, `url`, `weight`);
-  `POST /v1/events` logs impressions/clicks with a hashed install id;
-  `GET /v1/click/:id` 302-redirects through a signed URL for attribution.
-- **Client side (future `desktop/lib/ads.js`):** fetch the feed, cache
-  with an ETag, respect frequency caps and a "remind me later" dismiss
-  window, render creatives as plain DOM (title/image/CTA — never raw HTML
-  or a `<webview>`), and open clicks with `shell.openExternal` so nothing
-  loads inside the trusted renderer.
-- **There's already a rough version of this** on the `cursor/ldplayer-parity-02a9`
-  branch (`desktop/lib/ads.js` + `android/config/ads.json` in that branch's
-  history) — a weighted campaign picker, a dismiss-until timestamp, and a
-  local impression/click log. It's a reasonable starting skeleton, not
-  something to merge as-is: it has no server, no consent gate, and no Pro
-  bypass.
-- **Placements that don't cover the guest screen:** a bottom rail in
-  [`desktop/public/index.html`](../desktop/public/index.html), a boot
-  interstitial (shown only while an instance is cold-booting — genuinely
-  idle time, and the highest-attention placement since the user is
-  waiting), and a "Game Center" sidebar panel of affiliate/CPI offers next
-  to the existing `data-panel` tabs.
+- **Server side ([`monetize/server/`](../monetize/server/)):**
+  `GET /v1/campaigns` returns weighted creatives per slot with a
+  pre-signed, per-creative click URL; `POST /v1/events` logs
+  impressions/clicks with a hashed install id; `GET /v1/click/:id?t=token`
+  verifies the signed token and 302-redirects for attribution;
+  `GET /v1/report` aggregates impressions/CTR/estimated revenue. See
+  [`monetize/README.md`](../monetize/README.md) for the full endpoint
+  list and how to run it — end-to-end tested against a live instance via
+  curl (campaigns, ETag 304s, click resolution, tamper rejection, events,
+  postback, report).
+- **Client side ([`desktop/lib/ads.js`](../desktop/lib/ads.js)):** fetches
+  the feed with ETag caching, falls back to a bundled house config
+  ([`desktop/config/ads.json`](../desktop/config/ads.json), `serverUrl`
+  empty by default) when no server is configured or reachable, respects a
+  per-slot session cap and a 24h dismiss window (the persistent rail is
+  cap-exempt — see the comment in `ads.js` for why), and hard
+  short-circuits to no ads at all on Pro tier or without explicit
+  consent. Creatives are rendered via `textContent`/`img.src` only —
+  never `innerHTML` — and clicks resolve through `oe:ads-click` →
+  `shell.openExternal`, never loaded inside the trusted renderer.
+- **Placements that never cover the guest screen:** a bottom rail and a
+  boot-time interstitial in
+  [`desktop/public/index.html`](../desktop/public/index.html), and the
+  Game Center panel below.
 - **Pros:** full control, no ad-network approval process, works from day
   one with just direct/affiliate deals. **Cons:** you are the ad sales
   team until volume justifies a network; low fill without direct deals.
 
-## Example 2 — Affiliate / CPI offer wall ("Game Center")
+## Example 2 — Affiliate / CPI offer wall ("Game Center") — implemented
 
-A dedicated sidebar panel listing other apps/games to install, cashback
-offers, or partner promos — the actual core of how LDPlayer/BlueStacks
-monetize an emulator, more than display ads. Each entry is a signed
-redirect (`/v1/click/:id?subid=<hashed-install-id>`) so the affiliate
-network can attribute installs back with a postback
-(`POST /v1/postback`, HMAC-verified). This reuses the Example 1 server
-and just adds an offer-list content type instead of banner creatives —
-no separate infrastructure. eCPMs in this category are typically far
-higher than passive display, but volume (active installs) is what makes
-a network deal worth pursuing in the first place.
+A sidebar panel (`#panel-gamecenter` in `index.html`, populated by
+`oe:ads-list` → `ads.js`'s `listCreativesForSlot("gamecenter")`) listing
+other apps/games to install, cashback offers, or partner promos — the
+actual core of how LDPlayer/BlueStacks monetize an emulator, more than
+display ads. Each entry resolves through the same signed-click path as
+Example 1; conversions come back via `POST /v1/postback`
+(`monetize/server/lib/hmac.mjs`'s `verifyBodySignature`, HMAC over the
+raw request body, one secret per partner in
+[`monetize/server/config/partners.json`](../monetize/server/config/partners.json)).
+No separate infrastructure from Example 1 — same server, same client.
 
-## Example 3 — Sponsored boot interstitial
+## Example 3 — Sponsored boot interstitial — implemented
 
-A single direct-sold placement shown while an instance cold-boots (which
-today takes on the order of a minute or more without KVM — see
-[`android/README.md`](../android/README.md)'s performance table). No ad
-network needed: this is something you'd sell directly once
-`GET /v1/report` (impressions, CTR, an eCPM estimate) gives you a rate
-card to sell from. Simplest to build (it's Example 1's rendering code with
-one more slot), but depends on having enough daily active installs to be
-worth a sponsor's time.
+A single direct-sold placement (`#boot-ad` in `index.html`, shown via
+`app.js`'s `showBootAd()`) while an instance cold-boots. `GET /v1/report`
+gives the impressions/CTR/estimated-revenue numbers to sell this slot
+from once there's real traffic.
 
-## Example 4 — Free/Pro tiers (not ads, but the usual complement)
+## Example 4 — Free/Pro tiers — implemented
 
-- **Free:** capped at 2 concurrent running instances, ads shown per
-  Example 1.
-- **Pro (subscription or one-time unlock):** no ads, uncapped instances,
-  maybe priority access to new features.
-- **Mechanics:** a future `desktop/lib/entitlement.js` verifies an
-  Ed25519-signed license key offline (keypair generated once, public key
-  baked into the client, private key never leaves the server that issues
-  keys after a Stripe/Paddle checkout on the website). No account system
-  or server-side session needed — just "does this key verify," which also
-  means it keeps working if the license server is ever down.
+- **Free:** capped at 2 concurrent running instances (enforced in
+  [`desktop/lib/openemu.js`](../desktop/lib/openemu.js)'s `start()` via
+  `entitlement.assertCanStartInstance`), ads shown per Example 1.
+- **Pro:** no ads, uncapped instances.
+- **Mechanics ([`desktop/lib/entitlement.js`](../desktop/lib/entitlement.js)):**
+  a license string is a base64url-encoded `{payload, signature}` object,
+  verified fully offline with `node:crypto`'s Ed25519 `verify()` against
+  the public key baked into
+  [`desktop/config/license-public-key.json`](../desktop/config/license-public-key.json)
+  at build time. [`monetize/licensing/keygen.mjs`](../monetize/licensing/keygen.mjs)
+  generates the keypair (private half gitignored, never committed);
+  [`monetize/licensing/issue-license.mjs`](../monetize/licensing/issue-license.mjs)
+  issues a key by hand after a sale, standing in for a real checkout
+  webhook until one exists (see ROADMAP). No account system or
+  server-side session — Pro keeps working even if `monetize/server`
+  disappears entirely. Verified directly: activation, tamper rejection,
+  expiry, and deactivation all round-trip correctly (see the commit that
+  introduced this file for the exact test transcript).
 - **Pros:** recurring revenue, doesn't depend on ad fill or CPMs.
-  **Cons:** needs a payment processor integration and a key-issuing
-  service; conversion rates for a still-unsigned, early-access desktop
-  app will be low until trust/polish catches up.
+  **Cons:** still needs real checkout automation (Stripe/Paddle) to not
+  require a manual key-issuing step per sale — see ROADMAP.
 
-## Example 5 — Rewarded unlock
+## Example 5 — Rewarded unlock — implemented
 
-"Watch a 30-second sponsor spot to unlock a 3rd instance for today." A
-bridge between Examples 1 and 4: monetizes the free tier while making the
-Pro pitch concrete (this is literally what Pro removes). Technically it's
-Example 1's creative renderer plus a timer and a temporary entitlement
-grant — no new infrastructure, just a new consumption flow.
+"Watch a 30-second sponsor spot to unlock a 3rd instance for today,"
+exposed as the rewarded card in the Game Center panel and as the
+fallback offered when `openemu.js` blocks a 3rd concurrent start on free
+tier. `desktop/lib/entitlement.js`'s `grantRewardedUnlock(hours)` sets a
+temporary expiring bonus slot; `ads.js`'s click resolver
+(`open-emulator://reward/instance-slot`) is what triggers it. No separate
+sponsor-video infrastructure exists yet — the current house creative is
+explicitly labeled "no real sponsor spot wired up yet" so this isn't
+mistaken for something it's not.
 
-## Example 6 — Website display ads + affiliate content (policy-clean, separate surface)
+## Example 6 — Website display ads + affiliate content (policy-clean, separate surface) — implemented
 
 The **only** place standard AdSense/Ad Manager tags are actually allowed.
-[`web/`](../web/) is already structured for this: `web/pages.json` is a
-manifest of static pages, so adding SEO-oriented "Play `<App>` on PC"
-content pages (each with a download CTA and, optionally, an affiliate
-link) is mechanical — write a fragment in `web/pages/`, add a manifest
-entry, rebuild. This is where most of the *traffic-driven* revenue in this
-space typically comes from (organic search into a landing page), not from
-the app itself.
+[`web/public/ads.js`](../web/public/ads.js) loads a standard AdSense unit
+into a site-wide slot, gated on both a real publisher id in
+`web/public/ad-config.json` (empty by default) and the consent banner
+(`web/public/consent.js`) being accepted. The `/games/<slug>` SEO template
+([`web/pages/games-example.html`](../web/pages/games-example.html), via
+`web/public/game-offers.js`) pulls a sponsored offer from the same
+`monetize/server` the desktop app's Game Center uses — one ad server, two
+surfaces. Adding more SEO pages is mechanical: write a fragment in
+`web/pages/`, add a `web/pages.json` entry, rebuild. This is where most of
+the *traffic-driven* revenue in this space typically comes from (organic
+search into a landing page), not from the app itself.
+
+## Turning it on
+
+1. Deploy [`monetize/server/`](../monetize/server/) somewhere reachable
+   (`node index.mjs` behind any reverse proxy — no build step, no
+   database). Set a real `CLICK_SIGNING_SECRET`.
+2. Run `node monetize/licensing/keygen.mjs` once to generate the license
+   keypair (this also writes the public half into
+   `desktop/config/license-public-key.json` for the next build).
+3. Point `desktop/config/ads.json`'s `serverUrl` at the deployed server.
+4. Fill in real campaigns in `monetize/server/config/campaigns.json`
+   (direct-sold or affiliate) and real partner secrets in
+   `monetize/server/config/partners.json`.
+5. Issue Pro keys by hand with `monetize/licensing/issue-license.mjs`
+   until real checkout automation exists (see ROADMAP).
+6. Watch `GET /v1/report` — that's the rate card. Impressions × slot
+   position tells you what a direct sponsor's boot-interstitial or rail
+   placement is actually worth once there's real traffic; nothing here
+   fabricates numbers to sell from before that traffic exists.
 
 ## What none of this should ever do
 

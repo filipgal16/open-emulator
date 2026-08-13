@@ -48,6 +48,31 @@ at all, regardless of how they're embedded. This is the main reason
 (self-hosted creatives, affiliate/CPI offers, a paid tier) from the
 **website**, where programmatic display ads are policy-compliant.
 
+## scrcpy-server: fetched too, but for a different reason
+
+[`desktop/lib/mirror.js`](../desktop/lib/mirror.js) downloads
+[scrcpy-server](https://github.com/Genymobile/scrcpy) from Genymobile's
+GitHub releases at first use, the same fetch-not-bundle shape as the
+Android SDK — but for a different reason. scrcpy is Apache-2.0, so
+bundling it would be *legally* fine, unlike the SDK. It's fetched anyway
+because pinning and verifying a ~700 KB per-device binary against a known
+SHA-256 (`SCRCPY_SERVER_SHA256` in `mirror.js`) is simpler than carrying a
+JVM binary in every installer, and it means a scrcpy security fix is one
+constant update away rather than a full app release. The Apache-2.0
+license text ships with attribution in
+[`docs/NOTICES.md`](NOTICES.md).
+
+## Why AdSense/Ad Manager still can't run inside the app, even now that ads are wired up
+
+[`docs/MONETIZATION.md`](MONETIZATION.md) documents a working, self-hosted
+ad server ([`monetize/server/`](../monetize/server/)) and client
+([`desktop/lib/ads.js`](../desktop/lib/ads.js)). That's a deliberate
+consequence of the AdSense restriction above, not a workaround pending a
+better one — Google's own network is not an available option inside a
+desktop Electron app under any configuration, so "self-hosted, JSON-only
+creatives, no third-party script in the renderer" is the compliant
+design, not a placeholder for one.
+
 ## The long-term fix: stop depending on Google's SDK entirely
 
 Fetching-not-bundling is compliant, but it's still a dependency on Google

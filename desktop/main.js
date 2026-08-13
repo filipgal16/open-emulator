@@ -3,6 +3,7 @@ const { app, BrowserWindow } = require("electron");
 const { registerIpc } = require("./lib/ipc");
 const setup = require("./lib/setup");
 const ads = require("./lib/ads");
+const mirror = require("./lib/mirror");
 
 // Two app processes would fight over the same adb/emulator console ports.
 if (!app.requestSingleInstanceLock()) {
@@ -53,6 +54,17 @@ app.on("second-instance", () => {
 
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
+});
+
+// A live mirror session (adb reverse tunnel + on-device scrcpy-server
+// process) has no reason to outlive the window watching it, unlike
+// emulator instances themselves, which are meant to keep running.
+app.on("before-quit", (event) => {
+  event.preventDefault();
+  mirror
+    .stopAllMirrors()
+    .catch(() => {})
+    .finally(() => app.exit(0));
 });
 
 app.on("activate", async () => {
