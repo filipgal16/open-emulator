@@ -3,15 +3,13 @@ const fsp = require("fs/promises");
 const net = require("net");
 const path = require("path");
 const { spawn } = require("child_process");
+const paths = require("./paths");
 
-const DESKTOP_ROOT = path.resolve(__dirname, "..");
-const REPO_ROOT = path.resolve(DESKTOP_ROOT, "..");
-const OPEN_EMU = path.join(REPO_ROOT, "android", "bin", "open-emu");
-const ANDROID_ROOT = path.join(REPO_ROOT, "android");
-const ANDROID_STATE = path.join(ANDROID_ROOT, "state");
-const ANDROID_KEYMAPS = path.join(ANDROID_ROOT, "config", "keymaps");
-const DATA_DIR = path.join(DESKTOP_ROOT, "data");
-const UPLOAD_DIR = path.join(DESKTOP_ROOT, "uploads");
+const OPEN_EMU = paths.openEmuBin();
+const ANDROID_KEYMAPS = path.join(paths.androidCodeRoot(), "config", "keymaps");
+const ANDROID_STATE = path.join(paths.androidDataRoot(), "state");
+const DATA_DIR = paths.desktopDataRoot();
+const UPLOAD_DIR = paths.desktopUploadsRoot();
 const SCREENSHOT_FILE = path.join(DATA_DIR, "screen.png");
 const PERFORMANCE_FILE = path.join(DATA_DIR, "performance.json");
 const INSTANCES_FILE = path.join(DATA_DIR, "instances.json");
@@ -80,6 +78,7 @@ function commandEnv(extra = {}) {
     ANDROID_CORES: String(perf.cores || DEFAULT_PERFORMANCE.cores),
     ANDROID_MEMORY_MB: String(perf.memory || DEFAULT_PERFORMANCE.memory),
     ANDROID_GPU_MODE: String(perf.gpu || DEFAULT_PERFORMANCE.gpu),
+    ...paths.androidEnvOverrides(),
     ...extra
   };
   return env;
@@ -94,7 +93,7 @@ function runOpenEmu(args, options = {}) {
   const timeoutMs = options.timeoutMs || 30000;
   return new Promise((resolve, reject) => {
     const child = spawn(OPEN_EMU, args, {
-      cwd: REPO_ROOT,
+      cwd: paths.resourcesRoot(),
       env: commandEnv(options.env),
       stdio: ["pipe", "pipe", "pipe"]
     });
@@ -267,7 +266,7 @@ async function start(options = {}) {
   const args = [...instanceFlag(name), "start"];
   if (options.cold) args.push("--cold");
   spawn(OPEN_EMU, args, {
-    cwd: REPO_ROOT,
+    cwd: paths.resourcesRoot(),
     env: commandEnv({ ANDROID_INSTANCE: name }),
     stdio: "ignore",
     detached: true

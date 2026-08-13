@@ -607,6 +607,21 @@ pre {
   color: var(--muted);
 }
 
+.update-note {
+  display: block;
+  width: 100%;
+  margin-top: 8px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--mint);
+  background: var(--mint-soft);
+  color: var(--mint-deep);
+  font-size: 0.74rem;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: center;
+}
+
 .toast {
   position: fixed;
   right: calc(var(--sidebar-w) + 16px);

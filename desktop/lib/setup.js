@@ -2,22 +2,22 @@ const fs = require("fs");
 const fsp = require("fs/promises");
 const path = require("path");
 const { spawn } = require("child_process");
+const paths = require("./paths");
 const { shortcutInstalled, installShortcut } = require("./shortcut");
 
-const DESKTOP_ROOT = path.resolve(__dirname, "..");
-const REPO_ROOT = path.resolve(DESKTOP_ROOT, "..");
-const ANDROID_ROOT = path.join(REPO_ROOT, "android");
-const SETUP_FILE = path.join(DESKTOP_ROOT, "data", "setup.json");
-const OPEN_EMU = path.join(ANDROID_ROOT, "bin", "open-emu");
-const FETCH_SCRIPT = path.join(ANDROID_ROOT, "scripts", "fetch_android.sh");
-const SETUP_AVD = path.join(ANDROID_ROOT, "scripts", "setup_avd.sh");
+const ANDROID_CODE_ROOT = paths.androidCodeRoot();
+const SETUP_FILE = path.join(paths.desktopDataRoot(), "setup.json");
+const OPEN_EMU = paths.openEmuBin();
+const FETCH_SCRIPT = path.join(ANDROID_CODE_ROOT, "scripts", "fetch_android.sh");
+const SETUP_AVD = path.join(ANDROID_CODE_ROOT, "scripts", "setup_avd.sh");
+const SDK_LICENSE_URL = "https://developer.android.com/studio/terms";
 
 function sdkPresent() {
-  return fs.existsSync(path.join(ANDROID_ROOT, "sdk", "emulator", "emulator"));
+  return fs.existsSync(path.join(paths.androidDataRoot(), "sdk", "emulator", "emulator"));
 }
 
 function avdPresent() {
-  return fs.existsSync(path.join(ANDROID_ROOT, "avd", "OpenEmulator_API30.avd"));
+  return fs.existsSync(path.join(paths.androidDataRoot(), "avd", "OpenEmulator_API30.avd"));
 }
 
 function readSetup() {
@@ -42,9 +42,22 @@ async function setupStatus() {
     completed: Boolean(saved.completed) && sdk && avd,
     sdk,
     avd,
+    sdkLicenseAccepted: Boolean(saved.sdkLicenseAccepted),
+    sdkLicenseUrl: SDK_LICENSE_URL,
     shortcut: shortcutInstalled(),
     saved
   };
+}
+
+async function acceptSdkLicense(accepted) {
+  const current = readSetup();
+  const next = {
+    ...current,
+    sdkLicenseAccepted: Boolean(accepted),
+    sdkLicenseAcceptedAt: accepted ? new Date().toISOString() : null
+  };
+  await writeSetup(next);
+  return { ok: true, sdkLicenseAccepted: next.sdkLicenseAccepted };
 }
 
 function parseKv(text) {
@@ -57,11 +70,11 @@ function parseKv(text) {
   return out;
 }
 
-function runScript(command, args, onLine, timeoutMs) {
+function runScript(command, args, onLine, timeoutMs, extraEnv = {}) {
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, {
-      cwd: REPO_ROOT,
-      env: { ...process.env, ANDROID_HEADLESS: "1" },
+      cwd: paths.resourcesRoot(),
+      env: { ...process.env, ANDROID_HEADLESS: "1", ...paths.androidEnvOverrides(), ...extraEnv },
       stdio: ["ignore", "pipe", "pipe"]
     });
     let stdout = "";
@@ -109,11 +122,18 @@ async function hostCheck(onLine) {
 async function runStep(step, onLine) {
   if (step === "host") return hostCheck(onLine);
   if (step === "fetch") {
+    if (!readSetup().sdkLicenseAccepted) {
+      throw new Error(
+        `Accept the Android SDK License Agreement first (${SDK_LICENSE_URL}).`
+      );
+    }
     if (sdkPresent()) {
       onLine && onLine("SDK already present — skipping download.");
       return { ok: true, skipped: true };
     }
-    return runScript(FETCH_SCRIPT, [], onLine, 2 * 60 * 60 * 1000);
+    return runScript(FETCH_SCRIPT, [], onLine, 2 * 60 * 60 * 1000, {
+      ANDROID_SDK_LICENSE_ACCEPTED: "1"
+    });
   }
   if (step === "avd") {
     const result = await runScript(SETUP_AVD, [], onLine, 10 * 60 * 1000);
@@ -129,6 +149,7 @@ async function runStep(step, onLine) {
 
 async function complete(options = {}) {
   const next = {
+    ...readSetup(),
     completed: true,
     completedAt: new Date().toISOString(),
     shortcut: Boolean(options.shortcut)
@@ -142,9 +163,11 @@ async function complete(options = {}) {
 
 module.exports = {
   SETUP_FILE,
+  SDK_LICENSE_URL,
   setupStatus,
   runStep,
   complete,
+  acceptSdkLicense,
   sdkPresent,
   avdPresent
 };

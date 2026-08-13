@@ -2,23 +2,34 @@ const fs = require("fs");
 const fsp = require("fs/promises");
 const os = require("os");
 const path = require("path");
+const paths = require("./paths");
 
-const DESKTOP_ROOT = path.resolve(__dirname, "..");
-const REPO_ROOT = path.resolve(DESKTOP_ROOT, "..");
-const LAUNCHER = path.join(DESKTOP_ROOT, "bin", "open-emulator");
-const ICON = path.join(REPO_ROOT, "brand", "logo", "app-icon.svg");
+const DEV_LAUNCHER = path.join(paths.DESKTOP_ROOT, "bin", "open-emulator");
+
+function launcherExec() {
+  return paths.launcherExec(DEV_LAUNCHER);
+}
+
+function iconPath() {
+  return path.join(paths.brandRoot(), "logo", "app-icon.svg");
+}
 
 function desktopEntry() {
   return `[Desktop Entry]
 Type=Application
 Name=open-emulator
 Comment=Mint Android emulator — start isolated machines
-Exec=${LAUNCHER}
-Icon=${ICON}
+Exec=${quoteExec(launcherExec())}
+Icon=${iconPath()}
 Terminal=false
 Categories=Development;Emulator;
 StartupWMClass=open-emulator
 `;
+}
+
+function quoteExec(value) {
+  // .desktop Exec= values are shell-ish; quote so paths with spaces survive.
+  return /\s/.test(value) ? `"${value}"` : value;
 }
 
 async function writeDesktopFile(target) {
@@ -53,4 +64,4 @@ function shortcutInstalled() {
   return fs.existsSync(path.join(home, ".local", "share", "applications", "open-emulator.desktop"));
 }
 
-module.exports = { installShortcut, shortcutInstalled, LAUNCHER, ICON };
+module.exports = { installShortcut, shortcutInstalled, launcherExec, iconPath };

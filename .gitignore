@@ -8,7 +8,7 @@ android/**/*.img
 android/**/*.qcow2
 !android/apps/.gitkeep
 
-build/
+/build/
 *.o
 *.bin
 .open-vmm*
@@ -18,3 +18,9 @@ build/
 desktop/node_modules/
 desktop/data/
 desktop/uploads/
+# desktop/build/ holds the committed source icon for electron-builder — only
+# its packaged output is generated/ignored.
+desktop/dist-electron/
+
+# Generated marketing site
+web/dist/

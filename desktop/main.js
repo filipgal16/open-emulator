@@ -3,6 +3,14 @@ const { app, BrowserWindow } = require("electron");
 const { registerIpc } = require("./lib/ipc");
 const setup = require("./lib/setup");
 
+// Two app processes would fight over the same adb/emulator console ports.
+if (!app.requestSingleInstanceLock()) {
+  app.quit();
+}
+
+app.setName("open-emulator");
+app.setAppUserModelId("com.openemulator.desktop");
+
 let mainWindow = null;
 
 function createWindow(page) {
@@ -31,6 +39,12 @@ app.whenReady().then(async () => {
   registerIpc(() => mainWindow);
   const status = await setup.setupStatus();
   createWindow(status.completed ? "index.html" : "wizard.html");
+});
+
+app.on("second-instance", () => {
+  if (!mainWindow) return;
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.focus();
 });
 
 app.on("window-all-closed", () => {
