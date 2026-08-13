@@ -1,0 +1,55 @@
+name: Build desktop installers
+
+# Builds unsigned installers for every platform and attaches them as workflow
+# artifacts. Nothing is published or auto-updated from here yet — see
+# docs/ROADMAP.md for what code signing + a real update feed need before
+# these can go out as an official GitHub Release.
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch: {}
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            script: dist:linux
+            artifact: linux-installers
+            glob: |
+              desktop/dist-electron/*.AppImage
+              desktop/dist-electron/*.deb
+          - os: windows-latest
+            script: dist:win
+            artifact: windows-installers
+            glob: desktop/dist-electron/*.exe
+          - os: macos-latest
+            script: dist:mac
+            artifact: macos-installers
+            glob: |
+              desktop/dist-electron/*.dmg
+              desktop/dist-electron/*.zip
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install desktop dependencies
+        working-directory: desktop
+        run: npm ci
+
+      - name: Build (${{ matrix.script }})
+        working-directory: desktop
+        run: npm run ${{ matrix.script }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.glob }}
+          if-no-files-found: error

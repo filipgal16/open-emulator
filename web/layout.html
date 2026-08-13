@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{TITLE}}</title>
+    <meta name="description" content="{{DESCRIPTION}}">
+    <meta name="color-scheme" content="light">
+    <link rel="icon" href="/brand/logo/mark.svg" type="image/svg+xml">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=IBM+Plex+Mono:wght@400;500&family=Sora:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/brand/tokens.css">
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+    <header class="site-header">
+      <div class="site-header-inner">
+        <a class="site-brand" href="/">
+          <img src="/brand/logo/mark.svg" width="28" height="28" alt="">
+          <span>open-emulator</span>
+        </a>
+        <nav class="site-nav" aria-label="Primary">
+          {{NAV}}
+          <a class="site-nav-cta" href="/download/">Download</a>
+        </nav>
+      </div>
+    </header>
+
+    <main id="main">
+      {{CONTENT}}
+    </main>
+
+    <footer class="site-footer">
+      <div class="site-footer-inner">
+        <div class="site-footer-brand">
+          <img src="/brand/logo/wordmark.svg" width="160" height="32" alt="open-emulator">
+          <p>An open, mint-branded Android emulator with isolated multi-instance virtual machines. No ads, no account, free while in early access.</p>
+        </div>
+        <div class="site-footer-links">
+          <div>
+            <span class="eyebrow">Product</span>
+            <a href="/">Overview</a>
+            <a href="/download/">Download</a>
+            <a href="https://github.com/filipgal16/open-emulator">Source (GitHub)</a>
+          </div>
+          <div>
+            <span class="eyebrow">Legal</span>
+            <a href="/legal/terms/">Terms</a>
+            <a href="/legal/privacy/">Privacy</a>
+            <a href="/legal/eula/">End-user terms</a>
+            <a href="/legal/notices/">Third-party notices</a>
+          </div>
+        </div>
+      </div>
+      <p class="site-footer-fine">open-emulator is not affiliated with, endorsed by, or sponsored by Google. Android is a trademark of Google LLC.</p>
+    </footer>
+  </body>
+</html>

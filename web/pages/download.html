@@ -1,0 +1,42 @@
+<section class="section" style="padding-top: 56px;">
+  <span class="eyebrow">Download</span>
+  <h2>Get open-emulator</h2>
+  <p class="lede">Installers are built automatically from <a href="https://github.com/filipgal16/open-emulator/blob/main/.github/workflows/release.yml">CI</a> whenever a version is tagged. They are not code-signed yet, so your OS will show an "unknown publisher" warning the first time — see the note under each platform.</p>
+
+  <div class="platform-grid" id="platform-grid">
+    <article class="platform-card recommended" data-platform="linux">
+      <span class="tag">Available now</span>
+      <h3>Linux</h3>
+      <p>AppImage (portable, self-registers a menu shortcut on first run) or a .deb for Debian/Ubuntu.</p>
+      <a class="btn btn-primary" href="https://github.com/filipgal16/open-emulator/releases">Go to releases</a>
+    </article>
+    <article class="platform-card" data-platform="windows">
+      <span class="tag">Installer config ready</span>
+      <h3>Windows</h3>
+      <p>An NSIS installer is configured and builds in CI on tagged releases. Unsigned installers trigger SmartScreen — click "More info → Run anyway".</p>
+      <a class="btn btn-ghost" href="https://github.com/filipgal16/open-emulator/releases">Check releases</a>
+    </article>
+    <article class="platform-card" data-platform="mac">
+      <span class="tag">Installer config ready</span>
+      <h3>macOS</h3>
+      <p>A .dmg and .zip are configured and build in CI. Unsigned/unnotarized builds need a right-click → Open the first time (Gatekeeper).</p>
+      <a class="btn btn-ghost" href="https://github.com/filipgal16/open-emulator/releases">Check releases</a>
+    </article>
+  </div>
+
+  <span class="eyebrow">Prefer to build it yourself?</span>
+  <div class="build-steps">
+    <span class="line comment"># clone, install desktop deps, and either run from source…</span>
+    <span class="line">git clone https://github.com/filipgal16/open-emulator</span>
+    <span class="line">cd open-emulator/desktop &amp;&amp; npm install &amp;&amp; npm start</span>
+    <span class="line"></span>
+    <span class="line comment"># …or build an installer for your own OS</span>
+    <span class="line">npm run dist         # Linux: AppImage + deb</span>
+    <span class="line">npm run dist:win      # Windows: nsis (run on Windows or in CI)</span>
+    <span class="line">npm run dist:mac      # macOS: dmg + zip (run on macOS or in CI)</span>
+  </div>
+
+  <p class="lede" style="margin-top: 28px;">First launch opens a themed setup wizard: a host check, an explicit Android SDK License Agreement step (nothing downloads before you accept it), the ~4 GiB guest fetch, and your first isolated machine.</p>
+</section>
+
+<script src="/download.js"></script>

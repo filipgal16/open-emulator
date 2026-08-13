@@ -1,6 +1,14 @@
 # open-emulator
 
-Step-by-step open Android emulator. **This repository currently implements step 1: a Type-2 virtual machine monitor (hypervisor userspace).**
+A mint-branded, LDPlayer-class Android emulator: a native desktop shell
+around isolated, multi-instance Android virtual machines, built on top of
+a from-scratch Type-2 virtual machine monitor. **Early access — no ads, no
+account, no telemetry.** See [Product status](#product-status) below for
+what that means and what's next.
+
+The rest of this README covers the low-level VMM this is built on. For the
+product itself — install wizard, tabs, isolated machines, packaging — see
+[Brand & desktop shell](#brand--desktop-shell).
 
 ## What this is
 
@@ -65,8 +73,10 @@ include/     Public headers (vmm, serial, soft CPU)
 src/         VMM, KVM backend, soft CPU, serial device
 guest/       Guest assembly source
 android/     Android 11 guest import + run scripts
-desktop/     Mint-branded host control shell (GUI)
+desktop/     Mint-branded host control shell (GUI, packaged with electron-builder)
 brand/       Color tokens, logo, typography guidelines
+web/         Static marketing/download site (see web/README.md)
+docs/        Roadmap, monetization plan, legal/privacy/EULA/notices
 scripts/     Guest assembler + smoke test
 build/       Build outputs
 ```
@@ -94,16 +104,22 @@ See [`android/README.md`](android/README.md).
 
 ## Next steps
 
-1. Grow `open-vmm` toward long mode + virtio/goldfish (replace Emulator QEMU)
-2. Desktop UI: APK drag-drop, key mapping, audio routing — see [`desktop/`](desktop/) (mint brand)
-3. Isolated machines via `open-emu instance` and the top tab bar
+See [`docs/ROADMAP.md`](docs/ROADMAP.md) for the full breakdown. Short
+version: sign and publish real installers, then live screen mirroring
+(the biggest gap versus a "real" LDPlayer-class feel), then the
+monetization plan in [`docs/MONETIZATION.md`](docs/MONETIZATION.md), then
+a cross-platform (Windows-first) control plane, then growing `open-vmm`
+itself toward an independent guest image that no longer depends on
+Google's Android SDK at all.
 
 ## Brand & desktop shell
 
 Host-side identity (mint palette, logo, fonts) lives in [`brand/`](brand/).
 The control GUI is a **native window**: guest screen, **top tabs** (one per
 isolated machine), and a mint **sidebar**. First launch opens a themed
-install wizard. A desktop shortcut is optional.
+install wizard — host check, an explicit Android SDK License Agreement
+step (nothing downloads before that's accepted), the SDK fetch, and your
+first isolated machine. A desktop shortcut is optional.
 
 ```bash
 cd desktop && npm install && npm start
@@ -115,3 +131,37 @@ cd desktop && npm install && npm start
 ./android/bin/open-emu instance create game-2
 ./android/bin/open-emu --instance game-2 start
 ```
+
+## Distribution & website
+
+```bash
+make dist   # cd desktop && npm run dist — AppImage + deb via electron-builder
+make web    # node web/build.mjs — builds the static site into web/dist/
+```
+
+[`desktop/electron-builder.yml`](desktop/electron-builder.yml) ships only
+the `android/` control-plane code and `brand/` assets inside installers —
+never the SDK, AVDs, or any other runtime data (see
+[`desktop/lib/paths.js`](desktop/lib/paths.js) for where that lives once
+packaged). [`.github/workflows/release.yml`](.github/workflows/release.yml)
+builds all three platforms' installers in CI on a tagged push. See
+[`web/README.md`](web/README.md) for the site and
+[`docs/ROADMAP.md`](docs/ROADMAP.md) for what's left before these are
+signed, published installers instead of CI artifacts.
+
+## Product status
+
+No ads, no account, no telemetry, no paid tier — today. That's a
+deliberate starting point, not the end state:
+
+- [`docs/MONETIZATION.md`](docs/MONETIZATION.md) — concrete examples of
+  how ads/monetization could work later (self-hosted ad rail, affiliate
+  offers, a Pro tier, website display ads), none of them wired up yet.
+- [`docs/ROADMAP.md`](docs/ROADMAP.md) — sequencing for that plus
+  distribution, screen mirroring, and cross-platform support.
+- [`LICENSE`](LICENSE) (Apache-2.0) and [`docs/NOTICES.md`](docs/NOTICES.md)
+  — this project's own license and third-party attributions.
+- [`docs/LEGAL.md`](docs/LEGAL.md) — why the Android SDK is fetched, never
+  bundled, and why standard AdSense/Ad Manager can't run inside the app.
+- [`docs/EULA.md`](docs/EULA.md) / [`docs/PRIVACY.md`](docs/PRIVACY.md) —
+  end-user terms and what is (and isn't) collected.

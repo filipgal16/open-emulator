@@ -1,0 +1,24 @@
+<article class="prose">
+  <h1>Third-party notices</h1>
+  <p class="updated">Last updated 2026-08-13</p>
+
+  <p>open-emulator's own code is Apache-2.0 licensed. Two categories of third-party material are used alongside it and aren't covered by that license.</p>
+
+  <h2>Bundled inside the installer</h2>
+  <p>The desktop app's own code has no third-party npm dependencies — only Node.js and browser built-ins. The only third-party pieces inside an installer:</p>
+  <table>
+    <tr><th>Component</th><th>License</th><th>Notes</th></tr>
+    <tr><td>Electron</td><td>MIT</td><td>Provides the app runtime (Chromium + Node.js)</td></tr>
+    <tr><td>Node.js</td><td>MIT</td><td>Bundled inside Electron</td></tr>
+  </table>
+
+  <h2>Downloaded at setup time, never bundled</h2>
+  <table>
+    <tr><th>Component</th><th>Source</th><th>License</th></tr>
+    <tr><td>Android SDK, Emulator, platform-tools, system image</td><td>Google, via <code>sdkmanager</code></td><td><a href="https://developer.android.com/studio/terms">Android SDK License Agreement</a></td></tr>
+  </table>
+  <p>That agreement prohibits redistributing, bundling, or sublicensing the SDK. Every install fetches its own copy directly from Google's servers, after a person explicitly accepts the license in the setup wizard. It is never copied into this project's repository or into any installer this project builds.</p>
+
+  <h2>Trademarks</h2>
+  <p>Apache-2.0 covers the code; it does not grant rights to the "open-emulator" name, wordmark, or mint leaf-device mark. "Android" is a trademark of Google LLC. This project is not affiliated with, endorsed by, or sponsored by Google.</p>
+</article>

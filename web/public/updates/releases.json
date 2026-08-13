@@ -1,0 +1,5 @@
+{
+  "_comment": "Placeholder update feed. Point desktop/config/update.json's feedUrl at this file's deployed URL (e.g. https://<your-domain>/updates/releases.json) once real signed installers are published — see docs/ROADMAP.md.",
+  "version": "0.4.0",
+  "url": "https://github.com/filipgal16/open-emulator/releases"
+}

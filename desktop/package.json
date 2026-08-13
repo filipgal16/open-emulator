@@ -5,7 +5,11 @@
   "description": "Mint-branded emulator shell with wizard, tabs, and isolated VMs.",
   "main": "main.js",
   "desktopName": "open-emulator",
-  "author": "open-emulator contributors",
+  "homepage": "https://github.com/filipgal16/open-emulator",
+  "author": {
+    "name": "open-emulator contributors",
+    "email": "filipgal16@users.noreply.github.com"
+  },
   "license": "Apache-2.0",
   "scripts": {
     "start": "electron .",
