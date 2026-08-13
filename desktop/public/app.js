@@ -12,7 +12,18 @@ const state = {
   activePanel: "runtime",
   activeInstance: "main",
   instances: [],
-  openTabs: ["main"]
+  openTabs: ["main"],
+  mirror: {
+    active: false,
+    instance: null,
+    decoder: null,
+    configuredCodec: null,
+    configBytes: null,
+    width: 0,
+    height: 0,
+    pointerDown: false,
+    pointerId: 0
+  }
 };
 
 function invoke(channel, payload) {
@@ -395,6 +406,9 @@ function findInstance(name) {
 }
 
 function openTab(name) {
+  if (state.mirror.active && state.mirror.instance !== name) {
+    stopLiveMirror().catch(() => {});
+  }
   if (!state.openTabs.includes(name)) state.openTabs.push(name);
   state.activeInstance = name;
   renderTabs();
@@ -430,6 +444,9 @@ function renderTabs() {
 }
 
 function closeTab(name) {
+  if (state.mirror.active && state.mirror.instance === name) {
+    stopLiveMirror().catch(() => {});
+  }
   state.openTabs = state.openTabs.filter((item) => item !== name);
   if (!state.openTabs.length) state.openTabs = ["main"];
   if (state.activeInstance === name) {
@@ -908,6 +925,269 @@ async function wireConsentModal() {
   });
 }
 
+// --- Live mirror (scrcpy protocol) ---------------------------------------
+// Opt-in alternative to the screenshot-polling loop above. See
+// desktop/lib/mirror.js for the wire-protocol side; this is purely the
+// WebCodecs decode + canvas render + pointer/keyboard capture side.
+
+const ANDROID_KEYCODES = {
+  Enter: 66,
+  Backspace: 67,
+  Tab: 61,
+  " ": 62,
+  ArrowLeft: 21,
+  ArrowRight: 22,
+  ArrowUp: 19,
+  ArrowDown: 20
+};
+
+function androidKeycodeFor(event) {
+  if (/^Key[A-Z]$/.test(event.code)) return 29 + (event.code.charCodeAt(3) - 65); // KEYCODE_A..Z
+  if (/^Digit[0-9]$/.test(event.code)) return 7 + (event.code.charCodeAt(5) - 48); // KEYCODE_0..9
+  return ANDROID_KEYCODES[event.key] ?? null;
+}
+
+function findAnnexBNals(data) {
+  const nals = [];
+  let i = 0;
+  while (i < data.length - 4) {
+    if (data[i] === 0 && data[i + 1] === 0 && data[i + 2] === 0 && data[i + 3] === 1) {
+      nals.push({ offset: i, headerLen: 4, type: data[i + 4] & 0x1f });
+      i += 4;
+    } else if (data[i] === 0 && data[i + 1] === 0 && data[i + 2] === 1) {
+      nals.push({ offset: i, headerLen: 3, type: data[i + 3] & 0x1f });
+      i += 3;
+    } else {
+      i += 1;
+    }
+  }
+  return nals;
+}
+
+function deriveH264CodecString(configBytes) {
+  const sps = findAnnexBNals(configBytes).find((n) => n.type === 7);
+  if (!sps) return null;
+  const p = configBytes.subarray(sps.offset + sps.headerLen + 1, sps.offset + sps.headerLen + 4);
+  return `avc1.${Array.from(p).map((b) => b.toString(16).padStart(2, "0")).join("")}`;
+}
+
+function ensureMirrorDecoder(codecString) {
+  const m = state.mirror;
+  if (m.decoder && m.configuredCodec === codecString) return m.decoder;
+  if (m.decoder) {
+    try {
+      m.decoder.close();
+    } catch {
+      /* already closed */
+    }
+  }
+  const canvas = $("#guest-canvas");
+  m.decoder = new VideoDecoder({
+    output: (frame) => {
+      canvas.getContext("2d").drawImage(frame, 0, 0, canvas.width, canvas.height);
+      frame.close();
+    },
+    error: (err) => {
+      console.error("mirror decode error", err);
+      stopLiveMirror().catch(() => {});
+      toast("Live mirror decode error — falling back to screenshots", "warn");
+    }
+  });
+  m.decoder.configure({ codec: codecString, avc: { format: "annexb" } });
+  m.configuredCodec = codecString;
+  return m.decoder;
+}
+
+function onMirrorEvent(payload) {
+  const m = state.mirror;
+  if (!m.active || payload.instance !== m.instance) return;
+
+  if (payload.kind === "session") {
+    m.width = payload.width;
+    m.height = payload.height;
+    const canvas = $("#guest-canvas");
+    canvas.width = payload.width;
+    canvas.height = payload.height;
+    return;
+  }
+
+  if (payload.kind === "error") {
+    toast(payload.error || "Live mirror error", "warn");
+    stopLiveMirror().catch(() => {});
+    return;
+  }
+
+  if (payload.kind === "close") {
+    stopLiveMirror().catch(() => {});
+    return;
+  }
+
+  if (payload.kind !== "frame") return;
+
+  const data = payload.data instanceof Uint8Array ? payload.data : new Uint8Array(payload.data);
+  if (payload.config) {
+    m.configBytes = data;
+    return;
+  }
+  if (!m.configBytes) return; // wait for the config packet before decoding anything
+
+  let decoder;
+  try {
+    const codecString = deriveH264CodecString(m.configBytes) || "avc1.42e01f";
+    decoder = ensureMirrorDecoder(codecString);
+  } catch (err) {
+    console.error("codec setup failed", err);
+    return;
+  }
+  if (decoder.state !== "configured") return;
+
+  const chunkData = payload.keyFrame ? concatBytes(m.configBytes, data) : data;
+  try {
+    decoder.decode(
+      new EncodedVideoChunk({
+        type: payload.keyFrame ? "key" : "delta",
+        timestamp: payload.pts || 0,
+        data: chunkData
+      })
+    );
+  } catch (err) {
+    console.error("decode() threw", err);
+  }
+}
+
+function concatBytes(a, b) {
+  const out = new Uint8Array(a.length + b.length);
+  out.set(a, 0);
+  out.set(b, a.length);
+  return out;
+}
+
+function canvasToVideoCoords(canvas, event) {
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = canvas.width / rect.width;
+  const scaleY = canvas.height / rect.height;
+  return {
+    x: (event.clientX - rect.left) * scaleX,
+    y: (event.clientY - rect.top) * scaleY
+  };
+}
+
+function wireMirrorInput() {
+  const canvas = $("#guest-canvas");
+  const send = (body) => invoke("mirror-input", { instance: state.mirror.instance, ...body }).catch(() => {});
+
+  canvas.addEventListener("pointerdown", (event) => {
+    if (!state.mirror.active) return;
+    canvas.focus();
+    canvas.setPointerCapture(event.pointerId);
+    state.mirror.pointerDown = true;
+    const { x, y } = canvasToVideoCoords(canvas, event);
+    send({ type: "touch-down", x, y, width: state.mirror.width, height: state.mirror.height });
+  });
+  canvas.addEventListener("pointermove", (event) => {
+    if (!state.mirror.active || !state.mirror.pointerDown) return;
+    const { x, y } = canvasToVideoCoords(canvas, event);
+    send({ type: "touch-move", x, y, width: state.mirror.width, height: state.mirror.height });
+  });
+  const release = (event) => {
+    if (!state.mirror.active || !state.mirror.pointerDown) return;
+    state.mirror.pointerDown = false;
+    const { x, y } = canvasToVideoCoords(canvas, event);
+    send({ type: "touch-up", x, y, width: state.mirror.width, height: state.mirror.height });
+  };
+  canvas.addEventListener("pointerup", release);
+  canvas.addEventListener("pointercancel", release);
+  canvas.addEventListener("wheel", (event) => {
+    if (!state.mirror.active) return;
+    event.preventDefault();
+    const { x, y } = canvasToVideoCoords(canvas, event);
+    send({
+      type: "scroll",
+      x,
+      y,
+      width: state.mirror.width,
+      height: state.mirror.height,
+      hscroll: -event.deltaX / 100,
+      vscroll: -event.deltaY / 100
+    });
+  });
+  canvas.addEventListener("keydown", (event) => {
+    if (!state.mirror.active) return;
+    event.preventDefault();
+    if (event.key === "Escape") {
+      send({ type: "back" });
+      return;
+    }
+    const keycode = androidKeycodeFor(event);
+    if (keycode != null) send({ type: "key", action: 0, keycode });
+  });
+  canvas.addEventListener("keyup", (event) => {
+    if (!state.mirror.active) return;
+    event.preventDefault();
+    if (event.key === "Escape") return;
+    const keycode = androidKeycodeFor(event);
+    if (keycode != null) send({ type: "key", action: 1, keycode });
+  });
+}
+
+async function startLiveMirror() {
+  const name = activeName();
+  try {
+    await invoke("mirror-start", name);
+    state.mirror.active = true;
+    state.mirror.instance = name;
+    $("#guest-screen").hidden = true;
+    $("#guest-canvas").hidden = false;
+    $("#live-toggle").textContent = "Live: on";
+    $("#live-toggle").classList.add("on");
+    if (state.screenshotTimer) {
+      clearInterval(state.screenshotTimer);
+      state.screenshotTimer = null;
+    }
+  } catch (err) {
+    showError(err);
+  }
+}
+
+async function stopLiveMirror() {
+  const name = state.mirror.instance || activeName();
+  state.mirror.active = false;
+  state.mirror.instance = null;
+  state.mirror.configBytes = null;
+  if (state.mirror.decoder) {
+    try {
+      state.mirror.decoder.close();
+    } catch {
+      /* already closed */
+    }
+    state.mirror.decoder = null;
+    state.mirror.configuredCodec = null;
+  }
+  $("#guest-screen").hidden = false;
+  $("#guest-canvas").hidden = true;
+  $("#live-toggle").textContent = "Live: off";
+  $("#live-toggle").classList.remove("on");
+  if (!state.screenshotTimer) {
+    state.screenshotTimer = setInterval(() => refreshScreenshot().catch(() => {}), 9000);
+  }
+  await invoke("mirror-stop", name).catch(() => {});
+}
+
+function wireLiveToggle() {
+  if (typeof VideoDecoder === "undefined") {
+    $("#live-toggle").hidden = true;
+    return;
+  }
+  $("#live-toggle").addEventListener("click", () => {
+    if (state.mirror.active) stopLiveMirror().catch(() => {});
+    else startLiveMirror();
+  });
+  wireMirrorInput();
+  if (window.oe && typeof window.oe.onMirrorEvent === "function") {
+    window.oe.onMirrorEvent(onMirrorEvent);
+  }
+}
+
 async function boot() {
   wireNavigation();
   wireViewport();
@@ -920,6 +1200,7 @@ async function boot() {
   wireFiles();
   wireLocation();
   wireGameCenter();
+  wireLiveToggle();
 
   await Promise.allSettled([
     refreshStatus(),

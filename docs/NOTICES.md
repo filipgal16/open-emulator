@@ -8,26 +8,28 @@ alongside it and are **not** covered by that license.
 
 ## Bundled at build time
 
-The packaged desktop app's own runtime code has **no third-party npm
-dependencies** — [`desktop/lib/`](../desktop/lib/) and
-[`desktop/public/`](../desktop/public/) use only Node.js and browser
-built-ins. The only third-party pieces that ship inside an installer are:
+[`desktop/lib/`](../desktop/lib/) and [`desktop/public/`](../desktop/public/)'s
+own code has no third-party dependencies of its own — the only third-party
+pieces that ship inside an installer are:
 
 | Component | License | Notes |
 |-----------|---------|-------|
 | [Electron](https://www.electronjs.org/) | MIT | Provides the app runtime (Chromium + Node.js) |
 | Node.js | MIT | Bundled inside Electron |
+| [electron-updater](https://www.electron.build/auto-update) | MIT | Update-check only — `autoDownload` is off; see [`desktop/lib/updater.js`](../desktop/lib/updater.js) and [`docs/ROADMAP.md`](ROADMAP.md) |
 
 `electron-builder` (used to build installers) and `electron` itself are
 `devDependencies` — see [`desktop/package.json`](../desktop/package.json) —
 and are not distributed as part of any installer beyond what Electron
-itself packages.
+itself packages. The `monetize/server/` side has zero dependencies at all
+(Node built-ins only).
 
 ## Downloaded by the app at setup time, never bundled
 
 | Component | Source | License | How it's used |
 |-----------|--------|---------|----------------|
 | Android SDK, Emulator, platform-tools, system image | Google, via `sdkmanager` | [Android SDK License Agreement](https://developer.android.com/studio/terms) | Downloaded directly from Google's servers by [`android/scripts/fetch_android.sh`](../android/scripts/fetch_android.sh) after a person explicitly accepts the license in the install wizard. Never copied into this repository or into any installer this project builds. |
+| [scrcpy-server](https://github.com/Genymobile/scrcpy) | Genymobile, GitHub releases | Apache-2.0 | Downloaded and SHA-256-verified by [`desktop/lib/mirror.js`](../desktop/lib/mirror.js) the first time live mirroring is used, then pushed per-device over adb. Apache-2.0 permits redistribution — it's fetched rather than bundled purely to keep the installer small and updates independent of app releases, not because of a license restriction (contrast with the SDK row above). |
 
 The Android SDK License Agreement prohibits redistributing, bundling, or
 sublicensing the SDK. This project is built around that constraint: every

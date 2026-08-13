@@ -251,6 +251,23 @@ pre {
   max-height: calc(100vh - 88px);
 }
 
+#guest-canvas {
+  /* Unlike img, object-fit doesn't apply to canvas — its intrinsic aspect
+     ratio comes from the width/height attributes (set in JS to match the
+     video), and the screen-frame grid's place-items:center does the rest,
+     the same way it letterboxes #guest-screen. */
+  max-width: 100%;
+  max-height: calc(100vh - 88px);
+  cursor: pointer;
+  outline: none;
+}
+
+#live-toggle.on {
+  background: var(--mint-soft);
+  color: #062117;
+  border-color: transparent;
+}
+
 .binding-dot {
   position: absolute;
   width: 34px;

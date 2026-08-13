@@ -8,25 +8,43 @@ describe which subsystems change and how invasive each is instead.
 
 - Native Electron shell: mint sidebar, top tab bar over isolated AVD
   instances, themed first-run wizard (host check → **explicit Android SDK
-  license acceptance** → SDK fetch → first machine → optional shortcut).
+  license acceptance** → SDK fetch → first machine → optional shortcut →
+  **ads/telemetry consent**).
 - Real multi-instance isolation (`android/lib/instances.sh`): independent
   userdata, sdcard, console/adb ports per named machine.
 - Packageable build: [`desktop/lib/paths.js`](../desktop/lib/paths.js)
   splits code from mutable data so a packaged install's SDK/AVD/state/logs
   live in the OS's per-user data dir, not inside a read-only install.
   [`desktop/electron-builder.yml`](../desktop/electron-builder.yml) builds
-  a real AppImage/deb today (verified — see the commit that introduced
-  it), with nsis/dmg targets declared for CI. A lightweight update
-  *notifier* ([`desktop/lib/updater.js`](../desktop/lib/updater.js)) exists
-  but is off by default (no feed deployed yet).
+  a real AppImage/deb today (verified), with nsis/dmg targets declared for
+  CI and `electron-updater` wired for update *checks* (`autoDownload`
+  off — see Phase A).
 - Marketing/download site ([`web/`](../web/)): static, zero-dependency,
-  templated for adding more pages later.
+  now including `/pricing/`, a `/games/<slug>` SEO template, `/press/`,
+  and a working cookie-consent-gated ad slot.
 - Legal groundwork: [`LICENSE`](../LICENSE) (Apache-2.0),
   [`docs/EULA.md`](EULA.md), [`docs/PRIVACY.md`](PRIVACY.md),
   [`docs/NOTICES.md`](NOTICES.md), [`docs/LEGAL.md`](LEGAL.md).
-- **Zero ads, zero monetization code** — by design, for now. Options are
-  written up in [`docs/MONETIZATION.md`](MONETIZATION.md) but nothing
-  there is wired in.
+- **Monetization is implemented, off by default.** See
+  [`docs/MONETIZATION.md`](MONETIZATION.md) for the full map:
+  [`monetize/server/`](../monetize/server/) (ad + license server, Node
+  built-ins only, end-to-end tested against a live instance),
+  [`desktop/lib/entitlement.js`](../desktop/lib/entitlement.js) (offline
+  Ed25519 license verification, free/Pro tiers), and
+  [`desktop/lib/ads.js`](../desktop/lib/ads.js) plus the rail/boot/Game
+  Center/modal placements in `desktop/public/`. A fresh clone makes zero
+  ad-server network calls and shows zero ads until an operator deploys
+  the server and a person accepts the consent step.
+- **Live screen mirroring is implemented** —
+  [`desktop/lib/mirror.js`](../desktop/lib/mirror.js) speaks scrcpy's real
+  wire protocol (verified with unit tests against hand-derived expected
+  bytes for every control-message type and the video frame demuxer,
+  including simulated TCP fragmentation; the real scrcpy-server v4.1
+  binary downloads and checksum-verifies correctly; a real H.264 clip
+  decodes and renders through the exact WebCodecs path used here). What
+  is **not** yet verified: a live end-to-end run against a real booted
+  emulator, since this sandbox has no system image or `adb` installed —
+  see "Verifying live mirroring" below for the one remaining step.
 
 ## Phase A — Real distribution
 
@@ -57,50 +75,59 @@ actually run:
    `https://github.com/...` links in `web/pages/*.html` if the canonical
    home becomes the deployed site instead of the repo.
 
-## Phase B — Monetization
+## Phase B — What's left for monetization
 
-Sequencing recommendation, building on [`docs/MONETIZATION.md`](MONETIZATION.md):
+The plumbing (Examples 1-6 in [`docs/MONETIZATION.md`](MONETIZATION.md))
+is done; what remains is operating it:
 
-1. **`monetize/server/`** — the smallest possible Node service:
-   `GET /v1/campaigns`, `POST /v1/events`, `GET /v1/click/:id`. JSONL
-   storage is enough at first; no database needed yet.
-2. **`desktop/lib/ads.js` + a bottom-rail slot** in
-   [`desktop/public/index.html`](../desktop/public/index.html) — ship
-   with a bundled house-ad fallback so it still renders something with
-   zero direct deals sold yet. Add the consent step to the wizard
-   ([`desktop/public/wizard.html`](../desktop/public/wizard.html)) in the
-   same change, not after.
-3. **`desktop/lib/entitlement.js`** — offline license verification, free
-   vs. Pro instance caps. This can ship *before* a real payment flow
-   exists (default everyone to free tier) so the plumbing is in place
-   when checkout is ready.
-4. **Game Center panel** (Example 2 in MONETIZATION.md) once there's
-   enough install volume to make an affiliate network deal worth
-   pursuing.
-5. **SEO content pages** in [`web/pages/`](../web/pages/) — mechanical
-   once the manifest-driven site exists, but needs actual product
-   screenshots/GIFs to be worth publishing, which argues for doing this
-   after Phase C (mirroring) makes the product look like the real thing.
+1. **Real checkout automation.** `monetize/licensing/issue-license.mjs`
+   is a manual CLI standing in for a Stripe/Paddle webhook. Wiring an
+   actual `checkout.session.completed` (or equivalent) webhook to call
+   the same `issue-license.mjs` logic removes the manual step per sale.
+   No endpoint for this exists in `monetize/server/` yet — it's a
+   deliberate gap, not an oversight (see MONETIZATION.md's constraints).
+2. **Real campaigns.** `monetize/server/config/campaigns.json` ships
+   house-only creatives. Direct deals or an affiliate network account are
+   what actually put revenue-bearing entries in there.
+3. **A rewarded-video source.** The rewarded-unlock creative is
+   explicitly a placeholder ("no real sponsor spot wired up yet"). A real
+   version needs either a direct sponsor willing to supply a short clip
+   asset, or a desktop-compatible rewarded-ad network (rare; most
+   rewarded-video SDKs target mobile only).
+4. **SEO content volume.** `web/pages/games-example.html` is one template
+   instance. Writing more `/games/<slug>` pages is mechanical (manifest
+   entry + fragment) but is a content task, not a code one.
 
-## Phase C — Live screen mirroring (the honest long pole)
+## Phase C — Verifying live mirroring end to end
 
-Today the guest view is a screenshot polled every 9 seconds
-([`desktop/public/app.js`](../desktop/public/app.js)) and input goes
-through `adb shell input`
-([`desktop/lib/openemu.js`](../desktop/lib/openemu.js)'s `fireKey`). That
-is the single biggest gap between this and an actual "LDPlayer-class"
-feel — no amount of monetization work changes that. The fix:
+[`desktop/lib/mirror.js`](../desktop/lib/mirror.js)'s protocol layer
+(control-message encoding, video frame demuxing) is unit-tested against
+byte-exact expected output and a real, checksum-verified scrcpy-server
+binary downloads correctly. The WebCodecs decode path is proven against a
+real H.264 clip end to end (decoded and rendered through the exact same
+`VideoDecoder`/canvas code this app uses). The one thing that could not be
+exercised here: a live run against a **real booted emulator**, because
+this sandbox has no system image or `adb` binary installed (only a bare
+`emulator` binary with no AVD backing it). Before relying on this in
+production:
 
-- Fetch scrcpy-server (Apache-2.0, redistributable) at setup time, same
-  pattern as the Android SDK fetch.
-- Push it over adb, open its video + control sockets, decode H.264 with
-  `VideoDecoder` (WebCodecs) into a `<canvas>`, and forward
-  pointer/keyboard events over the control socket instead of shelling out
-  to `adb` per keystroke.
-- Keep the screenshot path only as a fallback when scrcpy isn't
-  available. This replaces the polling loop in `app.js` and the
-  `fireKey`/tap paths in `openemu.js`, and is the change most worth
-  prioritizing over any monetization work above.
+1. `make android-fetch && make android-setup && make android-provision`
+   on a machine with `/dev/kvm` (TCG hosts can't reliably load Emulator
+   snapshots at all — see [`android/README.md`](../android/README.md) —
+   so mirroring should be validated on KVM first).
+2. Start a machine, click the sidebar's "Live" toggle, and confirm: the
+   canvas shows a moving picture (not just one static frame — proves
+   delta-frame decoding, not just the keyframe path this environment
+   could test), and clicking/typing on the canvas actually reaches the
+   guest (proves the control-socket path, which had zero live coverage
+   here).
+3. If frames stall or the decoder errors, the likely culprits, in order:
+   a codec-string mismatch (log the derived `avc1.xxxxxx` string and
+   compare against what a real scrcpy client negotiates for the same
+   device), a dropped config packet (the keyframe-prepend logic in
+   `app.js`'s `onMirrorEvent` depends on having seen exactly one config
+   packet before the first keyframe), or an adb reverse binding that
+   didn't clean up from a previous run (`adb reverse --list`).
 
 ## Phase D — Cross-platform control plane
 

@@ -4,12 +4,16 @@ const setup = require("./setup");
 const updater = require("./updater");
 const entitlement = require("./entitlement");
 const ads = require("./ads");
+const mirror = require("./mirror");
 const { installShortcut } = require("./shortcut");
 
 function registerIpc(getWindow) {
   ipcMain.handle("oe:status", (_event, name) => openemu.status(name));
   ipcMain.handle("oe:start", (_event, options) => openemu.start(options || {}));
-  ipcMain.handle("oe:stop", (_event, name) => openemu.stop(name));
+  ipcMain.handle("oe:stop", async (_event, name) => {
+    await mirror.stopMirror(name || "main").catch(() => {});
+    return openemu.stop(name);
+  });
   ipcMain.handle("oe:install", (_event, { path: apkPath, instance }) => openemu.install(apkPath, instance));
   ipcMain.handle("oe:pick-apk", async () => {
     const result = await dialog.showOpenDialog({
@@ -94,6 +98,62 @@ function registerIpc(getWindow) {
   });
   ipcMain.handle("oe:consent-get", () => ads.getConsent());
   ipcMain.handle("oe:consent-set", (_event, accepted) => ads.setConsent(accepted));
+
+  // Live mirroring (scrcpy protocol) — an opt-in alternative to the
+  // screenshot-polling path above. See desktop/lib/mirror.js.
+  ipcMain.handle("oe:mirror-start", async (event, name) => {
+    const inst = name || "main";
+    const status = await openemu.status(inst);
+    const serial = status.adbDevice;
+    if (!serial || serial === "none") {
+      throw new Error("No adb-connected device for this machine yet — start it and wait for boot to finish.");
+    }
+    const send = (kind, payload) => {
+      if (!event.sender.isDestroyed()) {
+        event.sender.send("oe:mirror-event", { instance: inst, kind, ...payload });
+      }
+    };
+    const session = await mirror.startMirror(inst, serial, {
+      onLine: (line) => send("log", { line })
+    });
+    session.on("codec", (info) => send("codec", info));
+    session.on("session", (info) => send("session", info));
+    session.on("frame", (frame) => send("frame", frame));
+    session.on("error", (err) => send("error", { error: err.message }));
+    session.on("close", () => send("close", {}));
+    return { ok: true, instance: inst, deviceName: session.deviceName };
+  });
+  ipcMain.handle("oe:mirror-stop", (_event, name) => mirror.stopMirror(name || "main"));
+  ipcMain.handle("oe:mirror-input", (_event, { instance, ...input } = {}) => {
+    const session = mirror.getMirror(instance || "main");
+    if (!session) return { ok: false, error: "mirror not active for this machine" };
+    switch (input.type) {
+      case "touch-down":
+        session.sendTouchDown(input.x, input.y, input.width, input.height, input.pointerId || 0);
+        break;
+      case "touch-move":
+        session.sendTouchMove(input.x, input.y, input.width, input.height, input.pointerId || 0);
+        break;
+      case "touch-up":
+        session.sendTouchUp(input.x, input.y, input.width, input.height, input.pointerId || 0);
+        break;
+      case "tap":
+        session.sendTap(input.x, input.y, input.width, input.height);
+        break;
+      case "scroll":
+        session.sendScroll(input);
+        break;
+      case "key":
+        session.sendKey(input.keycode, { action: input.action, repeat: input.repeat, metastate: input.metastate });
+        break;
+      case "back":
+        session.sendBack();
+        break;
+      default:
+        return { ok: false, error: `unknown mirror input type: ${input.type}` };
+    }
+    return { ok: true };
+  });
 }
 
 module.exports = { registerIpc };

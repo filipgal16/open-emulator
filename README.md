@@ -1,10 +1,14 @@
 # open-emulator
 
 A mint-branded, LDPlayer-class Android emulator: a native desktop shell
-around isolated, multi-instance Android virtual machines, built on top of
-a from-scratch Type-2 virtual machine monitor. **Early access — no ads, no
-account, no telemetry.** See [Product status](#product-status) below for
-what that means and what's next.
+around isolated, multi-instance Android virtual machines, with live
+scrcpy-protocol screen mirroring, built on top of a from-scratch Type-2
+virtual machine monitor. **Early access — monetization exists in code but
+ships off: a fresh clone shows no ads, makes no ad-server calls, and
+enforces no paid-tier limits until an operator deploys `monetize/server`
+and a person accepts the wizard's consent step.** See
+[Product status](#product-status) below for what that means and what's
+next.
 
 The rest of this README covers the low-level VMM this is built on. For the
 product itself — install wizard, tabs, isolated machines, packaging — see
@@ -76,6 +80,7 @@ android/     Android 11 guest import + run scripts
 desktop/     Mint-branded host control shell (GUI, packaged with electron-builder)
 brand/       Color tokens, logo, typography guidelines
 web/         Static marketing/download site (see web/README.md)
+monetize/    Ad + license server, off by default (see monetize/README.md)
 docs/        Roadmap, monetization plan, legal/privacy/EULA/notices
 scripts/     Guest assembler + smoke test
 build/       Build outputs
@@ -105,10 +110,11 @@ See [`android/README.md`](android/README.md).
 ## Next steps
 
 See [`docs/ROADMAP.md`](docs/ROADMAP.md) for the full breakdown. Short
-version: sign and publish real installers, then live screen mirroring
-(the biggest gap versus a "real" LDPlayer-class feel), then the
-monetization plan in [`docs/MONETIZATION.md`](docs/MONETIZATION.md), then
-a cross-platform (Windows-first) control plane, then growing `open-vmm`
+version: sign and publish real installers, verify live mirroring against
+a real KVM-backed boot (this sandbox had no system image to test that
+last mile against), wire up real checkout automation for the Pro tier
+already in [`docs/MONETIZATION.md`](docs/MONETIZATION.md), then a
+cross-platform (Windows-first) control plane, then growing `open-vmm`
 itself toward an independent guest image that no longer depends on
 Google's Android SDK at all.
 
@@ -118,8 +124,14 @@ Host-side identity (mint palette, logo, fonts) lives in [`brand/`](brand/).
 The control GUI is a **native window**: guest screen, **top tabs** (one per
 isolated machine), and a mint **sidebar**. First launch opens a themed
 install wizard — host check, an explicit Android SDK License Agreement
-step (nothing downloads before that's accepted), the SDK fetch, and your
-first isolated machine. A desktop shortcut is optional.
+step (nothing downloads before that's accepted), the SDK fetch, your first
+isolated machine, and an ads/telemetry consent step. A desktop shortcut is
+optional.
+
+The sidebar's "Live" toggle switches the guest view from polled
+screenshots to a real scrcpy-protocol H.264 stream decoded with WebCodecs
+([`desktop/lib/mirror.js`](desktop/lib/mirror.js)) — see
+[`docs/ROADMAP.md`](docs/ROADMAP.md) for its verification status.
 
 ```bash
 cd desktop && npm install && npm start
@@ -151,14 +163,18 @@ signed, published installers instead of CI artifacts.
 
 ## Product status
 
-No ads, no account, no telemetry, no paid tier — today. That's a
-deliberate starting point, not the end state:
+No ads, no account, no telemetry, no paid-tier limits — by default, on a
+fresh clone or install, today. The code for all of that exists
+(self-hosted ad server, offline-verified Pro licensing, live mirroring)
+but is inert until deliberately turned on:
 
-- [`docs/MONETIZATION.md`](docs/MONETIZATION.md) — concrete examples of
-  how ads/monetization could work later (self-hosted ad rail, affiliate
-  offers, a Pro tier, website display ads), none of them wired up yet.
-- [`docs/ROADMAP.md`](docs/ROADMAP.md) — sequencing for that plus
-  distribution, screen mirroring, and cross-platform support.
+- [`docs/MONETIZATION.md`](docs/MONETIZATION.md) — how the ad server
+  ([`monetize/server/`](monetize/)), the in-app rail/Game Center/Pro tier,
+  and the website's ad slot actually work, and the two-step "deploy a
+  server, accept the consent step" gate that keeps them off otherwise.
+- [`docs/ROADMAP.md`](docs/ROADMAP.md) — what's left: real checkout
+  automation, live-device verification of mirroring, signed installers,
+  cross-platform support.
 - [`LICENSE`](LICENSE) (Apache-2.0) and [`docs/NOTICES.md`](docs/NOTICES.md)
   — this project's own license and third-party attributions.
 - [`docs/LEGAL.md`](docs/LEGAL.md) — why the Android SDK is fetched, never

@@ -26,10 +26,12 @@
             <button class="primary small" id="quick-start">Start</button>
             <button class="danger small" id="quick-stop">Stop</button>
             <button class="ghost small" id="shot-now" title="Capture screenshot">Capture</button>
+            <button class="ghost small" id="live-toggle" title="Live mirror (low-latency, experimental)">Live: off</button>
           </div>
         </header>
         <div class="screen-frame" id="screen-frame">
           <img id="guest-screen" alt="Android guest screen">
+          <canvas id="guest-canvas" tabindex="0" aria-label="Android guest screen (live mirror)" hidden></canvas>
           <div class="boot-overlay" id="boot-overlay" hidden>
             <div class="boot-card">
               <span class="boot-spinner" aria-hidden="true"></span>
