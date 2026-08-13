@@ -676,6 +676,19 @@ function showError(err, logSelector) {
   if (logSelector) logTo(logSelector, err.message || String(err));
 }
 
+async function checkForUpdate() {
+  try {
+    const result = await invoke("update-check");
+    if (!result || !result.available) return;
+    const note = $("#update-note");
+    note.textContent = `Update available — v${result.latest}`;
+    note.hidden = false;
+    note.onclick = () => invoke("open-external", result.url).catch(() => {});
+  } catch {
+    /* update checks are best-effort and silent */
+  }
+}
+
 async function boot() {
   wireNavigation();
   wireViewport();
@@ -696,6 +709,7 @@ async function boot() {
     loadPerformance()
   ]);
   refreshScreenshot();
+  checkForUpdate();
   state.statusTimer = setInterval(async () => {
     try {
       await loadInstances();

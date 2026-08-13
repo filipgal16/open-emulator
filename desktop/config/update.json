@@ -1,0 +1,4 @@
+{
+  "_comment": "Set feedUrl to the deployed web/dist/updates/releases.json once the site is live, e.g. https://openemulator.app/updates/releases.json. Empty = update checks are disabled.",
+  "feedUrl": ""
+}

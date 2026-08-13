@@ -1,7 +1,7 @@
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => Array.from(document.querySelectorAll(selector));
 
-const steps = ["welcome", "host", "fetch", "avd", "shortcut", "done"];
+const steps = ["welcome", "host", "license", "fetch", "avd", "shortcut", "done"];
 let index = 0;
 
 function invoke(channel, payload) {
@@ -10,7 +10,7 @@ function invoke(channel, payload) {
 
 function showStep(next) {
   index = next;
-  const ids = ["step-welcome", "step-host", "step-fetch", "step-avd", "step-shortcut", "step-done"];
+  const ids = steps.map((name) => `step-${name}`);
   ids.forEach((id, i) => {
     $(`#${id}`).hidden = i !== index;
   });
@@ -76,6 +76,15 @@ async function runAvd() {
   }
 }
 
+function goto(name) {
+  showStep(steps.indexOf(name));
+}
+
+async function acceptLicense() {
+  await invoke("license-accept", true);
+  goto("fetch");
+}
+
 async function finish() {
   const wantShortcut = $("#want-shortcut").checked;
   if (wantShortcut) {
@@ -95,6 +104,10 @@ async function finish() {
 
 window.addEventListener("DOMContentLoaded", async () => {
   const status = await invoke("setup-status");
+  if (status.sdkLicenseAccepted) {
+    $("#accept-sdk-license").checked = true;
+    $("#license-next").disabled = false;
+  }
   if (status.sdk) {
     $("#fetch-log").textContent = "SDK already present.";
     $("#fetch-next").disabled = false;
@@ -105,11 +118,19 @@ window.addEventListener("DOMContentLoaded", async () => {
   }
 
   $("#begin").addEventListener("click", runHost);
-  $("#host-next").addEventListener("click", () => showStep(2));
+  $("#host-next").addEventListener("click", () => goto("license"));
+  $("#accept-sdk-license").addEventListener("change", (event) => {
+    $("#license-next").disabled = !event.target.checked;
+  });
+  $("#license-link").addEventListener("click", (event) => {
+    event.preventDefault();
+    invoke("open-external", "https://developer.android.com/studio/terms").catch(() => {});
+  });
+  $("#license-next").addEventListener("click", acceptLicense);
   $("#fetch-run").addEventListener("click", runFetch);
-  $("#fetch-next").addEventListener("click", () => showStep(3));
+  $("#fetch-next").addEventListener("click", () => goto("avd"));
   $("#avd-run").addEventListener("click", runAvd);
-  $("#avd-next").addEventListener("click", () => showStep(4));
-  $("#shortcut-next").addEventListener("click", () => showStep(5));
+  $("#avd-next").addEventListener("click", () => goto("shortcut"));
+  $("#shortcut-next").addEventListener("click", () => goto("done"));
   $("#finish").addEventListener("click", finish);
 });

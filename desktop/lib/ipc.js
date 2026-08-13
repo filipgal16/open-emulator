@@ -1,6 +1,7 @@
-const { ipcMain, dialog } = require("electron");
+const { ipcMain, dialog, shell } = require("electron");
 const openemu = require("./openemu");
 const setup = require("./setup");
+const updater = require("./updater");
 const { installShortcut } = require("./shortcut");
 
 function registerIpc(getWindow) {
@@ -53,12 +54,22 @@ function registerIpc(getWindow) {
     return setup.runStep(step, send);
   });
   ipcMain.handle("oe:setup-complete", (_event, options) => setup.complete(options || {}));
+  ipcMain.handle("oe:license-accept", (_event, accepted) => setup.acceptSdkLicense(accepted));
   ipcMain.handle("oe:shortcut-install", (_event, options) => installShortcut(options || {}));
   ipcMain.handle("oe:open-shell", () => {
     const win = getWindow && getWindow();
     if (win) win.loadFile(require("path").join(__dirname, "..", "public", "index.html"));
     return { ok: true };
   });
+  ipcMain.handle("oe:open-external", (_event, url) => {
+    const value = String(url || "");
+    if (!/^https:\/\//i.test(value)) {
+      throw new Error("only https:// links can be opened externally");
+    }
+    shell.openExternal(value);
+    return { ok: true };
+  });
+  ipcMain.handle("oe:update-check", () => updater.checkForUpdate());
 }
 
 module.exports = { registerIpc };

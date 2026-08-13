@@ -22,10 +22,11 @@
       <ol class="wizard-steps" id="step-dots" aria-label="Setup steps">
         <li class="active" data-step="0">Welcome</li>
         <li data-step="1">Host</li>
-        <li data-step="2">SDK</li>
-        <li data-step="3">Machine</li>
-        <li data-step="4">Shortcut</li>
-        <li data-step="5">Done</li>
+        <li data-step="2">License</li>
+        <li data-step="3">SDK</li>
+        <li data-step="4">Machine</li>
+        <li data-step="5">Shortcut</li>
+        <li data-step="6">Done</li>
       </ol>
 
       <section class="wizard-card" id="step-welcome">
@@ -41,6 +42,17 @@
         <p>KVM acceleration, RAM, and free disk decide how many isolated machines you can run at once.</p>
         <pre class="status-box" id="host-log">Checking…</pre>
         <button class="primary" id="host-next" disabled>Continue</button>
+      </section>
+
+      <section class="wizard-card" id="step-license" hidden>
+        <span class="eyebrow">Before downloading</span>
+        <h1>Android SDK License Agreement</h1>
+        <p>The next step downloads the Android SDK, emulator, and system image straight from Google's servers. This app never bundles or redistributes them — that download is governed by Google's own license, not this project's.</p>
+        <div class="license-box">
+          <p>By continuing you agree to the <a href="#" id="license-link">Android Software Development Kit License Agreement</a>. In short: the SDK is licensed (not sold) to develop and run apps for the Android platform; you may not redistribute, sublicense, or bundle it; Google may change or discontinue parts of it.</p>
+        </div>
+        <label class="check"><input type="checkbox" id="accept-sdk-license"> I have read and accept the Android SDK License Agreement</label>
+        <button class="primary" id="license-next" disabled>Continue</button>
       </section>
 
       <section class="wizard-card" id="step-fetch" hidden>

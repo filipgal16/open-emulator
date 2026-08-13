@@ -1,0 +1,88 @@
+# electron-builder config — https://www.electron.build/configuration
+appId: com.openemulator.desktop
+productName: open-emulator
+copyright: "open-emulator contributors"
+
+directories:
+  output: dist-electron
+  buildResources: build
+
+# A single build/icon.svg is enough — electron-builder derives .icns, .ico,
+# and the Linux PNG set from it automatically.
+files:
+  - main.js
+  - preload.js
+  - public/**/*
+  - lib/**/*
+  - config/**/*
+  - package.json
+  - "!**/*.map"
+
+# android/ (the bash control plane + AVD config templates) and brand/ (logo
+# used by the OS-level desktop shortcut) live one level up from desktop/ in
+# the repo, and ship as real files next to the app — not inside asar —
+# because open-emu is exec'd directly by the OS and the .desktop file's
+# Icon= must be a path a file manager / launcher can read on its own.
+# Only code ships; sdk/avd/state/logs/apps are runtime data (see
+# desktop/lib/paths.js) and are excluded even if present on the build
+# machine.
+extraResources:
+  - from: ../android
+    to: android
+    filter:
+      - bin/**
+      - lib/**
+      - scripts/**
+      - config/**
+      - VERSION.txt
+      - README.md
+      - MODIFICATIONS.md
+  - from: ../brand
+    to: brand
+
+linux:
+  target:
+    - AppImage
+    - deb
+  category: Development
+  executableName: open-emulator
+  synopsis: Mint Android emulator with isolated multi-instance VMs
+  desktop:
+    entry:
+      Name: open-emulator
+      Comment: Mint Android emulator — start isolated machines
+      Categories: Development;Emulator;
+      StartupWMClass: open-emulator
+
+deb:
+  depends:
+    - libgtk-3-0
+    - libnotify4
+    - libnss3
+    - libxss1
+    - libxtst6
+    - xdg-utils
+    - libatspi2.0-0
+    - libuuid1
+
+win:
+  target:
+    - nsis
+  executableName: open-emulator
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+
+mac:
+  target:
+    - dmg
+    - zip
+  category: public.app-category.developer-tools
+  hardenedRuntime: false
+
+# No update server is deployed yet — desktop/lib/updater.js does a plain,
+# opt-in JSON feed check instead of electron-updater's provider system.
+# Flip this on once web/dist/updates/ is live (see docs/ROADMAP.md).
+publish: null

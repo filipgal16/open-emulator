@@ -395,7 +395,13 @@ device=${device}
 elapsed_s=$((SECONDS - t0))
 time=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 EOF
-  cp "$LOG_DIR/last_success.txt" "$ROOT/imported/last_verified.txt"
+  # $ROOT/imported is part of the code tree, read-only inside a packaged
+  # install — dev/CI checkouts get the tracked copy, packaged runs keep the
+  # one already written under $LOG_DIR (always writable).
+  if [[ -w "$ROOT/imported" || -w "$ROOT" ]]; then
+    mkdir -p "$ROOT/imported"
+    cp "$LOG_DIR/last_success.txt" "$ROOT/imported/last_verified.txt"
+  fi
   log "demo OK in $((SECONDS - t0))s"
   cat "$LOG_DIR/last_success.txt"
 }

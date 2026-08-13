@@ -6,6 +6,8 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 REPO_ROOT="$(cd "$ROOT/.." && pwd)"
 SDK_ROOT="${ANDROID_SDK_ROOT:-$ROOT/sdk}"
+AVD_HOME="${ANDROID_AVD_HOME:-$ROOT/avd}"
+LOG_DIR="${ANDROID_LOG_DIR:-$ROOT/logs}"
 CMDLINE_ZIP_URL="${CMDLINE_ZIP_URL:-https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip}"
 API_LEVEL="${ANDROID_API_LEVEL:-30}"
 SYSTEM_IMAGE="${ANDROID_SYSTEM_IMAGE:-system-images;android-${API_LEVEL};google_apis;x86_64}"
@@ -37,7 +39,27 @@ if [[ ! -x "$SDKMANAGER" ]]; then
   exit 1
 fi
 
-echo "==> accepting SDK licenses"
+# The SDK license agreement (developer.android.com/studio/terms) forbids
+# redistributing or bundling the SDK/system images; this product never does
+# that — every install downloads its own copy here, straight from Google.
+# It still requires *informed* acceptance, so the desktop wizard shows the
+# terms and only sets this flag once a person actually checks the box.
+# `yes | sdkmanager --licenses` below is just the standard non-interactive
+# way to answer sdkmanager's own per-license prompts on their behalf.
+if [[ "${ANDROID_SDK_LICENSE_ACCEPTED:-0}" != "1" ]]; then
+  cat >&2 <<'EOF'
+Android SDK License Agreement not accepted yet.
+
+Read it at: https://developer.android.com/studio/terms
+Then either:
+  - run the desktop wizard's "Android SDK" step and check the license box, or
+  - re-run this script with ANDROID_SDK_LICENSE_ACCEPTED=1 once you have
+    read and agree to Google's terms yourself.
+EOF
+  exit 1
+fi
+
+echo "==> recording acceptance of the Android SDK License Agreement"
 set +e
 yes 2>/dev/null | "$SDKMANAGER" --sdk_root="$SDK_ROOT" --licenses >/dev/null
 set -e
@@ -49,8 +71,13 @@ echo "==> installing platform-tools, emulator, platform android-${API_LEVEL}, ${
   "platforms;android-${API_LEVEL}" \
   "$SYSTEM_IMAGE"
 
-# Record what we imported for the repo docs / CI.
-cat > "$ROOT/VERSION.txt" <<EOF
+# Record what we imported for the repo docs / CI. $ROOT is the code
+# directory — writable in a dev checkout, but read-only inside a packaged
+# install (AppImage mount, /opt deb install), so fall back to the (always
+# writable) SDK data root there instead of failing after a multi-GiB fetch.
+VERSION_FILE="$ROOT/VERSION.txt"
+[[ -w "$ROOT" ]] || VERSION_FILE="$SDK_ROOT/VERSION.txt"
+cat > "$VERSION_FILE" <<EOF
 android_api=${API_LEVEL}
 android_version=11
 system_image=${SYSTEM_IMAGE}
@@ -60,8 +87,8 @@ notes=Google AOSP/Google APIs x86_64 system image for QEMU-based Android Emulato
 EOF
 
 echo "==> writing marker files"
-mkdir -p "$ROOT/avd" "$ROOT/logs"
-touch "$ROOT/sdk/.imported"
+mkdir -p "$AVD_HOME" "$LOG_DIR"
+touch "$SDK_ROOT/.imported"
 
 echo "Android ${API_LEVEL} imported under $SDK_ROOT"
 echo "Next: $REPO_ROOT/android/scripts/setup_avd.sh && $REPO_ROOT/android/scripts/run_android.sh"

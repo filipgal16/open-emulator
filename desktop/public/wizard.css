@@ -91,3 +91,23 @@
   font-style: normal;
   color: var(--oe-mint-700, #117651);
 }
+
+.license-box {
+  margin: 14px 0;
+  padding: 14px 16px;
+  max-height: 180px;
+  overflow-y: auto;
+  background: var(--oe-mint-50, #f2fbf7);
+  border: 1px solid var(--oe-line, rgba(17, 92, 66, 0.14));
+  border-radius: var(--oe-radius-sm, 10px);
+}
+
+.license-box p {
+  margin: 0;
+  font-size: 0.86rem;
+}
+
+.license-box a {
+  color: var(--oe-mint-700, #117651);
+  font-weight: 600;
+}

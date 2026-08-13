@@ -34,6 +34,25 @@ make android-start          # subsequent calls reuse a running emulator
 Target a machine with `--instance name` or `ANDROID_INSTANCE=name`. Each
 instance is a separate AVD (own `/data`, sdcard, console/adb ports).
 
+## Relocating data (packaged desktop builds)
+
+Everything under `sdk/`, `avd/`, `state/`, `logs/`, `apps/` is mutable
+runtime data, not code. `android_env()` in [`lib/common.sh`](lib/common.sh)
+lets each of those move independently via environment overrides, so an
+installed app can keep the multi-GiB SDK/AVD data in a writable per-user
+data directory instead of next to a possibly read-only install:
+
+| Variable | Default |
+|----------|---------|
+| `ANDROID_SDK_ROOT` | `android/sdk` |
+| `ANDROID_AVD_HOME` | `android/avd` |
+| `ANDROID_LOG_DIR` | `android/logs` |
+| `ANDROID_APPS_DIR` | `android/apps` |
+| `ANDROID_STATE_DIR` | `android/state` |
+
+The desktop shell sets all five automatically for packaged installs — see
+[`desktop/lib/paths.js`](../desktop/lib/paths.js).
+
 ## Performance model
 
 | Host | Accel | Boot strategy |
