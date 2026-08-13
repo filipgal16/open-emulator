@@ -1,7 +1,7 @@
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => Array.from(document.querySelectorAll(selector));
 
-const steps = ["welcome", "host", "license", "fetch", "avd", "shortcut", "done"];
+const steps = ["welcome", "host", "license", "fetch", "avd", "shortcut", "consent", "done"];
 let index = 0;
 
 function invoke(channel, payload) {
@@ -85,6 +85,17 @@ async function acceptLicense() {
   goto("fetch");
 }
 
+async function acceptAds() {
+  await invoke("consent-set", true);
+  goto("done");
+}
+
+async function declineAds() {
+  await invoke("consent-set", false);
+  invoke("upgrade-open").catch(() => {});
+  goto("done");
+}
+
 async function finish() {
   const wantShortcut = $("#want-shortcut").checked;
   if (wantShortcut) {
@@ -131,6 +142,15 @@ window.addEventListener("DOMContentLoaded", async () => {
   $("#fetch-next").addEventListener("click", () => goto("avd"));
   $("#avd-run").addEventListener("click", runAvd);
   $("#avd-next").addEventListener("click", () => goto("shortcut"));
-  $("#shortcut-next").addEventListener("click", () => goto("done"));
+  $("#shortcut-next").addEventListener("click", () => goto("consent"));
+  $("#consent-accept").addEventListener("click", acceptAds);
+  $("#consent-decline").addEventListener("click", declineAds);
+  $("#consent-legal-link").addEventListener("click", (event) => {
+    event.preventDefault();
+    invoke(
+      "open-external",
+      "https://github.com/filipgal16/open-emulator/blob/main/docs/LEGAL.md"
+    ).catch(() => {});
+  });
   $("#finish").addEventListener("click", finish);
 });

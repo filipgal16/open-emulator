@@ -26,7 +26,8 @@
         <li data-step="3">SDK</li>
         <li data-step="4">Machine</li>
         <li data-step="5">Shortcut</li>
-        <li data-step="6">Done</li>
+        <li data-step="6">Ads</li>
+        <li data-step="7">Done</li>
       </ol>
 
       <section class="wizard-card" id="step-welcome">
@@ -80,6 +81,17 @@
         <label class="check"><input type="checkbox" id="want-shortcut" checked> Install open-emulator shortcut</label>
         <pre class="mini-log" id="shortcut-log"></pre>
         <button class="primary" id="shortcut-next">Continue</button>
+      </section>
+
+      <section class="wizard-card" id="step-consent" hidden>
+        <span class="eyebrow">Staying sustainable</span>
+        <h1>Free, with a few sponsor placements</h1>
+        <p>This build is free and shows unobtrusive sponsor cards to stay that way — a rail beside the guest screen, a card while a machine boots, and an optional Game Center panel of app offers. Never anything covering the guest screen itself. No third-party ad network runs inside this app — see <a href="#" id="consent-legal-link">why</a>.</p>
+        <div class="license-box">
+          <p>Prefer not to see them? Pick "I'd rather pay" — Pro removes every placement and the 2-machine cap, verified by a signed key that works fully offline.</p>
+        </div>
+        <button class="primary" id="consent-accept">Continue with sponsor cards</button>
+        <button class="ghost" id="consent-decline">I'd rather pay</button>
       </section>
 
       <section class="wizard-card" id="step-done" hidden>

@@ -24,3 +24,10 @@ desktop/dist-electron/
 
 # Generated marketing site
 web/dist/
+
+# Monetization server/licensing runtime state — private keys and event
+# logs must never be committed. desktop/config/license-public-key.json is
+# a *public* key and is intentionally NOT covered by this.
+monetize/server/data/
+monetize/licensing/keys/
+

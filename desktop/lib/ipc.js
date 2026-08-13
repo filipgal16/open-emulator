@@ -2,6 +2,8 @@ const { ipcMain, dialog, shell } = require("electron");
 const openemu = require("./openemu");
 const setup = require("./setup");
 const updater = require("./updater");
+const entitlement = require("./entitlement");
+const ads = require("./ads");
 const { installShortcut } = require("./shortcut");
 
 function registerIpc(getWindow) {
@@ -70,6 +72,28 @@ function registerIpc(getWindow) {
     return { ok: true };
   });
   ipcMain.handle("oe:update-check", () => updater.checkForUpdate());
+  ipcMain.handle("oe:update-install", () => updater.downloadAndInstall());
+  ipcMain.handle("oe:license-get", () => entitlement.getEntitlement());
+  ipcMain.handle("oe:license-activate", (_event, license) => entitlement.activateLicense(license));
+  ipcMain.handle("oe:license-deactivate", () => entitlement.deactivateLicense());
+  ipcMain.handle("oe:reward-grant", (_event, hours) => entitlement.grantRewardedUnlock(hours));
+  ipcMain.handle("oe:upgrade-open", () => {
+    shell.openExternal("https://open-emulator.example.com/pricing/");
+    return { ok: true };
+  });
+  ipcMain.handle("oe:ads-get", (_event, slot) => ads.pickCreativeForSlot(slot));
+  ipcMain.handle("oe:ads-list", (_event, slot) => ads.listCreativesForSlot(slot));
+  ipcMain.handle("oe:ads-event", (_event, { slot, id }) => ads.recordImpression(slot, id));
+  ipcMain.handle("oe:ads-dismiss", (_event, { slot, hours }) => ads.dismissSlot(slot, hours));
+  ipcMain.handle("oe:ads-click", async (_event, { slot, id, clickUrl }) => {
+    const result = await ads.resolveClick(slot, id, clickUrl);
+    if (result.action === "external" && result.url) {
+      shell.openExternal(result.url);
+    }
+    return result;
+  });
+  ipcMain.handle("oe:consent-get", () => ads.getConsent());
+  ipcMain.handle("oe:consent-set", (_event, accepted) => ads.setConsent(accepted));
 }
 
 module.exports = { registerIpc };

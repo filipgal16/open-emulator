@@ -2,6 +2,7 @@ const path = require("path");
 const { app, BrowserWindow } = require("electron");
 const { registerIpc } = require("./lib/ipc");
 const setup = require("./lib/setup");
+const ads = require("./lib/ads");
 
 // Two app processes would fight over the same adb/emulator console ports.
 if (!app.requestSingleInstanceLock()) {
@@ -39,6 +40,9 @@ app.whenReady().then(async () => {
   registerIpc(() => mainWindow);
   const status = await setup.setupStatus();
   createWindow(status.completed ? "index.html" : "wizard.html");
+  // Best-effort — a no-op whenever no ad server is configured (the
+  // default). See desktop/lib/ads.js#flushEvents.
+  setInterval(() => ads.flushEvents().catch(() => {}), 5 * 60 * 1000);
 });
 
 app.on("second-instance", () => {

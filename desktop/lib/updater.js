@@ -1,21 +1,30 @@
-// Lightweight update *notifier* — not a silent auto-updater.
-//
-// Auto-downloading and installing unsigned binaries is unsafe (most OSes
-// warn heavily or refuse it outright), and real code-signing certificates
-// (Apple Developer ID, a Windows EV/OV cert) aren't set up yet. Until they
-// are, this just checks a static JSON feed and tells the user a newer
-// version exists, linking out to the download page. See docs/ROADMAP.md.
+// Update *notifier* built on electron-updater's generic-provider feed, but
+// deliberately not wired for silent auto-install:
+//   - autoDownload is off. Auto-downloading and installing unsigned binaries
+//     is unsafe (Windows/macOS refuse or scare-warn on unsigned installers),
+//     and real code-signing certificates aren't set up yet — see
+//     docs/ROADMAP.md. Once builds are signed, flip autoDownload on.
+//   - The feed URL comes from desktop/config/update.json, not a baked-in
+//     electron-builder.yml publish target, so update checks stay a no-op
+//     until an operator actually deploys web/dist/updates/ and points this
+//     at it. No repo clone should phone home to a URL nobody deployed.
 const fs = require("fs");
 const path = require("path");
 
 let electronApp = null;
+let autoUpdater = null;
 try {
   electronApp = require("electron").app;
+  autoUpdater = require("electron-updater").autoUpdater;
+  autoUpdater.autoDownload = false;
+  autoUpdater.autoInstallOnAppQuit = false;
 } catch {
   electronApp = null;
+  autoUpdater = null;
 }
 
 const CONFIG_FILE = path.join(__dirname, "..", "config", "update.json");
+let feedConfigured = false;
 
 function currentVersion() {
   if (electronApp) return electronApp.getVersion();
@@ -35,42 +44,58 @@ function readConfig() {
   }
 }
 
-// Minimal semver compare (major.minor.patch, ignores pre-release tags) —
-// avoids depending on a transitive `semver` install that may not be hoisted.
-function isNewer(candidate, current) {
-  const a = String(candidate || "").split(".").map((n) => parseInt(n, 10) || 0);
-  const b = String(current || "").split(".").map((n) => parseInt(n, 10) || 0);
-  for (let i = 0; i < 3; i += 1) {
-    const ai = a[i] || 0;
-    const bi = b[i] || 0;
-    if (ai > bi) return true;
-    if (ai < bi) return false;
+function ensureFeedConfigured() {
+  const { feedUrl } = readConfig();
+  if (!feedUrl || !autoUpdater) return false;
+  if (!feedConfigured) {
+    autoUpdater.setFeedURL({ provider: "generic", url: feedUrl, channel: "latest" });
+    feedConfigured = true;
   }
-  return false;
+  return true;
 }
 
 async function checkForUpdate() {
   const current = currentVersion();
-  const { feedUrl } = readConfig();
-  if (!feedUrl) {
+  if (!ensureFeedConfigured()) {
     return { ok: true, checked: false, current, reason: "no feed configured" };
   }
   try {
-    const res = await fetch(feedUrl, { signal: AbortSignal.timeout(6000) });
-    if (!res.ok) throw new Error(`update feed responded ${res.status}`);
-    const data = await res.json();
-    const latest = data.version || "";
+    const result = await autoUpdater.checkForUpdates();
+    const info = result && result.updateInfo;
+    const latest = (info && info.version) || current;
     return {
       ok: true,
       checked: true,
       current,
-      latest: latest || current,
-      available: latest ? isNewer(latest, current) : false,
-      url: data.url || feedUrl
+      latest,
+      available: Boolean(info) && latest !== current,
+      url: (info && info.releaseNotesUrl) || releaseDownloadUrl()
     };
   } catch (err) {
     return { ok: false, checked: true, current, error: err.message };
   }
 }
 
-module.exports = { checkForUpdate, currentVersion, isNewer };
+// Not called automatically — exposed for a future "Download update" button.
+// Safe on Linux (AppImage self-replaces without OS-level signature checks);
+// gated behind signed builds everywhere else, see docs/ROADMAP.md.
+async function downloadAndInstall() {
+  if (!ensureFeedConfigured() || !autoUpdater) {
+    throw new Error("no update feed configured");
+  }
+  await autoUpdater.downloadUpdate();
+  autoUpdater.quitAndInstall();
+}
+
+function releaseDownloadUrl() {
+  const pkg = (() => {
+    try {
+      return JSON.parse(fs.readFileSync(path.join(__dirname, "..", "package.json"), "utf8"));
+    } catch {
+      return {};
+    }
+  })();
+  return pkg.homepage ? `${pkg.homepage}/releases` : null;
+}
+
+module.exports = { checkForUpdate, downloadAndInstall, currentVersion };

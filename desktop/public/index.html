@@ -37,7 +37,28 @@
               <small id="boot-stage">spawning</small>
               <span class="boot-timer" id="boot-timer">0:00</span>
             </div>
+            <!-- Boot is the one moment nothing else needs the screen — the
+                 single highest-attention, least-intrusive ad placement.
+                 Never rendered over the guest screen itself once it's up. -->
+            <div class="boot-ad" id="boot-ad" hidden>
+              <span class="eyebrow">Sponsored</span>
+              <strong id="boot-ad-title"></strong>
+              <p id="boot-ad-body"></p>
+              <button class="ghost small" id="boot-ad-cta"></button>
+            </div>
           </div>
+        </div>
+        <!-- Bottom rail: rotates a single creative, never covers the
+             guest screen above it. Empty/hidden with no consent, on Pro,
+             or with nothing configured — see desktop/lib/ads.js. -->
+        <div class="ad-rail" id="ad-rail" hidden>
+          <img class="ad-rail-thumb" id="ad-rail-thumb" alt="" hidden>
+          <div class="ad-rail-copy">
+            <span class="ad-rail-title" id="ad-rail-title"></span>
+            <span class="ad-rail-body" id="ad-rail-body"></span>
+          </div>
+          <button class="primary small" id="ad-rail-cta"></button>
+          <button class="ghost small" id="ad-rail-dismiss" title="Hide for 24h">✕</button>
         </div>
       </section>
 
@@ -51,6 +72,7 @@
           <button class="tool-tab" data-panel="performance" title="Performance">Perf</button>
           <button class="tool-tab" data-panel="files" title="Files">Files</button>
           <button class="tool-tab" data-panel="location" title="GPS">GPS</button>
+          <button class="tool-tab" data-panel="gamecenter" title="Game Center">Games</button>
         </nav>
 
         <div class="tool-drawer">
@@ -199,6 +221,35 @@
             </div>
             <pre class="mini-log" id="gps-log"></pre>
           </section>
+
+          <section class="tool-panel" id="panel-gamecenter">
+            <header class="panel-head">
+              <span class="eyebrow">Game Center</span>
+              <h2>Offers &amp; Pro</h2>
+            </header>
+            <div class="tier-card" id="tier-card">
+              <span class="tier-badge" id="tier-badge">free</span>
+              <p id="tier-summary">Checking…</p>
+              <div class="panel-actions">
+                <button class="primary" id="tier-upgrade">Get Pro</button>
+                <button class="ghost" id="tier-activate">Activate key</button>
+              </div>
+            </div>
+            <div class="activate-row" id="activate-row" hidden>
+              <input id="activate-license" placeholder="License key">
+              <button class="primary" id="activate-submit">Activate</button>
+            </div>
+            <div class="rewarded-card" id="rewarded-card" hidden>
+              <strong id="rewarded-title"></strong>
+              <p id="rewarded-body"></p>
+              <button class="primary" id="rewarded-cta"></button>
+            </div>
+            <p class="panel-hint">Sponsor-supported app offers. Every click leaves through a signed redirect — nothing here renders third-party code inside this window.</p>
+            <div class="gamecenter-list" id="gamecenter-list"></div>
+            <div class="consent-inline" id="consent-inline" hidden>
+              <p>Sponsor cards are off. <button class="link-btn" id="consent-inline-enable" type="button">Turn them back on</button> or keep them off and consider Pro instead.</p>
+            </div>
+          </section>
         </div>
 
         <footer class="sidebar-footer">
@@ -219,6 +270,23 @@
         <div class="panel-actions">
           <button class="ghost" id="new-machine-cancel">Cancel</button>
           <button class="primary" id="new-machine-create">Create &amp; open tab</button>
+        </div>
+        <div class="modal-ad" id="modal-ad" hidden>
+          <span class="eyebrow">Sponsored</span>
+          <p id="modal-ad-body"></p>
+          <button class="ghost small" id="modal-ad-cta"></button>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal" id="consent-modal" hidden>
+      <div class="modal-card">
+        <span class="eyebrow">Staying sustainable</span>
+        <h2>Free, with a few sponsor placements</h2>
+        <p>This build is free and shows unobtrusive sponsor cards — a rail, a boot-time card, and an optional Game Center panel. Never anything covering the guest screen.</p>
+        <div class="panel-actions">
+          <button class="ghost" id="consent-modal-decline">I'd rather pay</button>
+          <button class="primary" id="consent-modal-accept">Continue with sponsor cards</button>
         </div>
       </div>
     </div>

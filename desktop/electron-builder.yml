@@ -83,7 +83,14 @@ mac:
   category: public.app-category.developer-tools
   hardenedRuntime: false
 
-# No update server is deployed yet — desktop/lib/updater.js does a plain,
-# opt-in JSON feed check instead of electron-updater's provider system.
-# Flip this on once web/dist/updates/ is live (see docs/ROADMAP.md).
-publish: null
+# electron-builder's own publish step (used by `electron-builder --publish
+# always`, never invoked by the npm scripts in this repo without that flag,
+# so this is inert until someone deploys web/dist/updates/ and opts in).
+# The *client's* update check is separately gated by
+# desktop/config/update.json's feedUrl — see desktop/lib/updater.js — so a
+# fresh clone never phones home to this placeholder host. Replace with the
+# real deployed domain once web/ is live (see docs/ROADMAP.md).
+publish:
+  - provider: generic
+    url: https://open-emulator.example.com/updates/
+    channel: latest

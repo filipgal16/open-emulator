@@ -1,0 +1,14 @@
+{
+  "name": "open-emulator-monetize-server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Ad + license server for open-emulator — Node built-ins only, no dependencies.",
+  "main": "index.mjs",
+  "scripts": {
+    "start": "node index.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
