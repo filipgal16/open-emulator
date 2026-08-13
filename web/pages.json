@@ -1,0 +1,48 @@
+{
+  "pages": [
+    {
+      "slug": "",
+      "file": "index.html",
+      "title": "open-emulator — a mint, LDPlayer-class Android emulator",
+      "description": "Run isolated Android virtual machines on your desktop, switch between them with tabs, and keep full control with a mint-themed sidebar. Open source, no ads.",
+      "nav": true,
+      "navLabel": "Overview"
+    },
+    {
+      "slug": "download",
+      "file": "download.html",
+      "title": "Download — open-emulator",
+      "description": "Download open-emulator for Linux, Windows, or macOS.",
+      "nav": true,
+      "navLabel": "Download"
+    },
+    {
+      "slug": "legal/terms",
+      "file": "legal-terms.html",
+      "title": "Terms of use — open-emulator",
+      "description": "Terms of use for the open-emulator website and software.",
+      "nav": false
+    },
+    {
+      "slug": "legal/privacy",
+      "file": "legal-privacy.html",
+      "title": "Privacy — open-emulator",
+      "description": "What open-emulator's app and website do and do not collect.",
+      "nav": false
+    },
+    {
+      "slug": "legal/eula",
+      "file": "legal-eula.html",
+      "title": "End-user terms — open-emulator",
+      "description": "End-user terms for the open-emulator desktop application.",
+      "nav": false
+    },
+    {
+      "slug": "legal/notices",
+      "file": "legal-notices.html",
+      "title": "Third-party notices — open-emulator",
+      "description": "Third-party licenses and notices for open-emulator.",
+      "nav": false
+    }
+  ]
+}

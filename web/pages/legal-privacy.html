@@ -1,0 +1,22 @@
+<article class="prose">
+  <h1>Privacy</h1>
+  <p class="updated">Last updated 2026-08-13</p>
+
+  <p>Short version: neither this website nor the desktop app collects analytics, telemetry, or advertising data today. This page will be updated, with a new date above, if that ever changes — see the <a href="https://github.com/filipgal16/open-emulator/blob/main/docs/MONETIZATION.md">monetization plan</a> for what a future ad-supported build would add and how it would be disclosed here first.</p>
+
+  <h2>This website</h2>
+  <p>No analytics script, no third-party tracking pixels, and no cookies. Pages are static files served as-is.</p>
+
+  <h2>The desktop app</h2>
+  <p>The app does not run any analytics, crash reporting, or advertising SDK, and does not phone home to any server this project operates. Network activity a user can trigger:</p>
+  <table>
+    <tr><th>Action</th><th>Destination</th><th>Why</th></tr>
+    <tr><td>Install wizard's "Download SDK" step</td><td>Google's Android SDK servers</td><td>Fetches the Android SDK/Emulator/system image, only after the license step is explicitly accepted.</td></tr>
+    <tr><td>The emulated Android guest's own network access</td><td>Whatever the guest OS/apps reach</td><td>It's a real virtual machine — apps installed inside it behave as they would on a physical device.</td></tr>
+    <tr><td>Update check (sidebar footer)</td><td>A static JSON feed, only if configured</td><td>Off by default until a real release feed exists. Plain HTTP GET, no identifiers attached.</td></tr>
+  </table>
+  <p>Keymaps, macros, the instance list, GPS spoofing values, performance settings, and the SDK license-acceptance flag are stored only on the local machine and never transmitted anywhere.</p>
+
+  <h2>Contact</h2>
+  <p>Open an issue on the <a href="https://github.com/filipgal16/open-emulator">GitHub repository</a> for privacy questions.</p>
+</article>

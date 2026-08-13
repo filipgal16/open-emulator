@@ -55,6 +55,7 @@ linux:
       StartupWMClass: open-emulator
 
 deb:
+  maintainer: open-emulator contributors <filipgal16@users.noreply.github.com>
   depends:
     - libgtk-3-0
     - libnotify4
