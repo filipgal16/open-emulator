@@ -30,25 +30,35 @@
 
     <main id="main">
       {{CONTENT}}
+
+      <!--
+        Site-wide ad slot: structurally ready for a network's script tag,
+        empty and invisible unless web/public/ad-config.json sets a real
+        provider + publisher id — see web/public/ads.js. No repo clone ever
+        loads a third-party ad script by default.
+      -->
+      <div class="ad-slot" id="site-ad-slot" data-slot="site-footer-rail" hidden></div>
     </main>
 
     <footer class="site-footer">
       <div class="site-footer-inner">
         <div class="site-footer-brand">
           <img src="/brand/logo/wordmark.svg" width="160" height="32" alt="open-emulator">
-          <p>An open, mint-branded Android emulator with isolated multi-instance virtual machines. No ads, no account, free while in early access.</p>
+          <p>An open, mint-branded Android emulator with isolated multi-instance virtual machines. Free tier available; Pro removes ads and instance limits.</p>
         </div>
         <div class="site-footer-links">
           <div>
             <span class="eyebrow">Product</span>
             <a href="/">Overview</a>
             <a href="/download/">Download</a>
+            <a href="/pricing/">Pricing</a>
             <a href="https://github.com/filipgal16/open-emulator">Source (GitHub)</a>
           </div>
           <div>
             <span class="eyebrow">Legal</span>
             <a href="/legal/terms/">Terms</a>
             <a href="/legal/privacy/">Privacy</a>
+            <a href="/legal/cookies/">Cookies</a>
             <a href="/legal/eula/">End-user terms</a>
             <a href="/legal/notices/">Third-party notices</a>
           </div>
@@ -56,5 +66,15 @@
       </div>
       <p class="site-footer-fine">open-emulator is not affiliated with, endorsed by, or sponsored by Google. Android is a trademark of Google LLC.</p>
     </footer>
+
+    <div class="consent-banner" id="consent-banner" hidden>
+      <p>This site uses a small amount of local storage to remember your ad/cookie choice, and may show sponsor placements to keep the free tier free. See the <a href="/legal/cookies/">cookie policy</a>.</p>
+      <div class="consent-actions">
+        <button class="btn btn-ghost" id="consent-decline" type="button">Decline</button>
+        <button class="btn btn-primary" id="consent-accept" type="button">Accept</button>
+      </div>
+    </div>
+    <script src="/consent.js"></script>
+    <script src="/ads.js"></script>
   </body>
 </html>

@@ -1,0 +1,6 @@
+{
+  "_comment": "Per-partner postback secrets for POST /v1/postback's X-Signature header. These are placeholders — replace with real secrets from each affiliate network before going live, and consider moving them to environment variables instead of a committed file once real ones exist.",
+  "example-network": {
+    "secret": "replace-with-real-partner-secret"
+  }
+}

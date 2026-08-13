@@ -4,6 +4,7 @@ const net = require("net");
 const path = require("path");
 const { spawn } = require("child_process");
 const paths = require("./paths");
+const entitlement = require("./entitlement");
 
 const OPEN_EMU = paths.openEmuBin();
 const ANDROID_KEYMAPS = path.join(paths.androidCodeRoot(), "config", "keymaps");
@@ -263,6 +264,21 @@ async function status(name) {
 
 async function start(options = {}) {
   const name = cleanName(options.instance) || "main";
+  const list = await instances();
+  const alreadyRunning = list.some((item) => item.name === name && item.running);
+  if (!alreadyRunning) {
+    const runningElsewhere = list.filter((item) => item.name !== name && item.running).length;
+    try {
+      await entitlement.assertCanStartInstance(runningElsewhere);
+    } catch (err) {
+      if (err.code !== "ENTITLEMENT_LIMIT") throw err;
+      // Electron's IPC only reliably forwards Error#message across the
+      // renderer boundary, not custom properties — return a plain object
+      // instead of throwing so app.js can branch on `code` and offer the
+      // upgrade/rewarded-unlock path instead of a bare error toast.
+      return { ok: false, code: err.code, error: err.message, entitlement: err.entitlement, instance: name };
+    }
+  }
   const args = [...instanceFlag(name), "start"];
   if (options.cold) args.push("--cold");
   spawn(OPEN_EMU, args, {

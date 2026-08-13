@@ -1,0 +1,67 @@
+{
+  "_comment": "serverUrl empty = ads.js only ever shows the bundled house creatives below and never makes a network call. Point serverUrl at a deployed monetize/server to pull remote campaigns (see monetize/README.md). Ads never render at all unless (a) tier is free/not Pro and (b) the wizard's ads/telemetry consent step was accepted — see desktop/lib/entitlement.js and desktop/lib/ads.js.",
+  "serverUrl": "",
+  "perSlotSessionCap": 6,
+  "sessionCapExemptSlots": ["rail"],
+  "dismissHours": 24,
+  "house": {
+    "rail": [
+      {
+        "id": "house-keymap",
+        "title": "Map keys to on-screen taps",
+        "body": "Click the guest screen to place a binding, then fire it from the keyboard.",
+        "cta": "Open keymap editor",
+        "url": "open-emulator://panel/keymap",
+        "weight": 3
+      },
+      {
+        "id": "house-instances",
+        "title": "Run more than one account at once",
+        "body": "Clone a machine from the tab bar — separate userdata, separate ports.",
+        "cta": "Instances",
+        "url": "open-emulator://panel/instances",
+        "weight": 2
+      }
+    ],
+    "boot": [
+      {
+        "id": "house-pro-boot",
+        "title": "Boots are the one moment ads don't get in your way",
+        "body": "Pro removes this card and the 2-machine cap entirely.",
+        "cta": "Compare Free vs Pro",
+        "url": "open-emulator://upgrade",
+        "weight": 1
+      }
+    ],
+    "gamecenter": [
+      {
+        "id": "house-fdroid",
+        "title": "F-Droid",
+        "body": "An open-source Android app catalog — no Google account required.",
+        "cta": "Install F-Droid",
+        "url": "https://f-droid.org/",
+        "weight": 1
+      }
+    ],
+    "modal": [
+      {
+        "id": "house-clone-tip",
+        "title": "Cloning keeps the source machine untouched",
+        "body": "A clone forks userdata at the point you clone it — the original keeps running.",
+        "cta": "Got it",
+        "url": "open-emulator://dismiss",
+        "weight": 1
+      }
+    ],
+    "rewarded": [
+      {
+        "id": "house-rewarded-demo",
+        "title": "Unlock a 3rd running machine for today",
+        "body": "House placement — no real sponsor spot wired up yet, this demonstrates the unlock flow itself.",
+        "cta": "Unlock",
+        "url": "open-emulator://reward/instance-slot",
+        "weight": 1
+      }
+    ]
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "_comment": "Website-only ad config. provider/client/slot are for the site-wide AdSense rail (policy-compliant here, unlike inside the desktop app — see docs/LEGAL.md); empty = stays hidden, no script loads. adServerUrl points web/public/game-offers.js at the same monetize/server the desktop app's Game Center uses, for the /games/<slug> SEO template's sponsored card — empty = no network call, card stays hidden.",
+  "provider": "adsense",
+  "client": "",
+  "slot": "",
+  "adServerUrl": ""
+}

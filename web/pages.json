@@ -17,6 +17,29 @@
       "navLabel": "Download"
     },
     {
+      "slug": "pricing",
+      "file": "pricing.html",
+      "title": "Pricing — open-emulator",
+      "description": "Free vs Pro: what open-emulator's optional paid tier removes and unlocks.",
+      "nav": true,
+      "navLabel": "Pricing"
+    },
+    {
+      "slug": "games/play-android-games-on-pc",
+      "file": "games-example.html",
+      "title": "Play Android games on PC with open-emulator",
+      "description": "How to run Android games on a Windows, Linux, or macOS desktop with open-emulator's isolated multi-instance emulator.",
+      "nav": false
+    },
+    {
+      "slug": "press",
+      "file": "press.html",
+      "title": "Press & media kit — open-emulator",
+      "description": "Logos, boilerplate, and screenshots for writing about open-emulator.",
+      "nav": true,
+      "navLabel": "Press"
+    },
+    {
       "slug": "legal/terms",
       "file": "legal-terms.html",
       "title": "Terms of use — open-emulator",
@@ -42,6 +65,13 @@
       "file": "legal-notices.html",
       "title": "Third-party notices — open-emulator",
       "description": "Third-party licenses and notices for open-emulator.",
+      "nav": false
+    },
+    {
+      "slug": "legal/cookies",
+      "file": "legal-cookies.html",
+      "title": "Cookie policy — open-emulator",
+      "description": "What cookies and local storage this website uses.",
       "nav": false
     }
   ]

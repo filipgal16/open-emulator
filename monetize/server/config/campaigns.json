@@ -1,0 +1,88 @@
+{
+  "_comment": "House/example creatives — replace with real direct-sold or affiliate campaigns. cpmCents/payoutCentsPerClick feed the /v1/report revenue estimate; they are not real transactions.",
+  "dismissHours": 24,
+  "slots": {
+    "rail": [
+      {
+        "id": "house-keymap",
+        "title": "Map keys to on-screen taps",
+        "body": "Click the guest screen to place a binding, then fire it from the keyboard.",
+        "cta": "Open keymap editor",
+        "url": "open-emulator://panel/keymap",
+        "weight": 3,
+        "cpmCents": 0,
+        "payoutCentsPerClick": 0
+      },
+      {
+        "id": "house-instances",
+        "title": "Run more than one account at once",
+        "body": "Clone a machine from the tab bar — separate userdata, separate ports.",
+        "cta": "Instances",
+        "url": "open-emulator://panel/instances",
+        "weight": 2,
+        "cpmCents": 0,
+        "payoutCentsPerClick": 0
+      }
+    ],
+    "boot": [
+      {
+        "id": "house-pro-boot",
+        "title": "Boots are the one moment ads don't get in your way",
+        "body": "Pro removes this card and the 2-machine cap entirely.",
+        "cta": "Compare Free vs Pro",
+        "url": "https://open-emulator.example.com/pricing/",
+        "weight": 1,
+        "cpmCents": 0,
+        "payoutCentsPerClick": 0
+      }
+    ],
+    "gamecenter": [
+      {
+        "id": "house-fdroid",
+        "title": "F-Droid",
+        "body": "An open-source Android app catalog — a sane starting point with no Google account required.",
+        "cta": "Install F-Droid",
+        "url": "https://f-droid.org/",
+        "weight": 1,
+        "cpmCents": 0,
+        "payoutCentsPerClick": 0
+      }
+    ],
+    "modal": [
+      {
+        "id": "house-clone-tip",
+        "title": "Cloning keeps the source machine untouched",
+        "body": "A clone forks userdata at the point you clone it — the original keeps running.",
+        "cta": "Got it",
+        "url": "open-emulator://dismiss",
+        "weight": 1,
+        "cpmCents": 0,
+        "payoutCentsPerClick": 0
+      }
+    ],
+    "rewarded": [
+      {
+        "id": "house-rewarded-demo",
+        "title": "Unlock a 3rd running machine for today",
+        "body": "House placement — no real sponsor spot is wired up yet, this just demonstrates the unlock flow.",
+        "cta": "Unlock",
+        "url": "open-emulator://reward/instance-slot",
+        "weight": 1,
+        "cpmCents": 0,
+        "payoutCentsPerClick": 0
+      }
+    ],
+    "games-page": [
+      {
+        "id": "house-games-page",
+        "title": "Curated app offers land here",
+        "body": "This slot is served by the same ad server the desktop app's Game Center uses — nothing is configured yet.",
+        "cta": "See the app's Game Center",
+        "url": "https://open-emulator.example.com/download/",
+        "weight": 1,
+        "cpmCents": 0,
+        "payoutCentsPerClick": 0
+      }
+    ]
+  }
+}

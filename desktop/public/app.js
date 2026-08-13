@@ -63,18 +63,23 @@ function escapeHtml(value) {
     .replace(/'/g, "&#039;");
 }
 
-function wireNavigation() {
-  const activate = (panelName) => {
-    state.activePanel = panelName;
-    $$(".tool-tab").forEach((tab) => tab.classList.toggle("active", tab.dataset.panel === panelName));
-    $$(".tool-panel").forEach((panel) => panel.classList.toggle("active", panel.id === `panel-${panelName}`));
-    $("#screen-frame").classList.toggle("keymap-mode", panelName === "keymap");
-    renderDots();
-    if (panelName === "keymap") refreshScreenshot();
-  };
+function activatePanel(panelName) {
+  state.activePanel = panelName;
+  $$(".tool-tab").forEach((tab) => tab.classList.toggle("active", tab.dataset.panel === panelName));
+  $$(".tool-panel").forEach((panel) => panel.classList.toggle("active", panel.id === `panel-${panelName}`));
+  $("#screen-frame").classList.toggle("keymap-mode", panelName === "keymap");
+  renderDots();
+  if (panelName === "keymap") refreshScreenshot();
+  if (panelName === "gamecenter") loadGameCenter().catch(() => {});
+}
 
+function openGameCenter() {
+  activatePanel("gamecenter");
+}
+
+function wireNavigation() {
   $$(".tool-tab").forEach((button) => {
-    button.addEventListener("click", () => activate(button.dataset.panel));
+    button.addEventListener("click", () => activatePanel(button.dataset.panel));
   });
 }
 
@@ -102,10 +107,12 @@ function updateBootOverlay(stage, status) {
     return;
   }
   if (booting || (status && status.emulator === "running" && stage !== "ready")) {
+    const wasHidden = overlay.hidden;
     overlay.hidden = false;
     $("#boot-stage").textContent = stage;
     if (!state.bootStartedAt) state.bootStartedAt = Date.now();
     startBootTimer();
+    if (wasHidden) showBootAd().catch(() => {});
   } else {
     overlay.hidden = true;
     stopBootTimer();
@@ -170,6 +177,12 @@ async function startEmulator(button) {
   $("#boot-stage").textContent = "spawning";
   try {
     const result = await invoke("start", { cold: $("#cold-start").checked, async: true, instance: activeName() });
+    if (result && result.code === "ENTITLEMENT_LIMIT") {
+      $("#boot-overlay").hidden = true;
+      toast(result.error, "warn");
+      openGameCenter();
+      return;
+    }
     logTo("#status-output", result);
     toast(result.message || "Emulator start requested");
     await refreshStatus();
@@ -445,6 +458,7 @@ function wireTabs() {
     $("#new-machine-name").value = "";
     $("#new-machine-modal").hidden = false;
     $("#new-machine-name").focus();
+    loadModalAd().catch(() => {});
   });
   $("#new-machine-cancel").addEventListener("click", () => {
     $("#new-machine-modal").hidden = true;
@@ -689,6 +703,211 @@ async function checkForUpdate() {
   }
 }
 
+// --- Ads / entitlement ---------------------------------------------------
+// Creatives are rendered as plain text/attributes only (textContent, img
+// src) — never innerHTML from a remote string. See desktop/lib/ads.js for
+// why: no third-party HTML/JS ever runs inside this window.
+
+async function applyAdAction(result, { onDismiss } = {}) {
+  if (!result) return;
+  if (result.action === "dismiss" && onDismiss) onDismiss();
+  if (result.action === "panel") activatePanel(result.panel);
+  if (result.action === "upgrade") invoke("upgrade-open").catch(() => {});
+  if (result.action === "rewarded") {
+    toast("Unlocked a 3rd running machine for today.");
+    loadGameCenter().catch(() => {});
+  }
+  // "external": the main process already opened it via shell.openExternal.
+}
+
+async function clickAd(slot, creative, onDismiss) {
+  try {
+    const result = await invoke("ads-click", { slot, id: creative.id, clickUrl: creative.clickUrl });
+    await applyAdAction(result, { onDismiss });
+  } catch (err) {
+    showError(err);
+  }
+}
+
+async function refreshAdRail() {
+  try {
+    const result = await invoke("ads-get", "rail");
+    const rail = $("#ad-rail");
+    if (!result || !result.creative) {
+      rail.hidden = true;
+      return;
+    }
+    const { creative } = result;
+    $("#ad-rail-title").textContent = creative.title;
+    $("#ad-rail-body").textContent = creative.body;
+    $("#ad-rail-cta").textContent = creative.cta;
+    const thumb = $("#ad-rail-thumb");
+    thumb.hidden = !creative.imageUrl;
+    if (creative.imageUrl) thumb.src = creative.imageUrl;
+    rail.hidden = false;
+    invoke("ads-event", { slot: "rail", id: creative.id }).catch(() => {});
+    $("#ad-rail-cta").onclick = () => clickAd("rail", creative);
+    $("#ad-rail-dismiss").onclick = async () => {
+      await invoke("ads-dismiss", { slot: "rail", hours: 24 }).catch(() => {});
+      rail.hidden = true;
+    };
+  } catch {
+    $("#ad-rail").hidden = true;
+  }
+}
+
+async function showBootAd() {
+  const result = await invoke("ads-get", "boot");
+  const card = $("#boot-ad");
+  if (!result || !result.creative) {
+    card.hidden = true;
+    return;
+  }
+  const { creative } = result;
+  $("#boot-ad-title").textContent = creative.title;
+  $("#boot-ad-body").textContent = creative.body;
+  $("#boot-ad-cta").textContent = creative.cta;
+  card.hidden = false;
+  invoke("ads-event", { slot: "boot", id: creative.id }).catch(() => {});
+  $("#boot-ad-cta").onclick = () => clickAd("boot", creative);
+}
+
+async function loadModalAd() {
+  try {
+    const result = await invoke("ads-get", "modal");
+    const card = $("#modal-ad");
+    if (!result || !result.creative) {
+      card.hidden = true;
+      return;
+    }
+    const { creative } = result;
+    $("#modal-ad-body").textContent = `${creative.title} — ${creative.body}`;
+    $("#modal-ad-cta").textContent = creative.cta;
+    card.hidden = false;
+    invoke("ads-event", { slot: "modal", id: creative.id }).catch(() => {});
+    $("#modal-ad-cta").onclick = () => clickAd("modal", creative, () => (card.hidden = true));
+  } catch {
+    $("#modal-ad").hidden = true;
+  }
+}
+
+function renderTierCard(entitlement) {
+  const badge = $("#tier-badge");
+  badge.textContent = entitlement.tier;
+  badge.classList.toggle("pro", entitlement.tier === "pro");
+  $("#tier-summary").textContent =
+    entitlement.tier === "pro"
+      ? "No ads, no instance cap. Thank you for supporting the project."
+      : `Free tier: ${entitlement.maxInstances === Infinity ? "unlimited" : entitlement.maxInstances} running machine(s) at once${entitlement.rewardedUntil ? " (today's unlock active)" : ""}.`;
+  $("#tier-upgrade").hidden = entitlement.tier === "pro";
+  $("#tier-activate").hidden = entitlement.tier === "pro";
+}
+
+function renderGameCenterOffers(creatives) {
+  const list = $("#gamecenter-list");
+  list.innerHTML = "";
+  for (const creative of creatives) {
+    const row = document.createElement("div");
+    row.className = "gamecenter-offer";
+    const title = document.createElement("strong");
+    title.textContent = creative.title;
+    const body = document.createElement("p");
+    body.textContent = creative.body;
+    const cta = document.createElement("button");
+    cta.className = "primary small";
+    cta.textContent = creative.cta;
+    cta.addEventListener("click", () => clickAd("gamecenter", creative));
+    row.append(title, body, cta);
+    list.appendChild(row);
+    invoke("ads-event", { slot: "gamecenter", id: creative.id }).catch(() => {});
+  }
+  if (!creatives.length) {
+    const empty = document.createElement("p");
+    empty.className = "panel-hint";
+    empty.textContent = "No offers configured yet.";
+    list.appendChild(empty);
+  }
+}
+
+async function loadGameCenter() {
+  try {
+    const entitlement = await invoke("license-get");
+    renderTierCard(entitlement);
+
+    const consent = await invoke("consent-get");
+    $("#consent-inline").hidden = consent !== false;
+
+    const rewardedCard = $("#rewarded-card");
+    if (entitlement.tier === "free" && !entitlement.rewardedUntil && consent === true) {
+      const rewarded = await invoke("ads-get", "rewarded");
+      if (rewarded && rewarded.creative) {
+        $("#rewarded-title").textContent = rewarded.creative.title;
+        $("#rewarded-body").textContent = rewarded.creative.body;
+        $("#rewarded-cta").textContent = rewarded.creative.cta;
+        $("#rewarded-cta").onclick = () => clickAd("rewarded", rewarded.creative);
+        rewardedCard.hidden = false;
+      } else {
+        rewardedCard.hidden = true;
+      }
+    } else {
+      rewardedCard.hidden = true;
+    }
+
+    if (consent === true && entitlement.adsEnabled) {
+      const offers = await invoke("ads-list", "gamecenter");
+      renderGameCenterOffers((offers && offers.creatives) || []);
+    } else {
+      renderGameCenterOffers([]);
+    }
+  } catch (err) {
+    showError(err);
+  }
+}
+
+function wireGameCenter() {
+  $("#tier-upgrade").addEventListener("click", () => invoke("upgrade-open").catch(() => {}));
+  $("#tier-activate").addEventListener("click", () => {
+    const row = $("#activate-row");
+    row.hidden = !row.hidden;
+  });
+  $("#activate-submit").addEventListener("click", async () => {
+    const key = $("#activate-license").value.trim();
+    if (!key) return;
+    try {
+      const entitlement = await invoke("license-activate", key);
+      toast(`Activated — tier: ${entitlement.tier}`);
+      $("#activate-row").hidden = true;
+      $("#activate-license").value = "";
+      renderTierCard(entitlement);
+      loadGameCenter().catch(() => {});
+      refreshAdRail().catch(() => {});
+    } catch (err) {
+      showError(err);
+    }
+  });
+  $("#consent-inline-enable").addEventListener("click", async () => {
+    await invoke("consent-set", true).catch(() => {});
+    loadGameCenter().catch(() => {});
+    refreshAdRail().catch(() => {});
+  });
+}
+
+async function wireConsentModal() {
+  const consent = await invoke("consent-get").catch(() => null);
+  if (consent !== null) return; // already decided — via the wizard, or previously in-app
+  $("#consent-modal").hidden = false;
+  $("#consent-modal-accept").addEventListener("click", async () => {
+    await invoke("consent-set", true).catch(() => {});
+    $("#consent-modal").hidden = true;
+    refreshAdRail().catch(() => {});
+  });
+  $("#consent-modal-decline").addEventListener("click", async () => {
+    await invoke("consent-set", false).catch(() => {});
+    $("#consent-modal").hidden = true;
+    invoke("upgrade-open").catch(() => {});
+  });
+}
+
 async function boot() {
   wireNavigation();
   wireViewport();
@@ -700,6 +919,7 @@ async function boot() {
   wirePerformance();
   wireFiles();
   wireLocation();
+  wireGameCenter();
 
   await Promise.allSettled([
     refreshStatus(),
@@ -710,6 +930,9 @@ async function boot() {
   ]);
   refreshScreenshot();
   checkForUpdate();
+  wireConsentModal().catch(() => {});
+  refreshAdRail().catch(() => {});
+  state.adRailTimer = setInterval(() => refreshAdRail().catch(() => {}), 90000);
   state.statusTimer = setInterval(async () => {
     try {
       await loadInstances();

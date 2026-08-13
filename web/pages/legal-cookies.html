@@ -1,0 +1,18 @@
+<article class="prose">
+  <h1>Cookie policy</h1>
+  <p class="updated">Last updated 2026-08-13</p>
+
+  <p>This site does not set tracking cookies of its own. It uses exactly one piece of browser storage, plus (only if you accept the consent banner <strong>and</strong> a real ad account is configured — see below) a third-party ad network's own cookies.</p>
+
+  <table>
+    <tr><th>Name</th><th>Type</th><th>Purpose</th></tr>
+    <tr><td><code>oe_consent</code></td><td>localStorage (not a cookie)</td><td>Remembers whether you accepted or declined the consent banner, so it doesn't ask again. See <code>web/public/consent.js</code>.</td></tr>
+    <tr><td>AdSense cookies</td><td>Third-party cookie</td><td>Only set if <code>web/public/ad-config.json</code> has a real publisher id configured <em>and</em> you accepted the banner. As shipped, that config is empty, so nothing loads. See <code>web/public/ads.js</code>.</td></tr>
+  </table>
+
+  <h2>Declining</h2>
+  <p>Choosing "Decline" on the banner stores that choice the same way (in <code>oe_consent</code>) and prevents the ad slot from ever loading a third-party script, for as long as that storage persists.</p>
+
+  <h2>The desktop app is unrelated</h2>
+  <p>None of this applies to the desktop application, which has its own, separate consent step in the install wizard — see <a href="/legal/privacy/">Privacy</a>.</p>
+</article>

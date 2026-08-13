@@ -421,6 +421,55 @@ a:hover {
   vertical-align: top;
 }
 
+/* Ad slot + consent banner */
+.ad-slot {
+  max-width: 1080px;
+  margin: 0 auto 24px;
+  padding: 0 24px;
+  min-height: 90px;
+}
+
+.consent-banner {
+  position: fixed;
+  left: 16px;
+  right: 16px;
+  bottom: 16px;
+  z-index: 40;
+  max-width: 640px;
+  margin: 0 auto;
+  background: var(--oe-ink);
+  color: #eafff4;
+  border-radius: var(--oe-radius-md);
+  padding: 16px 20px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  box-shadow: 0 20px 40px rgba(11, 36, 28, 0.25);
+}
+
+.consent-banner p {
+  margin: 0;
+  font-size: 0.86rem;
+  color: rgba(234, 255, 244, 0.85);
+  flex: 1 1 260px;
+}
+
+.consent-banner a {
+  color: var(--oe-mint-300);
+}
+
+.consent-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.consent-banner .btn-ghost {
+  border-color: rgba(234, 255, 244, 0.35);
+  color: #eafff4;
+}
+
 /* Footer */
 .site-footer {
   border-top: 1px solid var(--oe-line);
