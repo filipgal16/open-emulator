@@ -45,6 +45,17 @@ describe which subsystems change and how invasive each is instead.
   is **not** yet verified: a live end-to-end run against a real booted
   emulator, since this sandbox has no system image or `adb` installed —
   see "Verifying live mirroring" below for the one remaining step.
+- **Fast boot (KVM snapshot, target ≤30s)** —
+  [`android/lib/boot.sh`](../android/lib/boot.sh) is the shared launch
+  path for both `open-emu start` and `open-emu instance start`. Isolated
+  machines used to pass `-no-snapshot-load` on every launch, which made
+  the provisioned `booted` snapshot dead code. Snapshot restore is now
+  the default on a usable `/dev/kvm` when cores/RAM/GPU have not changed;
+  `config.ini` is left alone when those already match; software GL is
+  `swiftshader_indirect`; headless starts pass `-no-audio`. TCG still
+  cold-boots (~3 min) and relies on warm process reuse. Helper logic is
+  covered by `make android-test`. A live ≤30s number still needs a KVM
+  host with a real system image — see [`docs/BOOT.md`](BOOT.md).
 
 ## Phase A — Real distribution
 

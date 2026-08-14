@@ -14,7 +14,7 @@ Commands:
   ensure-main
   create <name> [--cores N] [--memory MB]
   clone [source] <name> [--cores N] [--memory MB]
-  start <name>
+  start <name> [--cold]
   stop <name>
   delete <name>
   batch start|stop [name...]
@@ -197,28 +197,7 @@ instance_allocate_console_port() {
 instance_set_config_keys() {
   local config="$1"
   shift
-  python3 - "$config" "$@" <<'PY'
-import sys
-from pathlib import Path
-
-path = Path(sys.argv[1])
-updates = dict(arg.split("=", 1) for arg in sys.argv[2:])
-lines = path.read_text().splitlines() if path.exists() else []
-seen = set()
-out = []
-for line in lines:
-    if "=" in line and not line.lstrip().startswith("#"):
-        key = line.split("=", 1)[0].strip()
-        if key in updates:
-            out.append(f"{key}={updates[key]}")
-            seen.add(key)
-            continue
-    out.append(line)
-for key, value in updates.items():
-    if key not in seen:
-        out.append(f"{key}={value}")
-path.write_text("\n".join(out) + "\n")
-PY
+  avd_config_apply "$config" "$@" >/dev/null
 }
 
 instance_resolve_source_avd() {
@@ -276,21 +255,32 @@ instance_create_from_source() {
 
   log "cloning isolated VM ${source_avd} -> ${dst_avd}"
   cp -a "$src_dir" "$dst_dir"
-  # Drop snapshots so the clone boots its own userdata, not the source's live RAM.
-  rm -rf "$dst_dir/snapshots" 2>/dev/null || true
   if [[ -f "$AVD_HOME/${source_avd}.ini" ]]; then
     cp -a "$AVD_HOME/${source_avd}.ini" "$AVD_HOME/${dst_avd}.ini"
   fi
+
+  # Keep the source's GPU (and its provisioned snapshot) when cores/RAM
+  # match, so the clone's first start is a KVM snapshot restore instead of
+  # a cold boot. Drop snapshots only when the machine shape changed.
+  local src_cores src_ram
+  src_cores="$(avd_config_get "$src_dir/config.ini" hw.cpu.ncore)"
+  src_ram="$(avd_config_get "$src_dir/config.ini" hw.ramSize)"
 
   instance_set_config_keys "$dst_dir/config.ini" \
     "AvdId=${dst_avd}" \
     "avd.ini.displayname=open-emulator ${name}" \
     "hw.cpu.ncore=${cores}" \
     "hw.ramSize=${memory_mb}" \
-    "hw.gpu.mode=${GPU_MODE}" \
     "hw.keyboard=yes" \
     "runtime.network.latency=none" \
     "runtime.network.speed=full"
+
+  if [[ "$cores" != "$src_cores" || "$memory_mb" != "$src_ram" ]]; then
+    log "clone hardware differs from source (cores ${src_cores}->${cores}, ram ${src_ram}->${memory_mb}) — dropping snapshots"
+    rm -rf "$dst_dir/snapshots" 2>/dev/null || true
+  else
+    log "clone hardware matches source — keeping snapshot '${SNAPSHOT_NAME}' for fast first boot"
+  fi
 
   cat > "$AVD_HOME/${dst_avd}.ini" <<EOF
 avd.ini.encoding=UTF-8
@@ -501,14 +491,24 @@ PY
 
 instance_start() {
   local name="${1:-}"
-  [[ -n "$name" ]] || die "usage: open-emu instance start <name>"
+  shift || true
+  local cold=0
+  while (($#)); do
+    case "$1" in
+      --cold) cold=1; shift ;;
+      *) die "usage: open-emu instance start <name> [--cold]" ;;
+    esac
+  done
+  [[ -n "$name" ]] || die "usage: open-emu instance start <name> [--cold]"
   instance_exists "$name" || die "instance not found: $name"
   if instance_is_running "$name"; then
     eval "$(instance_get_env "$name")"
+    record_boot_path "warm" "$(instance_dir "$name")/last_boot_path"
     echo "instance=${name}"
     echo "status=running"
     echo "adb_device=emulator-${INST_CONSOLE_PORT}"
     echo "emulator=running"
+    echo "boot_path=warm"
     return 0
   fi
 
@@ -521,49 +521,40 @@ instance_start() {
   # shellcheck disable=SC1090
   source "$PROFILE_FILE"
 
-  local gpu="$GPU_MODE"
-  if (( HAS_KVM == 0 )) && [[ "$gpu" != "swiftshader" && "$gpu" != "swiftshader_indirect" ]]; then
-    gpu="swiftshader"
-  fi
-  instance_set_config_keys "$AVD_HOME/${INST_AVD}.avd/config.ini" \
-    "hw.cpu.ncore=${INST_CORES}" \
-    "hw.ramSize=${INST_MEMORY_MB}" \
-    "hw.gpu.mode=${gpu}" \
-    "runtime.network.latency=none" \
-    "runtime.network.speed=full"
-
-  local headless=0
-  if [[ "${ANDROID_HEADLESS:-}" == "1" || -z "${DISPLAY:-}" ]]; then
-    headless=1
-  fi
-
-  local args=(
-    -avd "$INST_AVD"
-    -port "$INST_CONSOLE_PORT"
-    -gpu "$gpu"
-    -accel "$ACCEL"
-    -netdelay none
-    -netspeed full
-    -no-boot-anim
-    -no-metrics
-    -no-snapshot-load
-  )
-  (( headless )) && args+=(-no-window)
-
   local log_file="$INSTANCE_LOG_DIR/${name}.log"
+  local pid_file
+  pid_file="$(instance_dir "$name")/emulator.pid"
+  local device_file
+  device_file="$(instance_dir "$name")/device"
   mkdir -p "$INSTANCE_LOG_DIR" "$(instance_dir "$name")"
-  : > "$log_file"
-  log "starting instance ${name}: ${args[*]}"
-  nohup "$EMULATOR_BIN" "${args[@]}" >>"$log_file" 2>&1 &
-  local pid=$!
-  echo "$pid" > "$(instance_dir "$name")/emulator.pid"
-  echo "emulator-${INST_CONSOLE_PORT}" > "$(instance_dir "$name")/device"
-  instance_upsert_state "$name" "$INST_AVD" "$INST_CONSOLE_PORT" "$INST_CORES" "$INST_MEMORY_MB" "starting" "$pid" "${INST_SOURCE_AVD:-$INST_AVD}" "${INST_LAST_APP:-}"
+
+  adb_start
+  AVD_NAME="$INST_AVD"
+  CONSOLE_PORT="$INST_CONSOLE_PORT"
+  PID_FILE="$pid_file"
+  DEVICE_FILE="$device_file"
+  EMULATOR_LOG="$log_file"
+  EXPECTED_SERIAL="emulator-${INST_CONSOLE_PORT}"
+
+  launch_and_wait \
+    "$INST_AVD" \
+    "$INST_CONSOLE_PORT" \
+    "$INST_CORES" \
+    "$INST_MEMORY_MB" \
+    "$cold" \
+    "$pid_file" \
+    "$log_file" \
+    "$device_file"
+
+  local pid=""
+  [[ -f "$pid_file" ]] && pid="$(cat "$pid_file")"
+  instance_upsert_state "$name" "$INST_AVD" "$INST_CONSOLE_PORT" "$INST_CORES" "$INST_MEMORY_MB" "running" "$pid" "${INST_SOURCE_AVD:-$INST_AVD}" "${INST_LAST_APP:-}"
   echo "instance=${name}"
   echo "pid=${pid}"
   echo "console_port=${INST_CONSOLE_PORT}"
   echo "adb_device=emulator-${INST_CONSOLE_PORT}"
-  echo "emulator=starting"
+  echo "emulator=running"
+  echo "boot_path=${LAST_BOOT_PATH:-unknown}"
   echo "log=${log_file}"
 }
 

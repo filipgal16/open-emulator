@@ -99,7 +99,7 @@ Imported under [`android/`](android/). Control plane: `android/bin/open-emu`.
 make android-fetch        # download SDK + Android 11 image (~4 GiB, once)
 make android-setup
 make android-provision    # cold boot, tune for real use, save fast snapshot
-make android-start        # snapshot boot (seconds–minutes depending on KVM)
+make android-start        # KVM: snapshot boot (target ≤30s); TCG: cold, then warm reuse
 ./android/bin/open-emu install path/to/app.apk
 ./android/bin/open-emu launch com.android.settings/.Settings
 ./android/bin/open-emu doctor
@@ -112,11 +112,13 @@ See [`android/README.md`](android/README.md).
 See [`docs/ROADMAP.md`](docs/ROADMAP.md) for the full breakdown. Short
 version: sign and publish real installers, verify live mirroring against
 a real KVM-backed boot (this sandbox had no system image to test that
-last mile against), wire up real checkout automation for the Pro tier
-already in [`docs/MONETIZATION.md`](docs/MONETIZATION.md), then a
-cross-platform (Windows-first) control plane, then growing `open-vmm`
-itself toward an independent guest image that no longer depends on
-Google's Android SDK at all.
+last mile against), hit the ≤30s snapshot-boot target on a machine with
+usable `/dev/kvm` (see [`docs/BOOT.md`](docs/BOOT.md)), wire up real
+checkout automation for the Pro tier already in
+[`docs/MONETIZATION.md`](docs/MONETIZATION.md), then a cross-platform
+(Windows-first) control plane, then growing `open-vmm` itself toward an
+independent guest image that no longer depends on Google's Android SDK
+at all.
 
 ## Brand & desktop shell
 
@@ -175,6 +177,8 @@ but is inert until deliberately turned on:
 - [`docs/ROADMAP.md`](docs/ROADMAP.md) — what's left: real checkout
   automation, live-device verification of mirroring, signed installers,
   cross-platform support.
+- [`docs/BOOT.md`](docs/BOOT.md) — the ≤30s start target is a KVM
+  snapshot restore after provision, not a TCG cold boot.
 - [`LICENSE`](LICENSE) (Apache-2.0) and [`docs/NOTICES.md`](docs/NOTICES.md)
   — this project's own license and third-party attributions.
 - [`docs/LEGAL.md`](docs/LEGAL.md) — why the Android SDK is fetched, never

@@ -32,3 +32,6 @@ web/dist/
 monetize/server/data/
 monetize/licensing/keys/
 
+__pycache__/
+*.pyc
+

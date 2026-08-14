@@ -172,9 +172,10 @@
             <div class="form-grid">
               <label>CPU cores<input id="perf-cores" type="number" min="1" max="16"></label>
               <label>Memory MB<input id="perf-memory" type="number" min="512" step="256"></label>
-              <label>GPU<select id="perf-gpu"><option>swiftshader</option><option>auto</option><option>host</option><option>guest</option></select></label>
+              <label>GPU<select id="perf-gpu"><option>swiftshader_indirect</option><option>auto</option><option>host</option><option>guest</option></select></label>
               <label>FPS<input id="perf-fps" type="number" min="15" max="240"></label>
             </div>
+            <p class="hint">Changing cores, RAM, or GPU invalidates the fast-boot snapshot — the next start is a cold boot. On KVM, leave GPU on <code>auto</code> or <code>host</code> after provision; software rendering uses <code>swiftshader_indirect</code>.</p>
             <button class="primary" id="save-performance">Apply</button>
             <hr class="divider">
             <div class="stack">

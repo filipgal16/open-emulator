@@ -33,10 +33,10 @@ Commands:
   host-check           Print host KVM/RAM profile without requiring the SDK
 
 Environment:
-  ANDROID_HEADLESS=1   Force -no-window (default in CI / no DISPLAY)
+  ANDROID_HEADLESS=1   Force -no-window -no-audio (default in CI / no DISPLAY)
   ANDROID_CORES=N      Override guest vCPU count
   ANDROID_MEMORY_MB=N  Override guest RAM
-  ANDROID_GPU_MODE=... auto|swiftshader|host|guest
+  ANDROID_GPU_MODE=... auto|swiftshader_indirect|host|guest
   ANDROID_SNAPSHOT_NAME=booted
   ANDROID_INSTANCE=name  Target an isolated machine (also: --instance name)
 EOF
@@ -60,6 +60,7 @@ start_emulator() {
 
   if emulator_running; then
     log "emulator already running (warm path — no reboot)"
+    record_boot_path "warm"
     local d
     d="$(wait_for_adb_device 60)" || die "running emulator has no adb device"
     echo "$d" > "$DEVICE_FILE"
@@ -67,97 +68,15 @@ start_emulator() {
   fi
 
   adb_start
-
-  local headless=0
-  if [[ "${ANDROID_HEADLESS:-}" == "1" || -z "${DISPLAY:-}" ]]; then
-    headless=1
-  fi
-
-  local avd_dir="$AVD_HOME/${AVD_NAME}.avd"
-  if [[ -f "$avd_dir/config.ini" ]]; then
-    sed -i \
-      -e "s/^hw.cpu.ncore=.*/hw.cpu.ncore=${GUEST_CORES}/" \
-      -e "s/^hw.ramSize=.*/hw.ramSize=${GUEST_RAM_MB}/" \
-      -e "s/^hw.gpu.mode=.*/hw.gpu.mode=swiftshader/" \
-      "$avd_dir/config.ini"
-  fi
-
-  if (( cold )); then
-    rm -rf "${avd_dir}/snapshots/${SNAPSHOT_NAME}"
-  fi
-
-  local gpu="swiftshader"
-  if (( HAS_KVM )) && [[ "${GPU_MODE}" != "swiftshader" && "${GPU_MODE}" != "swiftshader_indirect" ]]; then
-    gpu="$GPU_MODE"
-  fi
-
-  local args=(
-    -avd "$AVD_NAME"
-    -port "${CONSOLE_PORT:-5554}"
-    -gpu "$gpu"
-    -accel "$ACCEL"
-    -no-boot-anim
-    -no-metrics
-    -netdelay none
-    -netspeed full
-  )
-
-  if (( headless )); then
-    args+=(-no-window)
-  fi
-
-  # KVM: load named snapshot for fast boot.
-  # TCG: skip snapshot load (Emulator often rejects/segfaults without KVM).
-  if (( cold == 0 )) && snapshot_exists && (( HAS_KVM )); then
-    log "fast boot from snapshot '${SNAPSHOT_NAME}' (KVM)"
-    args+=(-snapshot "$SNAPSHOT_NAME" -no-snapshot-save)
-  else
-    if (( HAS_KVM == 0 )) && (( cold == 0 )); then
-      log "TCG host: optimized cold boot (keep process alive for warm reuse)"
-    else
-      log "cold boot"
-    fi
-    args+=(-no-snapshot-load)
-  fi
-
-  : > "$EMULATOR_LOG"
-  log "starting emulator: ${args[*]}"
-  nohup "$EMULATOR_BIN" "${args[@]}" >>"$EMULATOR_LOG" 2>&1 &
-  local pid=$!
-  echo "$pid" > "$PID_FILE"
-  log "emulator pid=${pid}"
-
-  sleep 5
-
-  local device
-  device="$(wait_for_adb_device 180)" || {
-    tail -n 100 "$EMULATOR_LOG" || true
-    die "adb device did not appear"
-  }
-  log "adb device=${device}"
-
-  if (( cold == 0 )) && (( HAS_KVM )) && snapshot_exists; then
-    if grep -q "Failed to load snapshot\|cannot load snapshot" "$EMULATOR_LOG"; then
-      log "snapshot load failed — cold booting"
-      kill "$pid" 2>/dev/null || true
-      sleep 2
-      kill -9 "$pid" 2>/dev/null || true
-      rm -f "$PID_FILE"
-      pkill -f "qemu-system-x86_64.*${AVD_NAME}" 2>/dev/null || true
-      sleep 2
-      start_emulator 1
-      return $?
-    fi
-  fi
-
-  local boot_timeout=1800
-  (( HAS_KVM )) && boot_timeout=300
-
-  wait_for_boot "$device" "$boot_timeout" || {
-    tail -n 100 "$EMULATOR_LOG" || true
-    die "Android boot_completed not reached"
-  }
-  log "Android boot_completed=1"
+  launch_and_wait \
+    "$AVD_NAME" \
+    "${CONSOLE_PORT:-5554}" \
+    "${GUEST_CORES}" \
+    "${GUEST_RAM_MB}" \
+    "$cold" \
+    "$PID_FILE" \
+    "$EMULATOR_LOG" \
+    "$DEVICE_FILE"
 }
 
 cmd_start() {
@@ -167,11 +86,12 @@ cmd_start() {
   local name="${ANDROID_INSTANCE:-main}"
   instance_ensure_main >/dev/null 2>&1 || true
   if instance_exists "$name"; then
-    instance_start "$name"
-    bind_active_instance
-    if emulator_running; then
-      wait_for_adb_device 180 >/dev/null || true
+    if (( cold )); then
+      instance_start "$name" --cold
+    else
+      instance_start "$name"
     fi
+    bind_active_instance
   else
     start_emulator "$cold"
   fi
@@ -228,24 +148,40 @@ cmd_status() {
   echo "instance=${INSTANCE_NAME:-main}"
   echo "avd=${AVD_NAME}"
   echo "console_port=${CONSOLE_PORT:-5554}"
+  local d boot=""
+  d="$(adb_device || true)"
   if emulator_running; then
     echo "emulator=running"
     [[ -f "$PID_FILE" ]] && echo "pid=$(cat "$PID_FILE")"
+    if [[ -n "$d" && -x "${ADB_BIN:-}" ]]; then
+      boot="$("$ADB_BIN" -s "$d" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')"
+    fi
+    if [[ "$boot" == "1" ]]; then
+      echo "stage=ready"
+    elif [[ -n "$d" ]]; then
+      echo "stage=booting"
+    else
+      echo "stage=adb"
+    fi
   else
     echo "emulator=stopped"
+    echo "stage=stopped"
   fi
-  local d
-  d="$(adb_device || true)"
   echo "adb_device=${d:-none}"
-  if [[ -n "$d" ]]; then
-    local boot ver sdk
-    boot="$("$ADB_BIN" -s "$d" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')"
+  if [[ -n "$d" && -x "${ADB_BIN:-}" ]]; then
+    local ver sdk
+    [[ -n "$boot" ]] || boot="$("$ADB_BIN" -s "$d" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')"
     ver="$("$ADB_BIN" -s "$d" shell getprop ro.build.version.release 2>/dev/null | tr -d '\r')"
     sdk="$("$ADB_BIN" -s "$d" shell getprop ro.build.version.sdk 2>/dev/null | tr -d '\r')"
     echo "boot_completed=${boot:-unknown}"
     echo "android=${ver:-unknown} api=${sdk:-unknown}"
   fi
-  if snapshot_exists; then
+  local boot_path_file=""
+  [[ -n "${PID_FILE:-}" ]] && boot_path_file="$(dirname "$PID_FILE")/last_boot_path"
+  if [[ -n "$boot_path_file" && -f "$boot_path_file" ]]; then
+    echo "boot_path=$(tr -d '\n' < "$boot_path_file")"
+  fi
+  if snapshot_exists "$AVD_NAME"; then
     echo "snapshot=${SNAPSHOT_NAME} present=yes"
   else
     echo "snapshot=${SNAPSHOT_NAME} present=no"
@@ -256,8 +192,16 @@ cmd_status() {
 
 cmd_provision() {
   require_sdk
+  local name="${ANDROID_INSTANCE:-main}"
+  instance_ensure_main >/dev/null 2>&1 || true
+  bind_active_instance
   if ! emulator_running; then
-    start_emulator 1
+    if instance_exists "$name"; then
+      instance_start "$name" --cold
+      bind_active_instance
+    else
+      start_emulator 1
+    fi
   fi
   "$ROOT/scripts/provision.sh"
 }

@@ -120,7 +120,7 @@ function updateBootOverlay(stage, status) {
   if (booting || (status && status.emulator === "running" && stage !== "ready")) {
     const wasHidden = overlay.hidden;
     overlay.hidden = false;
-    $("#boot-stage").textContent = stage;
+    $("#boot-stage").textContent = status && status.bootPath ? `${stage} · ${status.bootPath}` : stage;
     if (!state.bootStartedAt) state.bootStartedAt = Date.now();
     startBootTimer();
     if (wasHidden) showBootAd().catch(() => {});

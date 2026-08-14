@@ -5,7 +5,7 @@ rebuild. Adaptations are AVD/runtime only, aimed at **speed + real workloads**:
 
 ## Hardware profile (`config/avd_config.ini`)
 
-- SwiftShader GPU (`swiftshader`) for software rendering hosts
+- SwiftShader GPU (`swiftshader_indirect`) for software rendering hosts
 - 720×1280 @ 240dpi (lighter than flagship skins; still usable)
 - 8 GiB `/data` + 512 MB sdcard for installing real apps
 - Audio, keyboard, GPS, cameras enabled for app compatibility
@@ -16,11 +16,13 @@ rebuild. Adaptations are AVD/runtime only, aimed at **speed + real workloads**:
 
 - Host profile picks KVM vs TCG, core count, RAM
 - **Warm path**: if the emulator is already running, `start` does not reboot
-- **KVM**: `provision` saves snapshot `booted`; later starts load it
+- **KVM**: `provision` saves snapshot `booted`; later starts load it (target ≤30s — see [`docs/BOOT.md`](../docs/BOOT.md))
 - **TCG**: skip unloadable named snapshots; optimize cold boot; leave process up
+- `instance start` uses the same snapshot path as `start_emulator` (it used to force `-no-snapshot-load`)
+- `config.ini` cores/RAM/GPU are not rewritten when they already match, so snapshots stay valid
 - Setup wizard completed; network verified; third-party installs allowed
 - APK install uses timeouts so TCG stalls cannot hang the control plane forever
-- Isolated machines: `open-emu instance create|clone|start|stop|delete` copies AVD userdata onto unique console/adb ports
+- Isolated machines: `open-emu instance create|clone|start|stop|delete` copies AVD userdata onto unique console/adb ports; clones with matching cores/RAM keep the source snapshot
 
 ## Verified (agent host, TCG)
 
