@@ -62,7 +62,7 @@ detect_host_profile() {
 
   if (( has_kvm )); then
     accel=on
-    gpu_mode="${ANDROID_GPU_MODE:-auto}"
+    gpu_mode="$(normalize_gpu_mode "${ANDROID_GPU_MODE:-auto}")"
     # Leave headroom for host.
     cores=$(( cpus > 1 ? cpus - 1 : 1 ))
     (( cores > 6 )) && cores=6
@@ -71,7 +71,7 @@ detect_host_profile() {
     (( ram_mb_guest > 8192 )) && ram_mb_guest=8192
   else
     accel=off
-    gpu_mode="${ANDROID_GPU_MODE:-swiftshader}"
+    gpu_mode="$(normalize_gpu_mode "${ANDROID_GPU_MODE:-swiftshader_indirect}")"
     # TCG: 2 cores usually beats oversubscription; keep RAM modest for faster snapshots.
     cores=2
     ram_mb_guest=3072
@@ -140,7 +140,7 @@ wait_for_adb_device() {
       echo "$d"
       return 0
     fi
-    sleep 1
+    sleep "${BOOT_POLL_ADB:-0.2}"
   done
   return 1
 }
@@ -158,7 +158,7 @@ wait_for_boot() {
         return 0
       fi
     fi
-    sleep 2
+    sleep "${BOOT_POLL_BOOT:-0.4}"
   done
   return 1
 }
@@ -189,7 +189,5 @@ emulator_running() {
   pgrep -f "qemu-system-x86_64.*${AVD_NAME}|emulator -avd ${AVD_NAME}" >/dev/null 2>&1
 }
 
-snapshot_exists() {
-  local snap_dir="$AVD_HOME/${AVD_NAME}.avd/snapshots/${SNAPSHOT_NAME}"
-  [[ -d "$snap_dir" ]]
-}
+# shellcheck disable=SC1091
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/boot.sh"

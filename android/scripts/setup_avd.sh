@@ -39,6 +39,15 @@ fi
 echo "==> applying open-emulator AVD config overlays"
 cp "$ROOT/config/avd_config.ini" "$AVD_DIR/config.ini"
 
+detect_host_profile
+# shellcheck disable=SC1090
+source "$PROFILE_FILE"
+avd_config_apply "$AVD_DIR/config.ini" \
+  "hw.cpu.ncore=${GUEST_CORES}" \
+  "hw.ramSize=${GUEST_RAM_MB}" \
+  "hw.gpu.enabled=yes" \
+  "hw.gpu.mode=$(launch_gpu_mode)" >/dev/null
+
 # First setup: force one cold boot path until provision saves 'booted'.
 if [[ ! -d "$AVD_DIR/snapshots/booted" ]]; then
   sed -i \
@@ -66,18 +75,7 @@ cat > "$AVD_DIR/advancedFeatures.ini" <<EOF
 GLDirectMem = on
 Vulkan = off
 LogcatPipe = on
-EOF
-
-# Writable hardware.ini overrides used by some emulator builds.
-cat > "$AVD_DIR/hardware-qemu.ini" <<EOF
-hw.ramSize = 4096
-hw.cpu.ncore = 2
-hw.gpu.enabled = yes
-hw.gpu.mode = swiftshader_indirect
-hw.keyboard = yes
-hw.audioInput = yes
-hw.audioOutput = yes
-disk.dataPartition.size = 8G
+FastSnapshotV1 = on
 EOF
 
 echo "AVD ready: $AVD_NAME"

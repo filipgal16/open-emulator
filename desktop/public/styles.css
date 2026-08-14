@@ -478,6 +478,13 @@ pre {
   grid-template-columns: 1fr 1fr;
 }
 
+.hint {
+  margin: 0 0 10px;
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
 .check {
   display: flex;
   align-items: center;

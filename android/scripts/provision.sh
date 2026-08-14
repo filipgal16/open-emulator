@@ -34,9 +34,9 @@ adb_t 30 shell input keyevent KEYCODE_WAKEUP || true
 adb_t 30 shell wm dismiss-keyguard || true
 
 # --- Snappy UI ---
-adb_t 30 shell settings put global window_animation_scale 0.5
-adb_t 30 shell settings put global transition_animation_scale 0.5
-adb_t 30 shell settings put global animator_duration_scale 0.5
+adb_t 30 shell settings put global window_animation_scale 0
+adb_t 30 shell settings put global transition_animation_scale 0
+adb_t 30 shell settings put global animator_duration_scale 0
 adb_t 30 shell settings put system screen_off_timeout 600000
 adb_t 30 shell settings put global stay_on_while_plugged_in 3
 
@@ -69,7 +69,7 @@ fi
 
 # --- Snapshot first so APK install stalls cannot block the fast-boot path ---
 adb_t 30 shell input keyevent KEYCODE_HOME || true
-sleep 3
+sleep 1
 
 log "saving snapshot '${SNAPSHOT_NAME}'"
 if ! adb_t 180 emu avd snapshot save "$SNAPSHOT_NAME"; then
@@ -84,9 +84,9 @@ if ! adb_t 180 emu avd snapshot save "$SNAPSHOT_NAME"; then
   } | timeout 60s nc 127.0.0.1 5554 || die "snapshot save failed"
 fi
 
-for _ in $(seq 1 60); do
+for _ in $(seq 1 80); do
   snapshot_exists && break
-  sleep 2
+  sleep 0.25
 done
 snapshot_exists || die "snapshot directory missing after save"
 
@@ -119,9 +119,9 @@ log "installed ${apk_count} apk(s) from android/apps"
 if (( apk_count > 0 )); then
   log "refreshing snapshot '${SNAPSHOT_NAME}' with installed apps"
   adb_t 30 shell input keyevent KEYCODE_HOME || true
-  sleep 2
+  sleep 1
   adb_t 180 emu avd snapshot save "$SNAPSHOT_NAME" || log "WARNING: snapshot refresh failed"
-  sleep 5
+  sleep 1
 fi
 
 date -u +%Y-%m-%dT%H:%M:%SZ > "$STATE_DIR/provisioned_at"

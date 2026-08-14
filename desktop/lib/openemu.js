@@ -23,7 +23,7 @@ const DEFAULT_KEYMAP = path.join(ANDROID_KEYMAPS, "default.json");
 const DEFAULT_PERFORMANCE = {
   cores: 2,
   memory: 3072,
-  gpu: "swiftshader",
+    gpu: "swiftshader_indirect",
   fps: 60
 };
 
@@ -184,6 +184,8 @@ function parseStatus(text) {
       status.pid = line.slice("pid=".length);
     } else if (line.startsWith("boot_completed=")) {
       status.bootCompleted = line.slice("boot_completed=".length);
+    } else if (line.startsWith("boot_path=")) {
+      status.bootPath = line.slice("boot_path=".length);
     } else if (line.startsWith("android=")) {
       status.android = line.slice("android=".length);
     } else if (line.startsWith("display=")) {
@@ -554,11 +556,15 @@ async function runMacroStep(step = {}) {
 }
 
 async function performance(input) {
-  if (!input) return readJson(PERFORMANCE_FILE, DEFAULT_PERFORMANCE);
+  if (!input) {
+    const current = await readJson(PERFORMANCE_FILE, DEFAULT_PERFORMANCE);
+    if (current.gpu === "swiftshader") current.gpu = DEFAULT_PERFORMANCE.gpu;
+    return current;
+  }
   const next = {
     cores: clamp(input.cores, 1, 16, DEFAULT_PERFORMANCE.cores),
     memory: clamp(input.memory, 512, 32768, DEFAULT_PERFORMANCE.memory),
-    gpu: String(input.gpu || DEFAULT_PERFORMANCE.gpu),
+    gpu: String(input.gpu === "swiftshader" ? DEFAULT_PERFORMANCE.gpu : input.gpu || DEFAULT_PERFORMANCE.gpu),
     fps: clamp(input.fps, 15, 240, DEFAULT_PERFORMANCE.fps)
   };
   await writeJson(PERFORMANCE_FILE, next);

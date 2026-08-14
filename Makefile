@@ -10,7 +10,7 @@ SRC      := src/main.c src/vmm.c src/serial.c src/x86_soft.c
 OBJ      := $(patsubst src/%.c,$(BUILD)/%.o,$(SRC))
 
 .PHONY: all clean test run guest \
-	android-fetch android-setup android-run android \
+	android-fetch android-setup android-run android android-test \
 	android-provision android-start android-stop android-status android-doctor android-bench \
 	desktop-install desktop dist web
 
@@ -44,6 +44,9 @@ android-run:
 android-bench:
 	ANDROID_HEADLESS=1 ./android/scripts/bench_realtime.sh
 
+android-test:
+	./android/scripts/test_boot_helpers.sh
+
 android: android-fetch android-setup android-provision android-start
 
 desktop-install:
@@ -73,7 +76,7 @@ $(BUILD) $(BUILD)/guest:
 run: all
 	./$(BIN) --backend=soft $(GUEST)
 
-test: all
+test: all android-test
 	@./scripts/smoke_test.sh
 
 clean:

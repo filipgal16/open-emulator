@@ -57,19 +57,23 @@ The desktop shell sets all five automatically for packaged installs — see
 
 | Host | Accel | Boot strategy |
 |------|-------|---------------|
-| `/dev/kvm` present | KVM | Named snapshot `booted` after provision (fast relaunch) |
-| no KVM (TCG) | off | Optimized cold boot (~3 min here) + **keep emulator running** for warm reuse |
+| `/dev/kvm` usable (read+write) | KVM | Named snapshot `booted` after provision — **target ≤30s** to `boot_completed` |
+| `/dev/kvm` missing or not accessible | TCG | Cold boot (~3 min here) + **keep emulator running** for warm reuse |
 
-Measured on this agent host (TCG, no KVM):
+`open-emu status` reports `boot_path=warm|snapshot|cold`. See [`docs/BOOT.md`](../docs/BOOT.md) for the exact conditions.
+
+Measured on this agent host (TCG, `/dev/kvm` not usable by this user):
 
 - Cold boot to `sys.boot_completed`: **~175–180s** (down from ~310s)
 - Warm `start` while running: **immediate** (no reboot)
 - Guest network: **ok**
 - F-Droid APK install + Settings launch: **verified**
+- Snapshot-path helpers: **`make android-test`** (no system image in this sandbox, so a live ≤30s KVM number could not be taken here)
 
 TCG cannot reliably load Emulator named snapshots (rejects / segfaults). That is
 an upstream Emulator limitation without KVM — not papered over. On KVM hosts,
-`provision` + snapshot load is the fast path.
+`provision` + snapshot load is the fast path, and it is the path `open-emu
+instance start` actually uses (it used to pass `-no-snapshot-load` every time).
 
 ## Real-world defaults
 
@@ -87,7 +91,9 @@ an upstream Emulator limitation without KVM — not papered over. On KVM hosts,
 android/
   bin/open-emu           Control plane CLI
   lib/common.sh          Shared helpers
-  scripts/               fetch / setup / provision / bench
+  lib/boot.sh            Fast-boot flags, snapshot policy, launch/wait
+  lib/avd_config.py      config.ini edits that no-op when unchanged
+  scripts/               fetch / setup / provision / bench / boot-helper tests
   config/avd_config.ini  AVD hardware profile
   apps/                  Drop APKs here
   sdk/                   Local SDK + system image (gitignored)
