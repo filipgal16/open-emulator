@@ -13,3 +13,17 @@ build/
 *.bin
 .open-vmm*
 .DS_Store
+
+# Electron desktop shell
+desktop/node_modules/
+desktop/dist/
+desktop/build/
+desktop/out/
+
+# Ad configuration — carries affiliate/publisher ids. Never commit; see ads.config.example.json
+desktop/ads.config.json
+# Live campaigns and the generated manifest
+desktop/ads/campaigns.json
+desktop/ads/public/
+# Licence signing key. Anyone holding this can mint remove-ads licences.
+desktop/ads-license-private.pem

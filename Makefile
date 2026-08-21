@@ -11,7 +11,8 @@ OBJ      := $(patsubst src/%.c,$(BUILD)/%.o,$(SRC))
 
 .PHONY: all clean test run guest \
 	android-fetch android-setup android-run android \
-	android-provision android-start android-stop android-status android-doctor android-bench
+	android-provision android-start android-stop android-status android-doctor android-bench \
+	desktop-install desktop-dev desktop-build
 
 all: $(BIN) $(GUEST)
 
@@ -44,6 +45,18 @@ android-bench:
 	ANDROID_HEADLESS=1 ./android/scripts/bench_realtime.sh
 
 android: android-fetch android-setup android-provision android-start
+
+desktop-install:
+	cd desktop && npm install
+
+desktop-dev:
+	cd desktop && npm run dev
+
+desktop-build:
+	cd desktop && npm run build
+
+desktop-test:
+	cd desktop && npm test
 
 $(BIN): $(OBJ) | $(BUILD)
 	$(CC) $(CFLAGS) -o $@ $(OBJ) $(LDFLAGS)

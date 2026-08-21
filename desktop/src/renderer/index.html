@@ -1,0 +1,154 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <!--
+      No remote origin is reachable from this window. Ad creatives arrive over oe-ad:, which the
+      main process serves from its own on-disk cache after fetching and sniffing them; blob: is
+      the mirrored Android frames. connect-src 'none' is the load-bearing one: everything this
+      window needs, it asks the main process for over IPC, so it never issues a network request
+      of its own and cannot be tracked or fingerprinted by an ad host.
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: oe-ad:; connect-src 'none'; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'"
+    />
+    <title>open-emulator (dev)</title>
+    <style>
+      * { box-sizing: border-box; }
+      body {
+        font-family: system-ui, sans-serif;
+        margin: 0;
+        padding: 0;
+        background: #1e1e1e;
+        color: #ddd;
+      }
+      #root { height: 100vh; display: flex; }
+
+      .setup-wizard { padding: 20px; width: 100%; display: flex; flex-direction: column; }
+      .setup-wizard h1 { font-size: 18px; margin: 0 0 12px; }
+      .steps { list-style: none; margin: 0 0 12px; padding: 0; }
+      .step { display: flex; align-items: center; gap: 10px; padding: 6px 0; border-bottom: 1px solid #333; }
+      .step .icon { width: 20px; text-align: center; }
+      .step .label { flex: 0 0 260px; }
+      .step .detail { flex: 1; color: #999; font-size: 13px; }
+      .step-fail .label { color: #f66; }
+      .step-warn .label { color: #e6b400; }
+      .step button { margin-left: 8px; padding: 4px 10px; cursor: pointer; }
+      .step button:disabled { opacity: 0.5; cursor: default; }
+
+      pre.log {
+        background: #111;
+        color: #0f0;
+        padding: 10px;
+        flex: 1;
+        min-height: 160px;
+        overflow-y: auto;
+        border-radius: 4px;
+        font-size: 12px;
+        white-space: pre-wrap;
+      }
+      button.continue { margin-top: 12px; align-self: flex-end; font-size: 14px; padding: 8px 20px; cursor: pointer; }
+      button.continue:disabled { opacity: 0.5; cursor: default; }
+
+      .app { width: 100%; display: flex; flex-direction: column; min-width: 0; }
+      .tabs { display: flex; align-items: center; gap: 4px; padding: 6px 8px; background: #252525; border-bottom: 1px solid #383838; }
+      .tabs button { background: none; border: 1px solid transparent; color: #aaa; padding: 5px 14px; cursor: pointer; font: inherit; font-size: 13px; border-radius: 3px; }
+      .tabs button:hover { color: #eee; }
+      .tabs button.on { background: #333; border-color: #444; color: #fff; }
+      .tabs-spacer { flex: 1; }
+      .tabs .remove-ads { border-color: #3a5470; color: #9ec7ff; }
+
+      .stage { flex: 1; display: flex; min-width: 0; min-height: 0; }
+      .android-screen { flex: 1; min-width: 0; display: flex; align-items: center; justify-content: center; background: #000; }
+      .android-screen img { max-width: 100%; max-height: 100vh; cursor: pointer; }
+      .android-screen .waiting { color: #888; }
+
+      /* Ad slots. Present in the DOM only when the main process reports ads as active, so an
+         unconfigured build never renders any of this. */
+      .ad-slot { display: flex; flex-direction: column; background: #252525; border: 1px solid #383838; }
+      .ad-slot-rail { flex: 0 0 300px; max-width: 300px; }
+      .ad-slot-wizard-footer { margin-top: 12px; }
+
+      .ad-meta {
+        display: flex; align-items: center; gap: 8px;
+        padding: 4px 6px 4px 8px;
+        font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; color: #888;
+        border-bottom: 1px solid #383838;
+      }
+      .ad-label { font-weight: 600; color: #9aa; }
+      .ad-advertiser { flex: 1; text-transform: none; letter-spacing: 0; color: #777; }
+      .ad-hide {
+        background: none; border: none; color: #777; cursor: pointer;
+        font-size: 12px; line-height: 1; padding: 2px 4px;
+      }
+      .ad-hide:hover { color: #ddd; }
+
+      .ad-body {
+        flex: 1; display: flex; gap: 10px; align-items: center; text-align: left;
+        background: none; border: none; color: inherit; font: inherit; cursor: pointer;
+        padding: 10px 12px;
+      }
+      .ad-slot-rail .ad-body { flex-direction: column; align-items: flex-start; justify-content: center; }
+      .ad-body:hover { background: #2d2d2d; }
+      .ad-body:focus-visible { outline: 2px solid #6aa9ff; outline-offset: -2px; }
+      .ad-image { max-width: 100%; display: block; }
+      .ad-text { flex: 1; display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+      .ad-headline { font-size: 14px; font-weight: 600; color: #eee; }
+      .ad-copy { font-size: 12px; color: #999; line-height: 1.45; }
+      .ad-cta {
+        flex: none; align-self: flex-start; font-size: 12px; font-weight: 600; color: #9ec7ff;
+        border: 1px solid #3a5470; border-radius: 3px; padding: 5px 12px; white-space: nowrap;
+      }
+      .ad-body:hover .ad-cta { background: #2f4562; }
+      /* Tag mode: an empty, correctly-sized hole for the isolated overlay to sit in. */
+      .ad-slot-tag { background: #1a1a1a; border-style: dashed; }
+      .ad-slot-library-tile { flex: 0 0 auto; }
+
+      .ad-interstitial {
+        position: fixed; inset: 0; z-index: 20;
+        display: flex; align-items: center; justify-content: center;
+        background: rgba(0, 0, 0, 0.86);
+      }
+      .ad-interstitial-probing { background: transparent; pointer-events: none; }
+      .ad-interstitial-card { width: 640px; max-width: 90vw; display: flex; flex-direction: column; gap: 10px; }
+      .ad-interstitial-actions { display: flex; align-items: center; gap: 12px; }
+      .ad-interstitial-status { flex: 1; color: #888; font-size: 13px; }
+      .ad-skip { padding: 6px 16px; font-size: 13px; cursor: pointer; background: #333; color: #ddd; border: 1px solid #4a4a4a; border-radius: 3px; }
+      .ad-skip:disabled { opacity: 0.45; cursor: default; }
+
+      .modal-backdrop { position: fixed; inset: 0; z-index: 30; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,0.7); }
+      .modal { width: 460px; max-width: 90vw; background: #252525; border: 1px solid #3d3d3d; border-radius: 6px; padding: 20px; }
+      .modal h2 { margin: 0 0 10px; font-size: 17px; }
+      .modal p { margin: 0 0 10px; font-size: 13px; line-height: 1.55; color: #bbb; }
+      .modal .modal-note { color: #8d8d8d; }
+      .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
+      .modal-actions button { padding: 7px 16px; font-size: 13px; cursor: pointer; background: #333; color: #ddd; border: 1px solid #4a4a4a; border-radius: 3px; }
+      .modal-actions button:hover:not(:disabled) { background: #3c3c3c; }
+      .modal-actions button:disabled { opacity: 0.45; cursor: default; }
+      .license-input { width: 100%; padding: 8px; font-family: ui-monospace, Consolas, monospace; font-size: 12px; background: #1b1b1b; color: #ddd; border: 1px solid #444; border-radius: 3px; }
+      .license-error { color: #f88; }
+      .license-ok { color: #8d8; }
+
+      .library { flex: 1; min-width: 0; overflow-y: auto; padding: 18px 20px; }
+      .library h2 { margin: 0 0 14px; font-size: 15px; font-weight: 600; color: #ccc; }
+      .library-loading, .library-empty { color: #888; font-size: 13px; }
+      .library-empty code { background: #2a2a2a; padding: 1px 5px; border-radius: 3px; font-size: 12px; }
+      .app-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; align-items: stretch; }
+      .app-tile {
+        display: flex; flex-direction: column; align-items: center; gap: 7px;
+        padding: 16px 10px; background: #252525; border: 1px solid #383838; border-radius: 5px;
+        color: inherit; font: inherit; cursor: pointer; text-align: center;
+      }
+      .app-tile:hover { background: #2d2d2d; }
+      .app-tile:disabled { opacity: 0.5; cursor: default; }
+      .app-icon { width: 44px; height: 44px; display: grid; place-items: center; border-radius: 10px; background: #3a4a5c; color: #cfe2ff; font-size: 20px; font-weight: 600; }
+      .app-label { font-size: 13px; color: #e2e2e2; }
+      .app-package { font-size: 10px; color: #777; word-break: break-all; }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script src="./bundle.js"></script>
+  </body>
+</html>

@@ -1,0 +1,36 @@
+{
+  "name": "open-emulator-desktop",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Windows desktop shell for open-emulator, driving a WSL2-hosted Android backend.",
+  "main": "dist/main/index.js",
+  "scripts": {
+    "build:main": "tsc -p tsconfig.json",
+    "typecheck:renderer": "tsc -p tsconfig.renderer.json",
+    "build:renderer": "node scripts/build-renderer.mjs",
+    "build": "npm run build:main && npm run typecheck:renderer && npm run build:renderer && node scripts/copy-static.mjs",
+    "test": "npm run build:main && node --test \"test/*.test.mjs\"",
+    "ads:check": "npm run build:main && node scripts/ads-manifest.mjs check",
+    "ads:build": "npm run build:main && node scripts/ads-manifest.mjs build",
+    "ads:keygen": "node scripts/ads-license.mjs keygen",
+    "dev": "npm run build && electron .",
+    "start": "electron ."
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "electron": "^31.0.0",
+    "electron-builder": "^24.13.3",
+    "esbuild": "^0.23.0",
+    "typescript": "^5.5.0"
+  },
+  "allowScripts": {
+    "electron@31.7.7": true,
+    "esbuild@0.23.1": true
+  }
+}

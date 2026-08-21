@@ -90,6 +90,19 @@ make android-start        # snapshot boot (seconds–minutes depending on KVM)
 
 See [`android/README.md`](android/README.md).
 
+## Desktop shell
+
+Electron app under [`desktop/`](desktop/), driving the WSL2-hosted Android backend.
+
+```bash
+make desktop-install
+make desktop-dev
+make desktop-test
+```
+
+It carries an optional ad-supported mode, **off by default** — a source build, a fork, or a distro
+package ships no ads and renders no ad markup. See [`desktop/ADS.md`](desktop/ADS.md).
+
 ## Next steps
 
 1. Grow `open-vmm` toward long mode + virtio/goldfish (replace Emulator QEMU)
