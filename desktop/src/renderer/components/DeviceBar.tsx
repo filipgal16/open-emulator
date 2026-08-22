@@ -109,6 +109,9 @@ export function DeviceBar({ onState }: Props) {
                       {id === state.profile && <span className="device-menu-check">✓</span>}
                     </span>
                     <span className="device-menu-desc">{spec.description}</span>
+                    {spec.proprietary && (
+                      <span className="device-menu-flag">Includes Google software — personal use</span>
+                    )}
                   </button>
                 );
               })}
