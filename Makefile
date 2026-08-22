@@ -16,12 +16,19 @@ OBJ      := $(patsubst src/%.c,$(BUILD)/%.o,$(SRC))
 
 all: $(BIN) $(GUEST)
 
+# Guest profile: `fast` (AOSP, no Play Services — quickest boot) or `full` (Google APIs).
+# Override per invocation, e.g.  make android-setup ANDROID_PROFILE=full
+ANDROID_PROFILE ?= fast
+export ANDROID_PROFILE
+
 android-fetch:
 	./android/scripts/fetch_android.sh
 
 android-setup:
 	./android/scripts/setup_avd.sh
 
+# --cold is deliberate here and nowhere else: provisioning must start from a known-clean boot
+# before it saves the snapshot every later start loads.
 android-provision:
 	ANDROID_HEADLESS=1 ./android/bin/open-emu start --cold
 	ANDROID_HEADLESS=1 ./android/bin/open-emu provision
