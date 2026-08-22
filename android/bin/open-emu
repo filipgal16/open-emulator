@@ -48,6 +48,10 @@ cmd_setup() {
 
 start_emulator() {
   local cold="${1:-0}"
+  # Set when the cold boot is a *fallback* rather than something the user asked for. A fallback
+  # must not destroy the snapshot: it is usually recoverable, and deleting it turns a one-off
+  # load failure into a mandatory re-provision.
+  local preserve_snapshot="${2:-0}"
   require_sdk
   detect_host_profile
   # shellcheck disable=SC1090
@@ -68,22 +72,29 @@ start_emulator() {
     headless=1
   fi
 
+  local gpu="$GPU_MODE"
+  (( HAS_KVM )) || gpu="swiftshader"
+
+  # Never pass `auto`. The emulator resolves it to a concrete renderer that varies by system image
+  # — swiftshader on google_apis, lavapipe on AOSP — and records the *resolved* name in the
+  # snapshot's hardware.ini. config.ini would still say something else, and the next warm start
+  # dies with "The emulator hardware cannot load snapshot". Resolving it here keeps the two in
+  # agreement, which is what makes snapshots reloadable at all.
+  [[ "$gpu" == "auto" ]] && gpu="swiftshader"
+
   local avd_dir="$AVD_HOME/${AVD_NAME}.avd"
   if [[ -f "$avd_dir/config.ini" ]]; then
+    # hw.gpu.mode must match the -gpu flag below, or the snapshot written by this boot cannot be
+    # loaded by the next one. This line is load-bearing, not cosmetic.
     sed -i \
       -e "s/^hw.cpu.ncore=.*/hw.cpu.ncore=${GUEST_CORES}/" \
       -e "s/^hw.ramSize=.*/hw.ramSize=${GUEST_RAM_MB}/" \
-      -e "s/^hw.gpu.mode=.*/hw.gpu.mode=swiftshader/" \
+      -e "s/^hw.gpu.mode=.*/hw.gpu.mode=${gpu}/" \
       "$avd_dir/config.ini"
   fi
 
-  if (( cold )); then
+  if (( cold )) && (( preserve_snapshot == 0 )); then
     rm -rf "${avd_dir}/snapshots/${SNAPSHOT_NAME}"
-  fi
-
-  local gpu="swiftshader"
-  if (( HAS_KVM )) && [[ "${GPU_MODE}" != "swiftshader" && "${GPU_MODE}" != "swiftshader_indirect" ]]; then
-    gpu="$GPU_MODE"
   fi
 
   local args=(
@@ -97,7 +108,26 @@ start_emulator() {
   )
 
   if (( headless )); then
-    args+=(-no-window)
+    # Audio has no sink in a headless/WSL environment — the emulator logs
+    # "Could not init 'pa' audio driver" and initializes it anyway. Skip the whole subsystem.
+    args+=(-no-window -no-audio)
+  fi
+
+  # Device identity (-prop ro.product.*). Baked into the boot, so a snapshot taken afterwards
+  # carries them; switching device needs a re-provision.
+  local -a device_args=()
+  mapfile -t device_args < <(device_prop_args)
+  if (( ${#device_args[@]} )) && [[ -n "${device_args[0]}" ]]; then
+    args+=("${device_args[@]}")
+    log "device profile: ${DEVICE_NAME:-generic}"
+  fi
+
+  # Needed only while customizing /system (see scripts/customize_system.sh). Off by default:
+  # a writable system means the emulator keeps a qcow2 overlay for it, which is extra I/O on a
+  # path where every millisecond shows up in start time.
+  if [[ "${ANDROID_WRITABLE_SYSTEM:-}" == "1" ]]; then
+    log "system image is WRITABLE this boot (adb remount available)"
+    args+=(-writable-system)
   fi
 
   # KVM: load named snapshot for fast boot.
@@ -111,20 +141,36 @@ start_emulator() {
     else
       log "cold boot"
     fi
-    args+=(-no-snapshot-load)
+    # -no-snapshot-save is as important as -no-snapshot-load here. Without it the emulator writes
+    # a 'default_boot' snapshot while quitting (~2s), and cmd_stop SIGKILLs shortly after — landing
+    # mid-write and corrupting the snapshot store. The next warm start then fails to load, which
+    # used to trigger a retry that deleted the good snapshot. Snapshots are written deliberately by
+    # `provision`, never as a side effect of shutting down.
+    args+=(-no-snapshot-load -no-snapshot-save)
   fi
 
   : > "$EMULATOR_LOG"
   log "starting emulator: ${args[*]}"
-  nohup "$EMULATOR_BIN" "${args[@]}" >>"$EMULATOR_LOG" 2>&1 &
+  # `setsid`, not just `nohup`. nohup only ignores SIGHUP; the process stays in this invocation's
+  # session, and WSL tears down a session's processes when the `wsl.exe` that created it exits.
+  # From an interactive shell that never happens, so this looked fine for a long time — but the
+  # desktop app starts the emulator with a one-shot `wsl.exe` call, and the guest was being killed
+  # a second after it finished booting. setsid detaches it into its own session so it outlives the
+  # caller. stdin from /dev/null for the same reason: a closed stdin can take the process down.
+  setsid nohup "$EMULATOR_BIN" "${args[@]}" </dev/null >>"$EMULATOR_LOG" 2>&1 &
   local pid=$!
   echo "$pid" > "$PID_FILE"
   log "emulator pid=${pid}"
 
-  sleep 5
+  # No fixed sleep here. wait_for_adb_device already polls, so a flat delay was pure latency —
+  # 5s on top of a warm start that only takes ~11s in total.
+  # A writable-system boot has to materialise a writable overlay for the 3GB super image before
+  # the guest gets anywhere, which routinely runs past the normal wait.
+  local adb_wait=180
+  [[ "${ANDROID_WRITABLE_SYSTEM:-}" == "1" ]] && adb_wait=600
 
   local device
-  device="$(wait_for_adb_device 180)" || {
+  device="$(wait_for_adb_device "$adb_wait")" || {
     tail -n 100 "$EMULATOR_LOG" || true
     die "adb device did not appear"
   }
@@ -132,14 +178,14 @@ start_emulator() {
 
   if (( cold == 0 )) && (( HAS_KVM )) && snapshot_exists; then
     if grep -q "Failed to load snapshot\|cannot load snapshot" "$EMULATOR_LOG"; then
-      log "snapshot load failed — cold booting"
+      log "snapshot load failed — cold booting (snapshot kept for next attempt)"
       kill "$pid" 2>/dev/null || true
       sleep 2
       kill -9 "$pid" 2>/dev/null || true
       rm -f "$PID_FILE"
       pkill -f "qemu-system-x86_64.*${AVD_NAME}" 2>/dev/null || true
       sleep 2
-      start_emulator 1
+      start_emulator 1 1
       return $?
     fi
   fi
@@ -169,14 +215,24 @@ cmd_stop() {
   if [[ -n "$device" ]]; then
     log "requesting emulator kill via adb"
     "$ADB_BIN" -s "$device" emu kill >/dev/null 2>&1 || true
-    sleep 2
   fi
   if [[ -f "$PID_FILE" ]]; then
     local pid
     pid="$(cat "$PID_FILE")"
-    kill "$pid" 2>/dev/null || true
-    sleep 2
-    kill -9 "$pid" 2>/dev/null || true
+    # Give the emulator real time to exit on its own. A hard kill here can interrupt snapshot or
+    # qcow2 writes still in flight, which corrupts the AVD's snapshot store — that is exactly how
+    # the warm-boot path used to destroy itself. SIGKILL stays as a last resort.
+    local waited=0
+    while (( waited < 30 )) && kill -0 "$pid" 2>/dev/null; do
+      sleep 1
+      waited=$((waited + 1))
+    done
+    if kill -0 "$pid" 2>/dev/null; then
+      log "emulator still alive after ${waited}s — terminating"
+      kill "$pid" 2>/dev/null || true
+      sleep 3
+      kill -9 "$pid" 2>/dev/null || true
+    fi
     rm -f "$PID_FILE"
   fi
   pkill -f "qemu-system-x86_64.*${AVD_NAME}" 2>/dev/null || true
@@ -208,7 +264,7 @@ cmd_status() {
   else
     echo "snapshot=${SNAPSHOT_NAME} present=no"
   fi
-  [[ -f "$STATE_DIR/provisioned_at" ]] && echo "provisioned_at=$(cat "$STATE_DIR/provisioned_at")"
+  [[ -f "$AVD_STATE_DIR/provisioned_at" ]] && echo "provisioned_at=$(cat "$AVD_STATE_DIR/provisioned_at")"
   [[ -f "$PROFILE_FILE" ]] && echo "profile=$(tr '\n' ' ' < "$PROFILE_FILE")"
 }
 
@@ -326,7 +382,7 @@ cmd_demo() {
   local t0=$SECONDS
   if ! emulator_running; then
     start_emulator 0
-    if [[ ! -f "$STATE_DIR/provisioned_at" ]]; then
+    if [[ ! -f "$AVD_STATE_DIR/provisioned_at" ]]; then
       "$ROOT/scripts/provision.sh"
     fi
   fi

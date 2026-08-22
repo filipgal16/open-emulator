@@ -46,10 +46,16 @@ adb_t 30 shell svc wifi enable 2>/dev/null || true
 adb_t 30 shell svc data enable 2>/dev/null || true
 adb_t 30 shell settings put global private_dns_mode off 2>/dev/null || true
 
-# Keep Play / GMS available for real apps.
-adb_t 60 shell pm enable com.android.vending >/dev/null 2>&1 || true
-adb_t 60 shell pm enable com.google.android.gms >/dev/null 2>&1 || true
-adb_t 30 shell am force-stop com.google.android.apps.messaging 2>/dev/null || true
+# Play / GMS only exist on the "full" profile. Running these against the lean AOSP image just
+# spends an adb round trip each to be told the package does not exist.
+if [[ "${PROFILE_IMAGE_TAG:-google_apis}" != "default" ]]; then
+  log "enabling Play/GMS (profile ${PROFILE_NAME:-full})"
+  adb_t 60 shell pm enable com.android.vending >/dev/null 2>&1 || true
+  adb_t 60 shell pm enable com.google.android.gms >/dev/null 2>&1 || true
+  adb_t 30 shell am force-stop com.google.android.apps.messaging 2>/dev/null || true
+else
+  log "lean profile — skipping Play/GMS setup"
+fi
 
 adb_t 30 shell sm set-force-adoptable true 2>/dev/null || true
 
@@ -59,12 +65,25 @@ else
   log "WARNING: guest network not confirmed yet"
 fi
 
-if [[ -e /dev/kvm ]]; then
-  log "running speed-profile compile (KVM host)"
-  adb_t 300 shell cmd package compile -m speed-profile -f com.android.settings >/dev/null 2>&1 || true
-  adb_t 300 shell cmd package compile -m speed-profile -f com.android.systemui >/dev/null 2>&1 || true
-else
+# AOT-compile ahead of the snapshot so the restored image starts with warm ART instead of JIT-ing
+# on every warm boot.
+#
+# Kept deliberately small. Compiling more packages dirties more guest pages, which grows the
+# snapshot's ram.bin — and warm start is dominated by restoring that file, so a longer list makes
+# every subsequent start *slower*. Override to experiment:
+#   ANDROID_DEXOPT_PACKAGES="pkg1 pkg2" ./android/bin/open-emu provision
+#   ANDROID_DEXOPT_PACKAGES="" ...      # skip dexopt entirely
+DEXOPT_PACKAGES="${ANDROID_DEXOPT_PACKAGES-com.android.settings com.android.systemui}"
+
+if [[ -e /dev/kvm && -n "$DEXOPT_PACKAGES" ]]; then
+  log "running speed-profile compile (KVM host): ${DEXOPT_PACKAGES}"
+  for pkg in $DEXOPT_PACKAGES; do
+    adb_t 300 shell cmd package compile -m speed-profile -f "$pkg" >/dev/null 2>&1 || true
+  done
+elif [[ ! -e /dev/kvm ]]; then
   log "skipping dexopt on TCG host"
+else
+  log "dexopt disabled by ANDROID_DEXOPT_PACKAGES"
 fi
 
 # --- Snapshot first so APK install stalls cannot block the fast-boot path ---
@@ -124,6 +143,6 @@ if (( apk_count > 0 )); then
   sleep 5
 fi
 
-date -u +%Y-%m-%dT%H:%M:%SZ > "$STATE_DIR/provisioned_at"
-echo "$SNAPSHOT_NAME" > "$STATE_DIR/snapshot_name"
+date -u +%Y-%m-%dT%H:%M:%SZ > "$AVD_STATE_DIR/provisioned_at"
+echo "$SNAPSHOT_NAME" > "$AVD_STATE_DIR/snapshot_name"
 log "provision complete — snapshot '${SNAPSHOT_NAME}' ready"
