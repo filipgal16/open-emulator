@@ -1,0 +1,15 @@
+# Everything under android/ runs inside WSL2 or a Linux guest, and bash cannot parse a script with
+# CRLF line endings — it fails with `$'\r': command not found`, which reads as a mangled script
+# rather than a line-ending problem.
+#
+# On Windows, `core.autocrlf=true` is a common global default and would otherwise check these files
+# out with CRLF. Pinning them to LF here means a Windows clone produces a backend that runs, and
+# that the desktop shell's `cp -r` sync into the distro copies something executable.
+
+*.sh          text eol=lf
+*.env         text eol=lf
+android/bin/* text eol=lf
+Makefile      text eol=lf
+
+# Guest assembly is assembled by a Linux toolchain.
+*.S           text eol=lf
