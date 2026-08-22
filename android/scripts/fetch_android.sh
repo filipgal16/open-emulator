@@ -8,7 +8,16 @@ REPO_ROOT="$(cd "$ROOT/.." && pwd)"
 SDK_ROOT="${ANDROID_SDK_ROOT:-$ROOT/sdk}"
 CMDLINE_ZIP_URL="${CMDLINE_ZIP_URL:-https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip}"
 API_LEVEL="${ANDROID_API_LEVEL:-30}"
-SYSTEM_IMAGE="${ANDROID_SYSTEM_IMAGE:-system-images;android-${API_LEVEL};google_apis;x86_64}"
+
+# The image comes from the selected profile (android/profiles/<name>.env). ANDROID_PROFILE picks
+# one; ANDROID_SYSTEM_IMAGE still wins if set explicitly.
+PROFILE_FILE_PATH="$ROOT/profiles/${ANDROID_PROFILE:-fast}.env"
+if [[ -f "$PROFILE_FILE_PATH" ]]; then
+  # shellcheck disable=SC1090
+  source "$PROFILE_FILE_PATH"
+fi
+SYSTEM_IMAGE="${ANDROID_SYSTEM_IMAGE:-${PROFILE_SYSTEM_IMAGE:-system-images;android-${API_LEVEL};google_apis;x86_64}}"
+echo "==> profile '${PROFILE_NAME:-explicit}' image: ${SYSTEM_IMAGE}"
 
 mkdir -p "$SDK_ROOT/cmdline-tools"
 export ANDROID_SDK_ROOT="$SDK_ROOT"
