@@ -90,6 +90,17 @@ make android-start        # snapshot boot (seconds–minutes depending on KVM)
 
 See [`android/README.md`](android/README.md).
 
+## Install it
+
+```bash
+cd desktop && npm install && npm run dist:win
+# -> desktop/release/open-emulator-Setup-<version>.exe
+```
+
+One click, no options, launches when it finishes. On first run the app installs WSL2, the Linux
+packages Android needs, and the Android system image itself — no terminal, no commands. See
+[`desktop/PACKAGING.md`](desktop/PACKAGING.md).
+
 ## Desktop shell
 
 Electron app under [`desktop/`](desktop/), driving the WSL2-hosted Android backend.
@@ -103,8 +114,22 @@ make desktop-test
 It carries an optional ad-supported mode, **off by default** — a source build, a fork, or a distro
 package ships no ads and renders no ad markup. See [`desktop/ADS.md`](desktop/ADS.md).
 
+### Store
+
+The shell's **Store** tab installs apps into the guest from three sources: the F-Droid catalogue
+(searched locally, every download verified against its published digest), the real Google Play
+client running inside the guest, and local APKs dropped onto the window. It also carries a
+device-wide account that spans every guest profile. See [`desktop/STORE.md`](desktop/STORE.md).
+
+Play needs the `play` guest profile, which uses Google's own Play-enabled system image:
+
+```bash
+ANDROID_PROFILE=play make android-fetch android-setup android-provision
+OPEN_EMULATOR_ANDROID_PROFILE=play make desktop-dev
+```
+
 ## Next steps
 
 1. Grow `open-vmm` toward long mode + virtio/goldfish (replace Emulator QEMU)
-2. Desktop UI: APK drag-drop, key mapping, audio routing
+2. Desktop UI: key mapping, audio routing
 3. Multi-instance / profiles

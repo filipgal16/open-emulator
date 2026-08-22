@@ -2,7 +2,22 @@
 // safe to import from both the tsc-compiled (CommonJS/Node) side and the esbuild-bundled
 // (browser) renderer side. Nothing here may import electron or node builtins.
 
-export type SlotId = 'wizard-footer' | 'rail' | 'boot-interstitial' | 'library-tile';
+/**
+ * Master switch for the ad subsystem in this build.
+ *
+ * False here: nothing under `ads/` is constructed, no ad IPC is registered, and no ad markup
+ * reaches the DOM — not an inactive slot that renders null, but no component mounted at all.
+ *
+ * The subsystem itself is untouched and still covered by its tests, so this is a switch rather
+ * than a removal: flipping it back to true restores the ad-supported build. It is deliberately a
+ * plain constant rather than config, because an ad-free build should not depend on a file being
+ * absent at runtime.
+ */
+// Annotated `boolean` rather than left as the literal `false`: that keeps both branches
+// type-checked, so the ad-supported path cannot rot while the switch is off.
+export const ADS_ENABLED: boolean = false;
+
+export type SlotId = 'wizard-footer' | 'rail' | 'boot-interstitial' | 'library-tile' | 'store-tile';
 
 export type CreativeSource = 'network' | 'offer' | 'house';
 
@@ -32,6 +47,10 @@ export const SLOTS: Record<SlotId, SlotSpec> = {
   'boot-interstitial': { id: 'boot-interstitial', width: 640, height: 400, rotateAfterMs: 0, houseFloor: false },
   // Sponsored entries in the app library grid. Rotates slowly — the grid is browsed, not watched.
   'library-tile': { id: 'library-tile', width: 240, height: 200, rotateAfterMs: 120_000, houseFloor: true },
+  // The store's results grid. Someone browsing for something to install is the audience an app
+  // campaign actually wants, so this is the most valuable inline slot in the shell — which is
+  // exactly why it stays a labelled card in the flow and never a fake search result.
+  'store-tile': { id: 'store-tile', width: 240, height: 210, rotateAfterMs: 120_000, houseFloor: true },
 };
 
 export const SLOT_IDS = Object.keys(SLOTS) as SlotId[];

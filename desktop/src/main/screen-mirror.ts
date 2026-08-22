@@ -30,8 +30,10 @@ export class ScreenMirror {
     if (this.child) return;
     this.acc = Buffer.alloc(0);
 
+    // `$HOME` is empty in the shell WSL gives us, so the checkout path is resolved from the passwd
+    // database instead — the same reason `WslBridge.remoteDir` exists.
     const script = `
-cd '${this.target.remotePath}' || exit 1
+cd "$(getent passwd "$(id -u)" | cut -d: -f6)/${this.target.remotePath.replace(/^~\/?/, '')}" || exit 1
 source android/lib/common.sh
 android_env >/dev/null 2>&1
 while true; do
@@ -47,7 +49,9 @@ while true; do
 done
 `;
 
-    const child = spawn('wsl.exe', ['-d', this.target.distro, '--', 'bash', '-lc', script], { windowsHide: true });
+    // `-e` rather than `--`: with `--`, wsl.exe substitutes `$VAR` itself before bash runs, which
+    // would empty `$tmp` and `$sz` below and make this loop capture nothing. See `WslBridge.exec`.
+    const child = spawn('wsl.exe', ['-d', this.target.distro, '-e', 'bash', '-lc', script], { windowsHide: true });
     this.child = child;
 
     child.stdout.on('data', (chunk: Buffer) => this.handleData(chunk, onFrame));

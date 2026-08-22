@@ -1,0 +1,152 @@
+import { createHash } from 'crypto';
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'fs';
+import path from 'path';
+
+const DEFAULT_MAX_IMAGE_BYTES = 2 * 1024 * 1024;
+const FETCH_TIMEOUT_MS = 15_000;
+
+/**
+ * Magic-byte signatures for the formats we will serve.
+ *
+ * The `Content-Type` header is *not* trusted for this. A hostile or compromised CDN can label
+ * anything `image/png`; sniffing the actual bytes is what stops a non-image ever reaching the
+ * renderer, and it's also how the protocol handler decides what MIME to serve back.
+ */
+const SIGNATURES: Array<{ mime: string; test: (b: Buffer) => boolean }> = [
+  { mime: 'image/png', test: (b) => b.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])) },
+  { mime: 'image/jpeg', test: (b) => b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff },
+  { mime: 'image/gif', test: (b) => b.subarray(0, 6).toString('ascii') === 'GIF87a' || b.subarray(0, 6).toString('ascii') === 'GIF89a' },
+  {
+    mime: 'image/webp',
+    test: (b) => b.subarray(0, 4).toString('ascii') === 'RIFF' && b.subarray(8, 12).toString('ascii') === 'WEBP',
+  },
+];
+
+export function sniffImageMime(bytes: Buffer): string | null {
+  if (bytes.length < 12) return null;
+  return SIGNATURES.find((s) => s.test(bytes))?.mime ?? null;
+}
+
+export interface ImageCacheOptions {
+  fetchImpl?: typeof fetch;
+  onLog?: (message: string) => void;
+  /** Custom scheme the cached bytes are served back over, e.g. `oe-ad`. */
+  scheme?: string;
+  /** Host segment of the served URL, e.g. `creative` in `oe-ad://creative/<id>`. */
+  host?: string;
+  maxBytes?: number;
+}
+
+/**
+ * Downloads remote images in the main process and serves them to the renderer over a custom
+ * scheme.
+ *
+ * This is what lets the app window keep a `default-src 'self'` CSP with no remote origins at all.
+ * The renderer never learns the remote hostname, issues no cross-origin request, and therefore
+ * cannot be fingerprinted or tracked by whoever is hosting the art — the main process is the only
+ * thing that ever talks to one. Ad creatives and app-store icons have exactly the same
+ * requirement, so they share this class and differ only in scheme.
+ */
+export class ImageCache {
+  private readonly pending = new Map<string, Promise<string | null>>();
+  private readonly fetchImpl: typeof fetch;
+  private readonly onLog: (message: string) => void;
+  private readonly scheme: string;
+  private readonly host: string;
+  private readonly maxBytes: number;
+
+  constructor(
+    private readonly dir: string,
+    options: ImageCacheOptions = {},
+  ) {
+    this.fetchImpl = options.fetchImpl ?? ((...args) => fetch(...args));
+    this.onLog = options.onLog ?? (() => undefined);
+    this.scheme = options.scheme ?? 'oe-img';
+    this.host = options.host ?? 'image';
+    this.maxBytes = options.maxBytes ?? DEFAULT_MAX_IMAGE_BYTES;
+  }
+
+  static idFor(imageUrl: string): string {
+    return createHash('sha256').update(imageUrl).digest('hex').slice(0, 32);
+  }
+
+  /** Absolute path for a cached id, or null if the id is malformed or nothing is stored. */
+  pathFor(id: string): string | null {
+    // Hex-only ids make directory traversal impossible by construction — no path joining of
+    // attacker-controlled text ever reaches the filesystem.
+    if (!/^[0-9a-f]{32}$/.test(id)) return null;
+    const file = path.join(this.dir, id);
+    return existsSync(file) ? file : null;
+  }
+
+  /** Reads a cached image for the protocol handler, with the MIME sniffed from its bytes. */
+  read(id: string): { bytes: Buffer; mime: string } | null {
+    const file = this.pathFor(id);
+    if (!file) return null;
+    try {
+      const bytes = readFileSync(file);
+      const mime = sniffImageMime(bytes);
+      return mime ? { bytes, mime } : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /** Served URL if the image is already on disk, else null — callers render a fallback. */
+  urlIfReady(imageUrl: string): string | null {
+    const id = ImageCache.idFor(imageUrl);
+    return this.pathFor(id) ? this.urlFor(id) : null;
+  }
+
+  /**
+   * Downloads if needed and resolves to the served URL, or null when the image can't be used.
+   * Never throws: art that fails to fetch degrades to a placeholder, it doesn't break the caller.
+   */
+  async ensure(imageUrl: string): Promise<string | null> {
+    const ready = this.urlIfReady(imageUrl);
+    if (ready) return ready;
+
+    const id = ImageCache.idFor(imageUrl);
+    const existing = this.pending.get(id);
+    if (existing) return existing;
+
+    const job = this.download(imageUrl, id).finally(() => this.pending.delete(id));
+    this.pending.set(id, job);
+    return job;
+  }
+
+  /** Warms the cache so images don't pop in a beat after the text. Failures are ignored. */
+  async prefetch(imageUrls: string[]): Promise<void> {
+    await Promise.all(imageUrls.map((url) => this.ensure(url).catch(() => null)));
+  }
+
+  private urlFor(id: string): string {
+    return `${this.scheme}://${this.host}/${id}`;
+  }
+
+  private async download(imageUrl: string, id: string): Promise<string | null> {
+    try {
+      if (new URL(imageUrl).protocol !== 'https:') throw new Error('not https');
+
+      const response = await this.fetchImpl(imageUrl, {
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+        credentials: 'omit',
+        redirect: 'follow',
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+      const bytes = Buffer.from(await response.arrayBuffer());
+      if (bytes.length > this.maxBytes) throw new Error(`too large (${bytes.length} bytes)`);
+      if (!sniffImageMime(bytes)) throw new Error('not a recognised image');
+
+      mkdirSync(this.dir, { recursive: true });
+      const tmp = path.join(this.dir, `${id}.tmp`);
+      writeFileSync(tmp, bytes);
+      renameSync(tmp, path.join(this.dir, id));
+      return this.urlFor(id);
+    } catch (err) {
+      this.onLog(`image fetch failed (${imageUrl}): ${(err as Error).message}`);
+      return null;
+    }
+  }
+}
