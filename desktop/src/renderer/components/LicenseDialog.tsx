@@ -52,7 +52,12 @@ export function LicenseDialog({ onClose, onActivated }: Props) {
           <button type="button" onClick={onClose}>
             {ok ? 'Done' : 'Cancel'}
           </button>
-          <button type="button" disabled={busy || !key.trim()} onClick={() => void activate()}>
+          <button
+            type="button"
+            className="modal-btn-primary"
+            disabled={busy || !key.trim()}
+            onClick={() => void activate()}
+          >
             {busy ? 'Checking…' : 'Activate'}
           </button>
         </div>

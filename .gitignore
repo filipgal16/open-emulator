@@ -17,8 +17,10 @@ build/
 # Electron desktop shell
 desktop/node_modules/
 desktop/dist/
-desktop/build/
 desktop/out/
+# Installer output, and the generated app icon (rebuild with `npm run icon`).
+desktop/release/
+desktop/build/
 
 # Ad configuration — carries affiliate/publisher ids. Never commit; see ads.config.example.json
 desktop/ads.config.json

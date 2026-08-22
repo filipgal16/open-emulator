@@ -2,7 +2,6 @@ import { app, BrowserWindow, ipcMain, protocol, shell } from 'electron';
 import path from 'path';
 import type { AdsState, Creative, LicenseResult, SlotBounds, SlotId, TagPlan } from '../../shared/ads-types';
 import { SLOTS } from '../../shared/ads-types';
-import type { InstalledApp } from '../../shared/ipc-types';
 import type { AppLibrary } from '../app-library';
 import { AdService } from './ad-service';
 import { AttributionStore } from './attribution';
@@ -139,7 +138,7 @@ export function createAds(onLog: (line: string) => void = () => undefined): AdsR
         });
       }
 
-      registerAdsIpc(service, () => tagHost, consent, prefs, config.entitlement.publicKey, library, log);
+      registerAdsIpc(service, () => tagHost, consent, prefs, config.entitlement.publicKey, log);
 
       if (config.enabled && library) {
         attributionTimer = setInterval(() => {
@@ -225,7 +224,6 @@ function registerAdsIpc(
   consent: () => { personalized: boolean },
   prefs: AdPrefsStore,
   publicKey: string | null,
-  library: AppLibrary | null,
   log: (message: string) => void,
 ): void {
   ipcMain.handle('ads:state', (): AdsState => service.state());
@@ -287,25 +285,6 @@ function registerAdsIpc(
     // remote origin ever enters this app) and the correct one commercially: affiliate cookies
     // have to land in the user's real browser for a conversion to attribute back.
     if (url) void shell.openExternal(url);
-  });
-
-  ipcMain.handle('apps:list', async (): Promise<InstalledApp[]> => {
-    if (!library) return [];
-    try {
-      return await library.list();
-    } catch (err) {
-      log(`app list failed: ${(err as Error).message}`);
-      return [];
-    }
-  });
-
-  ipcMain.handle('apps:launch', async (_event, packageName: unknown): Promise<boolean> => {
-    if (!library || typeof packageName !== 'string') return false;
-    try {
-      return await library.launch(packageName);
-    } catch {
-      return false;
-    }
   });
 }
 

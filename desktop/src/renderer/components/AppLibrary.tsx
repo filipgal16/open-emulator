@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { AdSlot } from './AdSlot';
+import { ADS_ENABLED } from '../../shared/ads-types';
 import type { InstalledApp } from '../../shared/ipc-types';
 
 /** Where the sponsored tile sits in the grid. Third position: visible, but not the first thing. */
@@ -36,7 +37,15 @@ export function AppLibrary() {
     }
   }
 
-  if (apps === null) return <div className="library library-loading">Reading installed apps…</div>;
+  if (apps === null) {
+    return (
+      <div className="library library-loading">
+        <div className="empty-state empty-state-center">
+          <p className="empty-title">Reading installed apps…</p>
+        </div>
+      </div>
+    );
+  }
 
   const tiles = apps.map((app) => (
     <button
@@ -56,16 +65,25 @@ export function AppLibrary() {
 
   // Splice rather than append: a sponsored tile pinned to the end of a long list is never seen,
   // and one pinned to the front reads as a hijack of the user's own library.
-  const sponsored = <AdSlot key="sponsored" slot="library-tile" />;
-  tiles.splice(Math.min(SPONSORED_INDEX, tiles.length), 0, sponsored);
+  if (ADS_ENABLED) {
+    const sponsored = <AdSlot key="sponsored" slot="library-tile" />;
+    tiles.splice(Math.min(SPONSORED_INDEX, tiles.length), 0, sponsored);
+  }
 
   return (
     <div className="library">
-      <h2>Your apps</h2>
+      <div className="library-head">
+        <h2>Your apps</h2>
+        <p className="library-sub">Installed on this device</p>
+      </div>
       {apps.length === 0 && (
-        <p className="library-empty">
-          No third-party apps installed yet. Install one with <code>open-emu install app.apk</code>.
-        </p>
+        <div className="empty-state">
+          <p className="empty-title">Nothing installed yet</p>
+          <p className="library-empty">
+            Open the Store tab to browse F-Droid, or drop an APK onto the Store to install one
+            directly.
+          </p>
+        </div>
       )}
       <div className="app-grid">{tiles}</div>
     </div>
