@@ -10,6 +10,14 @@ export interface ProfileSpec {
   playStore: boolean;
   /** Roughly what the one-time download costs, so the choice is informed. */
   downloadHint: string;
+  /**
+   * Whether the image carries Google Mobile Services.
+   *
+   * Surfaced in the picker because it decides more than which apps run: a GMS image cannot be
+   * redistributed, and shipping one commercially needs an agreement with Google. The AOSP image
+   * is Apache-2.0 and carries no such condition. See LICENSING.md.
+   */
+  proprietary: boolean;
 }
 
 /**
@@ -25,6 +33,7 @@ export const PROFILES: Record<ProfileId, ProfileSpec> = {
     description: 'Plain Android. Boots quickest. No Google Play.',
     playStore: false,
     downloadHint: 'about 4 GB',
+    proprietary: false,
   },
   full: {
     id: 'full',
@@ -32,6 +41,7 @@ export const PROFILES: Record<ProfileId, ProfileSpec> = {
     description: 'Adds Google Play Services, for apps that need them. Still no Play Store app.',
     playStore: false,
     downloadHint: 'about 4 GB',
+    proprietary: true,
   },
   play: {
     id: 'play',
@@ -39,6 +49,7 @@ export const PROFILES: Record<ProfileId, ProfileSpec> = {
     description: 'Google Play Store built in — sign in and install apps normally. Slowest to start.',
     playStore: true,
     downloadHint: 'about 4 GB extra',
+    proprietary: true,
   },
 };
 
