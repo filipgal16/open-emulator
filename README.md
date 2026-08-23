@@ -1,135 +1,194 @@
 # open-emulator
 
-Step-by-step open Android emulator. **This repository currently implements step 1: a Type-2 virtual machine monitor (hypervisor userspace).**
+Android on your PC. A Windows desktop app that runs a real Android guest, installs apps into it
+from a built-in store, and stays out of your way.
 
-## What this is
+---
 
-`open-vmm` is a minimal host program that:
+## Download
 
-1. Allocates guest physical memory
-2. Loads a flat guest binary into that memory
-3. Runs a virtual CPU until the guest executes `HLT`
-4. Emulates a serial port (`COM1` / `0x3f8`) so the guest can print output
+**[`open-emulator-Setup-0.0.1.exe`](desktop/release/open-emulator-Setup-0.0.1.exe)** — 75 MB,
+one click, no options.
 
-Two backends:
-
-| Backend | When used | How it works |
-|---------|-----------|--------------|
-| **kvm** | `/dev/kvm` present | Linux KVM — hardware virtualization (Intel VT-x / AMD-V) |
-| **soft** | fallback / `--backend=soft` | Tiny in-process 16-bit instruction interpreter |
-
-`auto` (default) picks KVM when available, otherwise soft.
-
-This is the foundation a later Android stack would sit on (bootloader → Linux/Android kernel → devices). It is **not** an Android emulator yet.
-
-## Build
+There is no published release yet, so build the installer once and it appears at that path:
 
 ```bash
-make
+cd desktop
+npm install
+npm run dist:win        # -> desktop/release/open-emulator-Setup-0.0.1.exe
 ```
 
-Produces:
+The installer is unsigned, so Windows SmartScreen will show *"Windows protected your PC"* — click
+**More info → Run anyway**. Signing it needs a code-signing certificate; see
+[`desktop/PACKAGING.md`](desktop/PACKAGING.md).
 
-- `build/open-vmm` — the VMM
-- `build/guest/hello.bin` — demo real-mode guest
+### What you need
 
-## Run
+- Windows 10/11 x64
+- Virtualization enabled in BIOS (almost always already on)
+- **~15 GB free** — the installer is small, but Android itself is about 4 GB and it lives inside WSL
+- An internet connection for the first run
+
+---
+
+## First run
+
+Double-click and wait. There is nothing to configure and no terminal involved.
+
+The app installs Windows Subsystem for Linux (one Windows permission prompt), sets up a Linux
+environment, installs the packages Android needs, downloads the Android system image, and boots the
+guest once to save a snapshot so later starts are quick.
+
+Budget **20–40 minutes**, most of it the 4 GB download. It only happens once. If Windows asks you
+to restart after the WSL step, restart and reopen the app — it picks up where it left off.
+
+After that, starting Android takes about **10 seconds**.
+
+If something fails, the setup screen says what and offers **Try again**; **Details** shows the step
+list and the full log.
+
+---
+
+## Using it
+
+### Screen
+
+The Android display, mirrored. Click to tap, drag to swipe. **Start** and **Stop** live in the
+toolbar above it, next to a status light and the Android version.
+
+### Apps
+
+Everything installed in the guest. Click one to launch it.
+
+### Store
+
+Three sources behind one search box:
+
+| Source | What it is |
+|---|---|
+| **F-Droid** | ~4,300 open-source apps. The catalogue is downloaded once and searched locally, so results are instant and work offline. Every download is checked against the digest F-Droid publishes before it reaches the guest. |
+| **Play** | The real Google Play Store, running inside the guest and framed in the app. Needs the Play guest version — the tab offers a button to switch. |
+| **Local** | Drag an `.apk` onto the window. |
+
+Apps that need a newer Android than the guest are shown with the reason instead of being hidden, so
+an install never fails after a long download.
+
+### Account
+
+The chip in the top-right holds one account across every guest. It notices when a guest is already
+signed in to Google, and can fill your address and password into Google's own sign-in screen — the
+same job a password manager does. You complete the flow, including two-factor.
+
+The password is optional, off by default, and stored in the Windows credential store. If that is
+unavailable the app stores nothing rather than falling back to a plain file.
+
+### Android versions
+
+The toolbar's version picker switches guests. Each keeps its own device, apps, and snapshot, so
+switching never disturbs the others.
+
+| Version | What it is | Ships? |
+|---|---|---|
+| **Fast** | Plain Android (AOSP). Boots quickest, no Google Play. | Apache-2.0 — yes |
+| **Google apps** | Adds Google Play Services for apps that need them. | Google proprietary — personal use |
+| **Play Store** | Google Play built in. | Google proprietary — personal use |
+
+The last two bundle Google Mobile Services, which cannot be redistributed. See
+[`LICENSING.md`](LICENSING.md) before shipping anything based on them.
+
+---
+
+## Command line
+
+The GUI drives the same tool you can run yourself. It lives in the WSL distro, in the synced
+checkout.
 
 ```bash
-# Prefer software backend (works without /dev/kvm)
-make run
-
-# Or explicitly:
-./build/open-vmm --backend=soft build/guest/hello.bin
-
-# On a host with KVM:
-./build/open-vmm --backend=kvm build/guest/hello.bin
+./android/bin/open-emu start          # boot (snapshot if there is one)
+./android/bin/open-emu stop
+./android/bin/open-emu status
+./android/bin/open-emu install app.apk
+./android/bin/open-emu launch com.android.settings/.Settings
+./android/bin/open-emu shell          # adb shell
+./android/bin/open-emu doctor         # connectivity and readiness checks
 ```
 
-Expected guest serial output:
-
-```text
-open-emulator: guest is alive
-```
-
-## Test
+`ANDROID_PROFILE=fast|full|play` picks the guest; `ANDROID_DEVICE=pixel_5` makes it report as a
+real handset. Make targets wrap the common sequences:
 
 ```bash
-make test
+make android-fetch       # download the SDK + system image
+make android-setup       # create the AVD
+make android-provision   # first boot, then save a fast-start snapshot
+make android-start
 ```
+
+---
+
+## Building from source
+
+```bash
+cd desktop
+npm install
+npm run build        # compile main, typecheck renderer, bundle
+npm test             # 227 tests
+npm run dev          # build and launch
+npm run dist:win     # the installer
+```
+
+Set `OPEN_EMULATOR_WSL_DISTRO` if your distro is not named `OpenEmulator`, and
+`OPEN_EMULATOR_ANDROID_PROFILE` to pin a guest version.
+
+---
+
+## How it works
+
+```
+  Windows                              WSL2 (Linux)
+  ┌────────────────────────┐           ┌──────────────────────────┐
+  │ Electron shell         │  wsl.exe  │ android/bin/open-emu     │
+  │  main ── IPC ── render │ ────────► │   └─ Android emulator    │
+  │  store · account · UI  │           │        └─ Android guest  │
+  └────────────────────────┘   adb ◄───┴──────────────────────────┘
+```
+
+The desktop shell never talks to Android directly. It runs `open-emu` inside the distro, which owns
+the emulator and adb; the screen arrives as a stream of PNG frames over that same channel.
+
+The renderer is sandboxed with no network access at all (`connect-src 'none'`) — every byte it
+shows, including app icons, is fetched by the main process and handed over through a private
+protocol. Nothing it displays can phone home.
 
 ## Layout
 
 ```text
-include/     Public headers (vmm, serial, soft CPU)
-src/         VMM, KVM backend, soft CPU, serial device
-guest/       Guest assembly source
-android/     Android 11 guest import + run scripts
-scripts/     Guest assembler + smoke test
-build/       Build outputs
+desktop/          Electron app — store, account, GUI, installer
+  src/main/         privileged side: WSL bridge, store, account, setup
+  src/renderer/     UI
+  src/shared/       types crossing the IPC boundary
+android/          Android runtime
+  bin/open-emu      control plane (Google SDK)
+  foss/             licence-clean runtime (QEMU + Android-x86)
+  profiles/         guest versions
+  devices/          device identities
+src/, include/    open-vmm — a minimal type-2 hypervisor, the long-term backend
+guest/            demo guest assembly
 ```
 
-## Requirements
+## Documentation
 
-- Linux, `gcc`, `make`, `python3`
-- For the KVM backend: `/dev/kvm` (user in `kvm` group), CPU with VT-x/AMD-V
+- [`LICENSING.md`](LICENSING.md) — what every dependency means if you sell this
+- [`desktop/STORE.md`](desktop/STORE.md) — how the store and account work
+- [`desktop/PACKAGING.md`](desktop/PACKAGING.md) — building and shipping the installer
+- [`desktop/ADS.md`](desktop/ADS.md) — the optional ad-supported mode, off by default
+- [`android/MODIFICATIONS.md`](android/MODIFICATIONS.md) — what the guest is tuned for
 
-## Android guest (API 30 / Android 11)
+## Status
 
-Imported under [`android/`](android/). Control plane: `android/bin/open-emu`.
+Working: guest boot and snapshot restore, screen mirroring with touch input, the store across all
+three sources, the device-wide account, and a Windows installer.
 
-```bash
-make android-fetch        # download SDK + Android 11 image (~4 GiB, once)
-make android-setup
-make android-provision    # cold boot, tune for real use, save fast snapshot
-make android-start        # snapshot boot (seconds–minutes depending on KVM)
-./android/bin/open-emu install path/to/app.apk
-./android/bin/open-emu launch com.android.settings/.Settings
-./android/bin/open-emu doctor
-```
+In progress: a licence-clean runtime (`android/foss/`) that replaces Google's SDK with stock QEMU
+and an Android-x86 image, so the product can be shipped commercially.
 
-See [`android/README.md`](android/README.md).
-
-## Install it
-
-```bash
-cd desktop && npm install && npm run dist:win
-# -> desktop/release/open-emulator-Setup-<version>.exe
-```
-
-One click, no options, launches when it finishes. On first run the app installs WSL2, the Linux
-packages Android needs, and the Android system image itself — no terminal, no commands. See
-[`desktop/PACKAGING.md`](desktop/PACKAGING.md).
-
-## Desktop shell
-
-Electron app under [`desktop/`](desktop/), driving the WSL2-hosted Android backend.
-
-```bash
-make desktop-install
-make desktop-dev
-make desktop-test
-```
-
-It carries an optional ad-supported mode, **off by default** — a source build, a fork, or a distro
-package ships no ads and renders no ad markup. See [`desktop/ADS.md`](desktop/ADS.md).
-
-### Store
-
-The shell's **Store** tab installs apps into the guest from three sources: the F-Droid catalogue
-(searched locally, every download verified against its published digest), the real Google Play
-client running inside the guest, and local APKs dropped onto the window. It also carries a
-device-wide account that spans every guest profile. See [`desktop/STORE.md`](desktop/STORE.md).
-
-Play needs the `play` guest profile, which uses Google's own Play-enabled system image:
-
-```bash
-ANDROID_PROFILE=play make android-fetch android-setup android-provision
-OPEN_EMULATOR_ANDROID_PROFILE=play make desktop-dev
-```
-
-## Next steps
-
-1. Grow `open-vmm` toward long mode + virtio/goldfish (replace Emulator QEMU)
-2. Desktop UI: key mapping, audio routing
-3. Multi-instance / profiles
+Next: `open-vmm` grown far enough to replace QEMU entirely, key mapping, and audio routing.
