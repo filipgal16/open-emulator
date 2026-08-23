@@ -2,7 +2,7 @@ import { readdirSync } from 'fs';
 import path from 'path';
 import { LogHandler, WslBridge, WslTarget } from './wsl-bridge';
 import { OpenEmuClient } from './open-emu-client';
-import { installDistro, isWslAvailable, listDistros, setDistroVersion2 } from './wsl-detect';
+import { installDistro, isRebootPending, isWslAvailable, listDistros, setDistroVersion2 } from './wsl-detect';
 import { repoRootWinPath, toWslMountPath } from './win-paths';
 import type { SetupStepStatus } from '../shared/ipc-types';
 
@@ -139,8 +139,8 @@ export function buildSteps(bridge: WslBridge, openEmu: OpenEmuClient, target: Ws
               'Not available yet. If it was just installed, restart Windows and reopen open-emulator.',
         };
       },
-      fix: async () => {
-        await installDistro();
+      fix: async (onLog) => {
+        await installDistro('Ubuntu-22.04', onLog);
       },
     },
     {
@@ -163,9 +163,18 @@ export function buildSteps(bridge: WslBridge, openEmu: OpenEmuClient, target: Ws
         }
         const ubuntu1 = distros.find((d) => /ubuntu/i.test(d.name));
         if (ubuntu1) return { pass: false, detail: `"${ubuntu1.name}" is WSL1, needs upgrade to WSL2` };
+        // No distro *and* staged feature changes means WSL was just installed and has not taken
+        // effect yet. Naming the restart here is the difference between a dead end and a fix: the
+        // `wsl` step above already passed, so its own restart hint never rendered.
+        if (await isRebootPending()) {
+          return {
+            pass: false,
+            detail: 'Windows needs a restart to finish enabling WSL. Restart, then reopen open-emulator.',
+          };
+        }
         return { pass: false, detail: 'no usable distro found' };
       },
-      fix: async () => {
+      fix: async (onLog) => {
         const distros = await listDistros();
         const ubuntu1 = distros.find((d) => /ubuntu/i.test(d.name) && d.version !== '2');
         if (ubuntu1) {
@@ -173,7 +182,7 @@ export function buildSteps(bridge: WslBridge, openEmu: OpenEmuClient, target: Ws
           target.distro = ubuntu1.name;
           return;
         }
-        await installDistro('Ubuntu-22.04');
+        await installDistro('Ubuntu-22.04', onLog);
         target.distro = 'Ubuntu-22.04';
       },
     },
@@ -314,6 +323,13 @@ export function buildSteps(bridge: WslBridge, openEmu: OpenEmuClient, target: Ws
             `sed -i 's/\\r$//' ${dest}/android/bin/open-emu`,
             `chmod +x ${dest}/android/bin/open-emu`,
             `chmod +x ${dest}/android/scripts/*.sh 2>/dev/null || true`,
+            // The FOSS runtime's entry point needs the same treatment for the same reason, and is
+            // caught by neither rule above: the `find` matches on extension and this file has
+            // none, and the explicit lines name `bin/open-emu` only. Guarded so syncing a tree
+            // from before `android/foss/` existed stays a no-op rather than breaking the chain.
+            `if [ -f ${dest}/android/foss/open-emu-foss ]; then ` +
+              `sed -i 's/\\r$//' ${dest}/android/foss/open-emu-foss && ` +
+              `chmod +x ${dest}/android/foss/open-emu-foss; fi`,
           ].join(' && '),
           onLog,
           180_000,
