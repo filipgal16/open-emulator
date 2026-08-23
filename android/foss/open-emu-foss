@@ -1,0 +1,276 @@
+#!/usr/bin/env bash
+# open-emu-foss — Android runtime built only from software this project can ship.
+#
+#   QEMU          GPL-2.0        stock distro package, invoked as a separate process
+#   adb           Apache-2.0     Debian's build from AOSP source, not Google's SDK binary
+#   Android-x86   Apache-2.0 userspace over a GPL-2.0 kernel
+#
+# Nothing here comes from Google's SDK, so none of the Android SDK Terms apply. See LICENSING.md.
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/lib.sh"
+
+usage() {
+  cat <<'EOF'
+Usage: open-emu-foss <command>
+
+  fetch            Download the Android-x86 image (~920 MB, once)
+  prepare          Create the data disk and enable adb over TCP
+  start            Boot the guest
+  stop             Shut the guest down
+  status           Show runtime status
+  shell [args...]  adb shell
+  install <apk>    Install an APK
+  logcat [args...] adb logcat
+  screenshot [f]   Capture a PNG
+  doctor           Check the host has what it needs
+EOF
+}
+
+cmd_fetch() {
+  foss_env
+  if [[ -f "$ISO_PATH" ]]; then
+    foss_log "image already present: $ISO_PATH ($(du -h "$ISO_PATH" | cut -f1))"
+    return 0
+  fi
+  foss_log "downloading $ISO_NAME (about 920 MB, once)"
+  curl -L --fail --retry 3 -o "$ISO_PATH.part" "$ISO_URL"
+  mv "$ISO_PATH.part" "$ISO_PATH"
+  foss_log "image ready: $ISO_PATH"
+}
+
+# Creates the data disk, and patches the initrd so the guest is reachable.
+#
+# There is no USB to emulate, so adb has to arrive over TCP, and adbd only listens on TCP when
+# `service.adb.tcp.port` is set. Getting that property in is the whole trick:
+#
+#   - /data/property doesn't work. Android 9 keeps persistent properties in a single protobuf
+#     blob, not one file per property, so seeding the empty data disk achieves nothing.
+#   - Editing system.sfs means unpacking and repacking 942 MB for one line.
+#   - The initrd is 1.3 MB and already writes to default.prop just before handing over to Android
+#     (that is how it disables the setup wizard). Adding three lines beside that is the small,
+#     honest place to do this.
+#
+# ro.adb.secure/ro.secure go in the same edit: with adb authentication on, the first connection
+# waits for someone to accept a key prompt on a screen nobody is looking at.
+cmd_prepare() {
+  foss_env
+  [[ -f "$ISO_PATH" ]] || foss_die "image missing — run: open-emu-foss fetch"
+
+  if [[ ! -f "$DATA_DISK" ]]; then
+    foss_log "creating a ${DATA_SIZE} data disk"
+    local raw="$FOSS_STATE_DIR/data.raw"
+    rm -f "$raw"
+    truncate -s "$DATA_SIZE" "$raw"
+    mkfs.ext4 -q -L DATA "$raw"
+    qemu-img convert -f raw -O qcow2 "$raw" "$DATA_DISK"
+    rm -f "$raw"
+    foss_log "data disk ready"
+  fi
+
+  extract_boot_files >/dev/null
+  patch_initrd
+  foss_log "prepared — run: open-emu-foss start"
+}
+
+# Rebuilds initrd.img with adb-over-TCP switched on. Idempotent: the stock initrd is kept, and the
+# patched one is always rebuilt from it.
+patch_initrd() {
+  local stock="$FOSS_STATE_DIR/initrd.img"
+  local patched="$FOSS_STATE_DIR/initrd-oe.img"
+  [[ -f "$stock" ]] || foss_die "no initrd extracted yet"
+
+  local work
+  work="$(mktemp -d)"
+  ( cd "$work" && zcat "$stock" | cpio -idm --quiet ) || {
+    rm -rf "$work"; foss_die "could not unpack the initrd"
+  }
+  [[ -f "$work/init" ]] || { rm -rf "$work"; foss_die "initrd has no init"; }
+
+  cat > "$work/oe-insert" <<'PATCH'
+
+	# open-emulator: adbd only listens on TCP when this property is set, and there is no USB to
+	# emulate. Written here because the initrd owns default.prop right up until Android starts.
+	grep -v -E '^(service\.adb\.tcp\.port|ro\.adb\.secure|ro\.secure)=' default.prop > oe.prop
+	printf 'service.adb.tcp.port=5555\nro.adb.secure=0\nro.secure=0\n' >> oe.prop
+	mv oe.prop default.prop
+PATCH
+
+  # `r` inserts the file's contents after the matching line — the point where the initrd is already
+  # editing default.prop for its own reasons. The path must be absolute: sed resolves it against
+  # the working directory, not the file being edited, and a missing file is a silent no-op.
+  sed -i "/ro.setupwizard.mode=DISABLED/r $work/oe-insert" "$work/init" || {
+    rm -rf "$work"; foss_die "could not find the property hook in init"
+  }
+  grep -q 'service.adb.tcp.port' "$work/init" || { rm -rf "$work"; foss_die "initrd patch did not apply"; }
+  rm -f "$work/oe-insert"
+
+  ( cd "$work" && find . | cpio -o -H newc --quiet | gzip -9 > "$patched" ) || {
+    rm -rf "$work"; foss_die "could not repack the initrd"
+  }
+  rm -rf "$work"
+  foss_log "initrd patched for adb over TCP ($(du -h "$patched" | cut -f1))"
+}
+
+# Android-x86's initrd is booted directly rather than through the ISO's boot menu: a menu needs
+# someone to press a key, and this has to come up unattended.
+extract_boot_files() {
+  local kernel="$FOSS_STATE_DIR/kernel" initrd="$FOSS_STATE_DIR/initrd.img"
+  if [[ -f "$kernel" && -f "$initrd" ]]; then
+    echo "$kernel" "$initrd"
+    return 0
+  fi
+
+  local mnt
+  mnt="$(mktemp -d)"
+  mount -o loop,ro "$ISO_PATH" "$mnt" 2>/dev/null || { rmdir "$mnt"; foss_die "could not mount $ISO_NAME (needs root)"; }
+
+  local found
+  found="$(find "$mnt" -maxdepth 2 -name kernel -type f | head -1)"
+  if [[ -z "$found" ]]; then
+    umount "$mnt"; rmdir "$mnt"
+    foss_die "no kernel inside $ISO_NAME"
+  fi
+
+  cp "$found" "$kernel"
+  cp "$(dirname "$found")/initrd.img" "$initrd"
+
+  # `SRC=` is the directory *on the boot media* holding system.sfs, as an absolute path from the
+  # media root. Android-x86 ISOs put the payload at the root; installed-to-disk layouts put it in a
+  # release-named directory. Derive it rather than assuming either.
+  local dir="${found%/kernel}"
+  echo "${dir#"$mnt"}" > "$FOSS_STATE_DIR/src_dir"
+
+  umount "$mnt"
+  rmdir "$mnt"
+  echo "$kernel" "$initrd"
+}
+
+cmd_start() {
+  foss_env
+  if foss_running; then
+    foss_log "already running (pid $(cat "$PID_FILE"))"
+    foss_adb_connect
+    return 0
+  fi
+  [[ -f "$ISO_PATH" ]] || foss_die "image missing — run: open-emu-foss fetch"
+  [[ -f "$DATA_DISK" ]] || foss_die "no data disk — run: open-emu-foss prepare"
+
+  read -r kernel _stock < <(extract_boot_files)
+  local initrd="$FOSS_STATE_DIR/initrd-oe.img"
+  [[ -f "$initrd" ]] || foss_die "initrd not patched — run: open-emu-foss prepare"
+  # Empty for an ISO, which keeps its payload at the media root; a release-named directory once
+  # Android-x86 has been installed to a disk.
+  local src
+  src="$(cat "$FOSS_STATE_DIR/src_dir" 2>/dev/null || echo '')"
+
+  : > "$QEMU_LOG"
+  foss_log "starting QEMU (kvm=$HAS_KVM cores=$GUEST_CORES ram=${GUEST_RAM_MB}MB)"
+
+  # setsid for the same reason the SDK runtime needs it: WSL tears down a session's processes when
+  # the wsl.exe call that created it exits, and the desktop app starts this with a one-shot call.
+  setsid nohup "$QEMU_BIN" \
+    "${ACCEL_ARGS[@]}" \
+    -smp "$GUEST_CORES" -m "$GUEST_RAM_MB" \
+    -kernel "$kernel" -initrd "$initrd" \
+    -append "root=/dev/ram0 androidboot.selinux=permissive SRC=$src DATA=$DATA_DEVICE console=ttyS0 nomodeset" \
+    -drive "file=$ISO_PATH,media=cdrom,readonly=on" \
+    -drive "file=$DATA_DISK,format=qcow2,if=virtio" \
+    -netdev "user,id=n0,hostfwd=tcp::${ADB_PORT}-:5555" \
+    -device virtio-net-pci,netdev=n0 \
+    -display none \
+    -serial "file:$QEMU_LOG" \
+    -pidfile "$PID_FILE" \
+    </dev/null >>"$QEMU_LOG" 2>&1 &
+
+  sleep 2
+  foss_running || foss_die "QEMU did not start — see $QEMU_LOG"
+  foss_log "qemu pid=$(cat "$PID_FILE")"
+
+  if foss_wait_for_adb 240; then
+    foss_log "adb connected on $ADB_TARGET"
+    if foss_wait_for_boot 240; then
+      foss_log "Android boot_completed=1"
+    else
+      foss_log "WARNING: adb is up but boot_completed never arrived"
+    fi
+  else
+    foss_log "WARNING: no adb after 240s — see $QEMU_LOG"
+  fi
+  cmd_status
+}
+
+cmd_stop() {
+  foss_env
+  if ! foss_running; then
+    foss_log "not running"
+    return 0
+  fi
+  local pid
+  pid="$(cat "$PID_FILE")"
+  "$ADB_BIN" disconnect "$ADB_TARGET" >/dev/null 2>&1 || true
+  # Give QEMU a chance to flush the data disk before resorting to a kill.
+  kill "$pid" 2>/dev/null || true
+  local waited=0
+  while (( waited < 20 )) && kill -0 "$pid" 2>/dev/null; do
+    sleep 1
+    waited=$((waited + 1))
+  done
+  kill -9 "$pid" 2>/dev/null || true
+  rm -f "$PID_FILE"
+  foss_log "stopped"
+}
+
+cmd_status() {
+  foss_env
+  echo "engine=foss"
+  echo "image=$([[ -f "$ISO_PATH" ]] && echo present || echo missing)"
+  echo "data_disk=$([[ -f "$DATA_DISK" ]] && echo present || echo missing)"
+  if foss_running; then
+    echo "emulator=running"
+    echo "pid=$(cat "$PID_FILE")"
+  else
+    echo "emulator=stopped"
+  fi
+  foss_adb_connect
+  if "$ADB_BIN" -s "$ADB_TARGET" shell true >/dev/null 2>&1; then
+    echo "adb_device=$ADB_TARGET"
+    echo "boot_completed=$(foss_adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')"
+    echo "android=$(foss_adb shell getprop ro.build.version.release 2>/dev/null | tr -d '\r') api=$(foss_adb shell getprop ro.build.version.sdk 2>/dev/null | tr -d '\r')"
+  else
+    echo "adb_device=none"
+  fi
+  echo "kvm=$HAS_KVM"
+}
+
+cmd_doctor() {
+  foss_env
+  echo "qemu     : $("$QEMU_BIN" --version | head -1)"
+  echo "adb      : $("$ADB_BIN" --version | sed -n 2p)"
+  echo "kvm      : $([[ -w /dev/kvm ]] && echo 'available' || echo 'missing — guest will be slow')"
+  echo "image    : $([[ -f "$ISO_PATH" ]] && du -h "$ISO_PATH" | cut -f1 || echo 'not fetched')"
+  echo "data disk: $([[ -f "$DATA_DISK" ]] && du -h "$DATA_DISK" | cut -f1 || echo 'not prepared')"
+}
+
+main() {
+  local cmd="${1:-}"
+  shift || true
+  case "$cmd" in
+    fetch) cmd_fetch "$@" ;;
+    prepare) cmd_prepare "$@" ;;
+    start) cmd_start "$@" ;;
+    stop) cmd_stop "$@" ;;
+    status) cmd_status "$@" ;;
+    doctor) cmd_doctor "$@" ;;
+    shell) foss_env; foss_adb shell "$@" ;;
+    install) foss_env; foss_adb install -r -g "$@" ;;
+    logcat) foss_env; foss_adb logcat "$@" ;;
+    screenshot) foss_env; foss_adb exec-out screencap -p > "${1:-$FOSS_LOG_DIR/screen.png}" ;;
+    -h | --help | help | "") usage ;;
+    *) foss_die "unknown command: $cmd" ;;
+  esac
+}
+
+main "$@"

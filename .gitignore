@@ -3,6 +3,9 @@ android/sdk/
 android/avd/
 android/logs/
 android/state/
+# Guest images for the FOSS runtime — ~1 GB each, fetched with `open-emu-foss fetch`.
+android/images/
+*.iso
 android/apps/*.apk
 android/**/*.img
 android/**/*.qcow2
