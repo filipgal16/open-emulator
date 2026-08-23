@@ -1,5 +1,11 @@
 import { spawn } from 'child_process';
 import { decodeWindowsProcessOutput } from './windows-text';
+import type { LogStream } from '../shared/ipc-types';
+
+/**
+ * Matches `LogHandler` in wsl-bridge, declared here so detection stays independent of the bridge.
+ */
+export type DetectLogHandler = (stream: LogStream, line: string) => void;
 
 export interface DistroInfo {
   name: string;
@@ -50,6 +56,41 @@ export async function isWslAvailable(): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+/**
+ * True when Windows has staged feature changes that need a restart to take effect.
+ *
+ * `wsl --install` enables the Virtual Machine Platform optional feature. On a machine that did not
+ * already have it, the command reports success, registers no distro, and everything stays that way
+ * until the machine reboots — while `wsl --status` keeps exiting 0 throughout, so
+ * `isWslAvailable()` sees nothing wrong.
+ *
+ * That combination is what a first-time user actually hits: a green "Windows Subsystem for Linux —
+ * Installed" immediately followed by "no usable distro found", and no mention anywhere of the one
+ * action that fixes it. This is only ever used to *explain* a failure, never to cause one — a
+ * reboot pending for unrelated reasons (a Windows update) must not block setup on a machine where
+ * WSL already works.
+ *
+ * The CBS key is the one servicing sets when an optional feature is enabled but not yet live.
+ */
+export function isRebootPending(): Promise<boolean> {
+  const key = 'HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Component Based Servicing\\RebootPending';
+  return new Promise((resolve) => {
+    const child = spawn('reg.exe', ['query', key], { windowsHide: true });
+    let settled = false;
+    const done = (value: boolean) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(value);
+    };
+    // Absence of the key is the common case and exits non-zero; anything unexpected is reported as
+    // "not pending" so this can never be the reason setup fails.
+    const timer = setTimeout(() => done(false), 10_000);
+    child.on('error', () => done(false));
+    child.on('close', (code) => done(code === 0));
+  });
 }
 
 export async function listDistros(): Promise<DistroInfo[]> {
@@ -126,10 +167,35 @@ function runElevated(file: string, args: string[], timeoutMs = 15 * 60_000): Pro
  * Windows may still want a restart afterwards to finish enabling the virtual machine platform;
  * the caller's next check will fail and say so.
  */
-export async function installDistro(name = 'Ubuntu-22.04'): Promise<void> {
+export async function installDistro(name = 'Ubuntu-22.04', onLog?: DetectLogHandler): Promise<void> {
+  // The elevated child runs in its own console, so its output cannot be captured here. Narrating
+  // the steps is not decoration: without it the setup wizard's log pane sits completely empty for
+  // the several minutes this takes, which is exactly when someone is deciding whether the app has
+  // hung. Every line below is a real transition, not filler.
+  const log = (line: string) => onLog?.('stdout', line);
+
+  log(`requesting administrator approval to install ${name}`);
   await runElevated('wsl.exe', ['--install', '-d', name, '--no-launch']);
+  log(`wsl --install reported success for ${name}`);
+
   // First entry as root creates the filesystem without the account-setup prompt.
+  log('initialising the distro filesystem');
   await runWslRaw(['-d', name, '-u', 'root', '--', 'true'], 5 * 60_000);
+
+  // `wsl --install` exits 0 after merely *staging* the optional features, so success above does
+  // not mean the distro exists. Confirming it registered turns a green step followed by a baffling
+  // failure two steps later into one accurate message at the point of failure.
+  const registered = (await listDistros()).some((d) => d.name === name);
+  if (!registered) {
+    log(`${name} did not register`);
+    const pending = await isRebootPending();
+    throw new Error(
+      pending
+        ? 'Windows needs a restart to finish enabling WSL. Restart Windows, then reopen open-emulator — setup continues where it stopped.'
+        : `${name} did not register after installation. Restarting Windows usually resolves this.`,
+    );
+  }
+  log(`${name} registered`);
 }
 
 export async function setDistroVersion2(name: string): Promise<void> {

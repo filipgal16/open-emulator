@@ -784,6 +784,22 @@ the full log. Steps are resumable — nothing already downloaded is fetched twic
 
 **Windows asked to restart during WSL install.** Restart, reopen the app. It resumes.
 
+**Setup fails at "Linux environment: no usable distro found", with step 1 green.** Restart Windows
+and reopen the app. `wsl --install` enables the Virtual Machine Platform optional feature, reports
+success, and registers no distro until the machine reboots — while `wsl --status` keeps exiting 0
+throughout, so the WSL step passes and its own restart hint never renders. The wizard now checks
+for staged feature changes and names the restart directly. If a restart does not clear it, confirm
+virtualization is actually on:
+
+```powershell
+"Hypervisor present: $((Get-CimInstance Win32_ComputerSystem).HypervisorPresent)"
+"Reboot pending: $(Test-Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending')"
+wsl --status
+wsl -l -v
+```
+
+`Hypervisor present: False` means virtualization is disabled in BIOS, which is a different problem.
+
 **`/usr/bin/env: 'bash\r': No such file or directory`.** The backend copy in the distro has CRLF
 line endings. Re-run the *Backend synced into distro* setup step, which normalises them.
 
