@@ -10,7 +10,7 @@
     "typecheck:renderer": "tsc -p tsconfig.renderer.json",
     "build:renderer": "node scripts/build-renderer.mjs",
     "build": "npm run build:main && npm run typecheck:renderer && npm run build:renderer && node scripts/copy-static.mjs",
-    "test": "npm run build:main && node --test \"test/*.test.mjs\"",
+    "test": "npm run build:main && node --test \"test/**/*.test.mjs\"",
     "dev": "npm run build && electron .",
     "start": "electron .",
     "icon": "node scripts/make-icon.mjs",

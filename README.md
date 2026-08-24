@@ -183,7 +183,7 @@ protocol. Nothing it displays can phone home.
 
 ```text
 desktop/          Electron app — store, account, GUI, installer
-  src/main/         privileged side: WSL bridge, store, account, setup
+  src/main/         engine (runtimes), guest, store, account, platform, wsl
   src/renderer/     UI
   src/shared/       types crossing the IPC boundary
 android/          Android runtime

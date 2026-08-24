@@ -1,6 +1,6 @@
 import path from 'path';
-import { repoRootWinPath } from '../win-paths';
-import type { WslBridge } from '../wsl-bridge';
+import { repoRootWinPath } from '../platform/win-paths';
+import type { WslBridge } from '../wsl/bridge';
 import { detectAcceleration, type AccelerationState } from './acceleration';
 import { createSdkLayout, type SdkLayout } from './sdk/layout';
 import { SdkEngine } from './sdk/sdk-engine';

@@ -2,8 +2,8 @@ import { createHash } from 'crypto';
 import { createWriteStream, existsSync, mkdirSync, renameSync, rmSync, statSync } from 'fs';
 import path from 'path';
 import type { InstallJob } from '../../shared/store-types';
-import type { AppLibrary } from '../app-library';
-import type { OpenEmuClient } from '../open-emu-client';
+import type { AppLibrary } from '../guest/app-library';
+import type { OpenEmuClient } from '../engine/client';
 import type { DownloadSpec } from './sources/source';
 
 const MAX_APK_BYTES = 1_500 * 1024 * 1024;

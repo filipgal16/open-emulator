@@ -1,6 +1,6 @@
-import { posixQuote } from '../shell-quote';
-import { toWslMountPath } from '../win-paths';
-import type { WslBridge } from '../wsl-bridge';
+import { posixQuote } from '../platform/shell-quote';
+import { toWslMountPath } from '../platform/win-paths';
+import type { WslBridge } from '../wsl/bridge';
 import type { AndroidEngine, EngineLogHandler, StartOptions } from './types';
 import type { CommandResult } from '../../shared/ipc-types';
 

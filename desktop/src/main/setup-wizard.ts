@@ -1,9 +1,9 @@
 import { readdirSync } from 'fs';
 import path from 'path';
-import { LogHandler, WslBridge, WslTarget } from './wsl-bridge';
-import { OpenEmuClient } from './open-emu-client';
-import { installDistro, isRebootPending, isWslAvailable, listDistros, setDistroVersion2 } from './wsl-detect';
-import { repoRootWinPath, toWslMountPath } from './win-paths';
+import { LogHandler, WslBridge, WslTarget } from './wsl/bridge';
+import { OpenEmuClient } from './engine/client';
+import { installDistro, isRebootPending, isWslAvailable, listDistros, setDistroVersion2 } from './wsl/detect';
+import { repoRootWinPath, toWslMountPath } from './platform/win-paths';
 import type { SetupStepStatus } from '../shared/ipc-types';
 
 export interface CheckResult {

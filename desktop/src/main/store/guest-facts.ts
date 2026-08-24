@@ -1,5 +1,5 @@
-import type { OpenEmuClient } from '../open-emu-client';
-import { posixQuote } from '../shell-quote';
+import type { OpenEmuClient } from '../engine/client';
+import { posixQuote } from '../platform/shell-quote';
 
 export interface GuestFacts {
   /** API level, or null when the guest isn't answering. */

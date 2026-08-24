@@ -1,5 +1,5 @@
 import type { FillResult } from '../../shared/account-types';
-import type { OpenEmuClient } from '../open-emu-client';
+import type { OpenEmuClient } from '../engine/client';
 import type { ProfileStore } from './profile';
 import type { SecretVault } from './vault';
 

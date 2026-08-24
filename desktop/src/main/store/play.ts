@@ -1,6 +1,6 @@
-import type { AppLibrary } from '../app-library';
-import { isValidPackageName } from '../app-library';
-import type { OpenEmuClient } from '../open-emu-client';
+import type { AppLibrary } from '../guest/app-library';
+import { isValidPackageName } from '../guest/app-library';
+import type { OpenEmuClient } from '../engine/client';
 
 export const PLAY_PACKAGE = 'com.android.vending';
 

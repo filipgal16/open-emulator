@@ -1,7 +1,7 @@
 import { ipcMain, safeStorage } from 'electron';
 import path from 'path';
 import type { AccountState, FillField, FillResult } from '../../shared/account-types';
-import type { OpenEmuClient } from '../open-emu-client';
+import type { OpenEmuClient } from '../engine/client';
 import { GuestAccountMonitor } from './guest-account';
 import { ProfileStore } from './profile';
 import { SignInDriver } from './signin-driver';
