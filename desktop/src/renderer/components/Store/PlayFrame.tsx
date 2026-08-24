@@ -85,7 +85,7 @@ export function PlayFrame({ state, onRecheck }: Props) {
 
         {switchError && <p className="play-warning">{switchError}</p>}
         <p className="play-note">
-          You can also do this from the device menu in the toolbar, or from a terminal with
+          You can also do this from the Android version menu in the status bar, or from a terminal with
           <code> ANDROID_PROFILE=play make android-fetch android-setup android-provision</code>.
         </p>
       </div>

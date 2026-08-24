@@ -19,7 +19,7 @@ function caption(state: AccountState): string {
 }
 
 /**
- * The device-wide account, in the tab bar.
+ * The device-wide account, in the title bar.
  *
  * Shows the guest's actual signed-in address when there is one, and the saved profile otherwise —
  * those can legitimately differ (a profile set up before the guest was ever started), and showing

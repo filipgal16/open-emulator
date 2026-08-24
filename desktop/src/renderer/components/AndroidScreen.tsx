@@ -6,7 +6,7 @@ interface Props {
 }
 
 /**
- * The Screen tab.
+ * The device workspace.
  *
  * Everything about mirroring and input lives in `GuestSurface`, which the Store's Play frame
  * shares — this is just where it sits in the layout.

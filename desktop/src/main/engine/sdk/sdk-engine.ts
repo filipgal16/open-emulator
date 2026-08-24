@@ -6,7 +6,8 @@ import { loadDevice, loadProfile, type DeviceIdentity, type GuestProfile } from 
 import { ProcessRunner, spawnDetached, type DetachedProcess } from '../process';
 import type { AndroidEngine, EngineLogHandler, StartOptions } from '../types';
 import { Adb } from './adb';
-import { applyAvdConfig, avdConfigOverrides, emulatorArgs } from './avd-config';
+import { avdConfigOverrides, applyAvdConfig, emulatorArgs } from './avd-config';
+import { avdExists, createAvd } from './avd';
 import { tuneForHost, type GuestTuning } from './host';
 import { avdDir, avdState, snapshotDir, systemImagePath, type SdkLayout } from './layout';
 import type { CommandResult } from '../../../shared/ipc-types';
@@ -112,8 +113,22 @@ export class SdkEngine implements AndroidEngine {
    * writes cannot be loaded by the next one.
    */
   private syncAvdConfig(profile: GuestProfile, tuning: GuestTuning): void {
+    // Create it if it is not there. avdmanager used to do this; it lived in cmdline-tools, which
+    // the native runtime no longer downloads, and an AVD is only two configuration files.
+    if (!avdExists(this.options.layout, profile.avdName)) {
+      createAvd({
+        layout: this.options.layout,
+        androidRoot: this.options.androidRoot,
+        profile,
+        device: this.device(),
+        tuning,
+        snapshotName: SNAPSHOT,
+      });
+      this.log(`created AVD ${profile.avdName}`);
+      return;
+    }
+
     const configPath = path.join(avdDir(this.options.layout, profile.avdName), 'config.ini');
-    if (!existsSync(configPath)) return;
 
     const overrides = avdConfigOverrides({
       profile,
