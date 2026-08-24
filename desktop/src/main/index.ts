@@ -2,7 +2,7 @@ import { app, BrowserWindow, ipcMain, Menu } from 'electron';
 import path from 'path';
 import { DevicePrefsStore, parseStatus } from './device-status';
 import { LogHandler, WslBridge, WslTarget } from './wsl-bridge';
-import { WslEngine } from './engine/wsl-engine';
+import { createEngine, resolveEngineId } from './engine/factory';
 import { OpenEmuClient } from './open-emu-client';
 import { buildSteps, SetupRunner } from './setup-wizard';
 import { ScreenMirror } from './screen-mirror';
@@ -27,7 +27,18 @@ const bridge = new WslBridge(target);
 // The one place a runtime is chosen. Everything downstream holds `openEmu` and cannot tell which
 // engine is underneath — that is what makes swapping WSL for a native Windows process a local
 // change rather than a rewrite.
-const engine = new WslEngine(bridge, target);
+//
+// `OPEN_EMULATOR_ENGINE=sdk` opts into the native Windows runtime. WSL stays the default until the
+// native engine has booted a guest on a real machine: shipping an untested runtime as the default
+// would trade a slow product for a broken one.
+const engineId = resolveEngineId(process.env.OPEN_EMULATOR_ENGINE);
+const { engine } = createEngine({
+  id: engineId,
+  profile: target.profile,
+  wsl: { bridge, target },
+  onLog: (line) => console.log(line),
+});
+console.log(`[engine] using the ${engineId} runtime`);
 const openEmu = new OpenEmuClient(engine);
 const setupRunner = new SetupRunner(buildSteps(bridge, openEmu, target));
 const mirror = new ScreenMirror(target);
