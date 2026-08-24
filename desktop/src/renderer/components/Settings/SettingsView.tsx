@@ -22,6 +22,8 @@ export function SettingsView() {
   const [state, setState] = useState<SettingsState | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [freeing, setFreeing] = useState(false);
+  const [moving, setMoving] = useState(false);
+  const [restarting, setRestarting] = useState(false);
 
   useEffect(() => {
     let live = true;
@@ -38,17 +40,52 @@ export function SettingsView() {
   }, []);
 
   async function patch(partial: Partial<Settings>) {
-    const next = await window.openEmu.settingsSet(partial);
-    applyDocumentTheme(next.settings.theme);
-    setState(next);
+    adopt(await window.openEmu.settingsSet(partial));
   }
 
   async function freeSpace() {
     setFreeing(true);
     try {
-      setState(await window.openEmu.settingsFreeSpace());
+      adopt(await window.openEmu.settingsFreeSpace());
     } finally {
       setFreeing(false);
+    }
+  }
+
+  async function chooseFolder() {
+    setMoving(true);
+    try {
+      adopt(await window.openEmu.settingsChooseDownloadFolder());
+    } catch (err: unknown) {
+      setState((prev) =>
+        prev
+          ? { ...prev, lastMessage: err instanceof Error ? err.message : 'Could not change the folder.' }
+          : prev,
+      );
+    } finally {
+      setMoving(false);
+    }
+  }
+
+  function adopt(next: SettingsState) {
+    applyDocumentTheme(next.settings.theme);
+    setState((prev) => ({
+      ...next,
+      lastMessage: next.lastMessage ?? prev?.lastMessage,
+    }));
+  }
+
+  async function restartApp() {
+    setRestarting(true);
+    try {
+      await window.openEmu.settingsRestartApp();
+    } catch (err: unknown) {
+      setRestarting(false);
+      setState((prev) =>
+        prev
+          ? { ...prev, lastMessage: err instanceof Error ? err.message : 'Could not restart.' }
+          : prev,
+      );
     }
   }
 
@@ -80,7 +117,13 @@ export function SettingsView() {
     );
   }
 
-  const { settings, tuning, storage, engine } = state;
+  const { settings, tuning, storage, engine, lastMessage } = state;
+  // The live session still uses `storage.root` until relaunch; after a successful move the
+  // chosen folder is `downloadRoot` and the two differ until then.
+  const pendingRestart =
+    settings.downloadRoot !== null && !sameFolder(settings.downloadRoot, storage.root);
+  const shownRoot = pendingRestart && settings.downloadRoot ? settings.downloadRoot : storage.root;
+  const storageBusy = moving || freeing || restarting;
   // `tuning.cores` / `tuning.ramMb` are the effective values (override applied). The Automatic
   // chip still needs the measured default beside a pin, so that is derived from the host facts
   // using the same rules the engine uses — and taken from `tuning` itself when nothing is pinned.
@@ -102,12 +145,12 @@ export function SettingsView() {
         </header>
 
         {!tuning.accelerated && (
-          <aside className="settings-banner is-warn" role="status">
+          <aside className="settings-banner" role="status">
             <span className="settings-banner-icon" aria-hidden="true">
-              <Icon name="alert" size={16} />
+              <Icon name="circle" size={16} />
             </span>
             <div>
-              <p className="settings-banner-title">This device will be drastically slower</p>
+              <p className="settings-banner-title">Left to do before a fast start</p>
               <p className="settings-banner-copy">{tuning.accelerationDetail}</p>
             </div>
           </aside>
@@ -238,16 +281,56 @@ export function SettingsView() {
 
         <section className="settings-block">
           <h3 className="settings-label">Storage</h3>
-          <dl className="settings-facts">
-            <div>
-              <dt>In use</dt>
-              <dd>{formatBytes(storage.totalBytes)}</dd>
+
+          <div className="settings-folder" aria-busy={moving}>
+            <div className="settings-folder-head">
+              <p className="settings-field-label">Where Android is downloaded</p>
+              <button
+                type="button"
+                className="setup-secondary"
+                disabled={storageBusy}
+                onClick={() => void chooseFolder()}
+              >
+                {moving ? (
+                  <>
+                    <Icon name="loader" size={14} />
+                    Moving…
+                  </>
+                ) : (
+                  'Change folder'
+                )}
+              </button>
             </div>
-            <div>
-              <dt>Location</dt>
-              <dd className="settings-path">{storage.root}</dd>
+            <p className="settings-path">{shownRoot}</p>
+            <p className="settings-hint">{downloadHint(storage.totalBytes, pendingRestart)}</p>
+          </div>
+
+          {(lastMessage || pendingRestart) && (
+            <div
+              className={
+                lastMessage && !lastMessage.includes('takes effect when open-emulator restarts')
+                  ? 'settings-apply is-warn'
+                  : 'settings-apply'
+              }
+              role="status"
+              aria-live="polite"
+            >
+              <p>
+                {lastMessage ??
+                  'The new location takes effect when open-emulator restarts.'}
+              </p>
+              {pendingRestart && (
+                <button
+                  type="button"
+                  className="setup-primary"
+                  disabled={storageBusy}
+                  onClick={() => void restartApp()}
+                >
+                  {restarting ? 'Restarting…' : 'Restart to apply'}
+                </button>
+              )}
             </div>
-          </dl>
+          )}
 
           {storage.reclaimableBytes > 0 ? (
             <>
@@ -258,7 +341,7 @@ export function SettingsView() {
               <button
                 type="button"
                 className="setup-primary"
-                disabled={freeing}
+                disabled={storageBusy}
                 onClick={() => void freeSpace()}
               >
                 {freeing ? 'Freeing…' : `Free ${formatBytes(storage.reclaimableBytes)}`}
@@ -384,6 +467,22 @@ function gpuLabel(mode: string): string {
   if (mode === 'swiftshader_indirect') return 'Software (SwiftShader)';
   if (mode === 'angle_indirect') return 'ANGLE';
   return mode;
+}
+
+/** Windows paths from the picker and from the live layout can differ by slash and trailing slash. */
+function sameFolder(a: string, b: string): boolean {
+  const norm = (value: string) =>
+    value.trim().replace(/\//g, '\\').replace(/\\+$/, '').toLowerCase();
+  return norm(a) === norm(b);
+}
+
+function downloadHint(totalBytes: number, pending: boolean): string {
+  const lead =
+    'This is several gigabytes — the largest thing the app puts on a disk, and the usual reason to move it is a small system drive.';
+  const move = 'Changing the folder moves what has already been downloaded; nothing is re-downloaded.';
+  if (pending) return `${lead} ${move}`;
+  const size = totalBytes > 0 ? `${formatBytes(totalBytes)} is here right now.` : 'Nothing is here yet.';
+  return `${lead} ${size} ${move}`;
 }
 
 function engineLabel(engine: string): string {
