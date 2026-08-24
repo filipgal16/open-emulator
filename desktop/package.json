@@ -71,7 +71,10 @@
       "shortcutName": "open-emulator",
       "deleteAppDataOnUninstall": false,
       "allowElevation": false
-    }
+    },
+    "asarUnpack": [
+      "**/node_modules/koffi/**"
+    ]
   },
   "dependencies": {
     "koffi": "^3.1.6",
