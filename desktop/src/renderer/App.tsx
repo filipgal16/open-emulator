@@ -8,10 +8,12 @@ import { AccountChip } from './components/Account/AccountChip';
 import { SignInDialog } from './components/Account/SignInDialog';
 import { IconSprite } from './components/Icon';
 import { NavRail, type WorkspaceId } from './components/NavRail';
+import { SettingsView } from './components/Settings/SettingsView';
 import { ToolRail } from './components/ToolRail';
 import type { AccountState } from '../shared/account-types';
 import { INITIAL_DEVICE_STATE, type DeviceState } from '../shared/device-types';
 import type { SetupStepStatus } from '../shared/ipc-types';
+import { applyDocumentTheme } from './theme';
 
 export function App() {
   const [steps, setSteps] = useState<SetupStepStatus[]>([]);
@@ -34,6 +36,8 @@ export function App() {
     // Auto, not just check: the first run repairs whatever it can without being driven.
     window.openEmu.runSetupAuto();
     window.openEmu.accountState().then(setAccount);
+    // Theme has to land on <html> before Settings is ever opened, or a saved choice dies at restart.
+    window.openEmu.settingsState().then((state) => applyDocumentTheme(state.settings.theme));
   }, []);
 
   // The guest is only worth asking about once it has actually painted, and the answer is what the
@@ -97,8 +101,10 @@ export function App() {
               </div>
             ) : tab === 'apps' ? (
               <AppLibrary onOpenStore={() => selectWorkspace('store')} />
-            ) : (
+            ) : tab === 'store' ? (
               <StoreView />
+            ) : (
+              <SettingsView />
             )}
           </main>
 
