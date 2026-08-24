@@ -6,7 +6,7 @@ import { installDistro, isRebootPending, isWslAvailable, listDistros, setDistroV
 import { repoRootWinPath, toWslMountPath } from './win-paths';
 import type { SetupStepStatus } from '../shared/ipc-types';
 
-interface CheckResult {
+export interface CheckResult {
   pass: boolean;
   warn?: boolean;
   detail: string;
@@ -100,7 +100,7 @@ export function localProfileNames(): string[] {
   }
 }
 
-interface Step {
+export interface Step {
   id: string;
   label: string;
   blocking: boolean;
