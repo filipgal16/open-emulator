@@ -7,11 +7,10 @@ import { loadDist, withTempDir } from './helpers.mjs';
 
 const { Installer } = loadDist('store/installer.js');
 
-// toWslMountPath only has a meaning on Windows, which is what the shell targets.
-const onWindows = process.platform === 'win32';
+// Platform-agnostic since path translation moved into the engine: the installer hands over the
+// host path and the runtime converts it if it has to.
 /** Every case here is bounded work; a hang is a bug, so it should fail rather than block. */
 const opts = (extra = {}) => ({ timeout: 10_000, ...extra });
-const windowsOnly = opts(onWindows ? {} : { skip: 'WSL path conversion is Windows-only' });
 
 const APK = Buffer.from('PK pretend this is an apk');
 const APK_SHA = createHash('sha256').update(APK).digest('hex');
@@ -100,7 +99,7 @@ function runJob(installer, jobSpec) {
   return done;
 }
 
-test('a verified download is installed and cached under its own digest', windowsOnly, async () => {
+test('a verified download is installed and cached under its own digest', opts(), async () => {
   await withTempDir(async (dir) => {
     const fetchImpl = fakeFetch(APK);
     const openEmu = fakeOpenEmu();
@@ -112,7 +111,11 @@ test('a verified download is installed and cached under its own digest', windows
     assert.equal(job.resolvedPackage, 'com.example.app');
     assert.equal(fetchImpl.calls.length, 1);
     assert.equal(openEmu.calls.length, 1);
-    assert.ok(openEmu.calls[0].startsWith('/mnt/'), 'the guest is handed a WSL path');
+    assert.equal(
+      openEmu.calls[0],
+      path.join(dir, `${APK_SHA}.apk`),
+      'the engine is handed the host path untranslated — converting it is the runtime’s job',
+    );
     assert.ok(existsSync(path.join(dir, `${APK_SHA}.apk`)), 'cached under its digest');
   });
 });
@@ -157,7 +160,7 @@ test('a non-https download is refused', opts(), async () => {
   });
 });
 
-test('an already-cached digest is not downloaded twice', windowsOnly, async () => {
+test('an already-cached digest is not downloaded twice', opts(), async () => {
   await withTempDir(async (dir) => {
     writeFileSync(path.join(dir, `${APK_SHA}.apk`), APK);
     const fetchImpl = fakeFetch(APK);
@@ -170,7 +173,7 @@ test('an already-cached digest is not downloaded twice', windowsOnly, async () =
   });
 });
 
-test('a local APK is installed from disk and its real package learnt from the guest', windowsOnly, async () => {
+test('a local APK is installed from disk and its real package learnt from the guest', opts(), async () => {
   await withTempDir(async (dir) => {
     const apkPath = path.join(dir, 'MyApp.apk');
     writeFileSync(apkPath, APK);
@@ -192,7 +195,7 @@ test('a local APK is installed from disk and its real package learnt from the gu
   });
 });
 
-test('an ambiguous package diff is left unresolved rather than guessed', windowsOnly, async () => {
+test('an ambiguous package diff is left unresolved rather than guessed', opts(), async () => {
   await withTempDir(async (dir) => {
     const apkPath = path.join(dir, 'MyApp.apk');
     writeFileSync(apkPath, APK);
@@ -224,7 +227,7 @@ test('a missing local file fails cleanly', opts(), async () => {
   });
 });
 
-test('a failing adb install surfaces the guest’s own reason', windowsOnly, async () => {
+test('a failing adb install surfaces the guest’s own reason', opts(), async () => {
   await withTempDir(async (dir) => {
     const openEmu = fakeOpenEmu({
       code: 1,
@@ -277,7 +280,7 @@ test('enqueueing the same app twice returns the job already in flight', opts(), 
   });
 });
 
-test('progress moves through every stage', windowsOnly, async () => {
+test('progress moves through every stage', opts(), async () => {
   await withTempDir(async (dir) => {
     const installer = new Installer(fakeOpenEmu(), fakeLibrary([]), dir, { fetchImpl: fakeFetch(APK) });
 
