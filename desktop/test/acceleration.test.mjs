@@ -9,6 +9,7 @@ const probes = (over = {}) => ({
   aehdRunning: false,
   whpxEnabled: false,
   firmwareVirtualization: true,
+  rebootPending: false,
   ...over,
 });
 
@@ -65,4 +66,31 @@ test('every outcome carries a sentence the setup screen can show', () => {
   ]) {
     assert.ok(decideAcceleration(p).detail.length > 0);
   }
+});
+
+test('a feature enabled but not yet live is NOT reported as available', () => {
+  // The trap this exists for: DISM flips the feature's state the moment it finishes and reports
+  // success, but nothing changes until the machine restarts. Believing the flag would have the app
+  // pass -accel whpx to an emulator that then refuses to start, and blame the emulator.
+  const state = decideAcceleration(probes({ whpxEnabled: true, rebootPending: true }));
+
+  assert.equal(state.available, false);
+  assert.match(state.detail, /restart/i);
+  assert.equal(state.fixable, false, 'a restart is the user’s to perform, not a button');
+});
+
+test('once restarted, the same feature reads as available', () => {
+  const state = decideAcceleration(probes({ whpxEnabled: true, rebootPending: false }));
+
+  assert.equal(state.available, true);
+  assert.equal(state.method, 'whpx');
+});
+
+test('a pending reboot does not mask acceleration that is already working', () => {
+  // A Windows update can leave a reboot pending on a machine whose acceleration is fine. Reporting
+  // that as unavailable would send someone to restart for no reason.
+  const state = decideAcceleration(probes({ aehdRunning: true, rebootPending: true }));
+
+  assert.equal(state.available, true);
+  assert.equal(state.method, 'aehd');
 });
