@@ -1,5 +1,7 @@
 import type { InstallJob, StoreApp } from '../../../shared/store-types';
 import { formatBytes, installBlockedReason } from '../../../shared/store-types';
+import { AppMark } from '../AppMark';
+import { antiFeatureLabel, compatibilityCopy, sourceLabel } from './copy';
 
 interface Props {
   app: StoreApp;
@@ -33,6 +35,11 @@ function buttonLabel(job: InstallJob | null, installed: boolean, blocked: string
   return 'Install';
 }
 
+function downloadFraction(job: InstallJob | null): number {
+  if (!job || job.bytesTotal <= 0) return 0;
+  return Math.min(1, job.bytesDone / job.bytesTotal);
+}
+
 /**
  * One app in the results grid.
  *
@@ -42,11 +49,13 @@ function buttonLabel(job: InstallJob | null, installed: boolean, blocked: string
  */
 export function AppCard({ app, job, guestSdk, installed, onOpen, onInstall }: Props) {
   const blocked = installBlockedReason(app, guestSdk);
+  const compat = compatibilityCopy(app, guestSdk);
   const busy = job !== null && job.state !== 'done' && job.state !== 'failed';
   // A finished job counts as installed even when the guest's package list doesn't name this entry
   // — a local APK is tracked by filename, and the package it became is only known to the job.
   const here = installed || job?.state === 'done';
   const disabled = busy || here || (blocked !== null && job?.state !== 'failed');
+  const fraction = downloadFraction(job);
 
   return (
     <div className="store-card">
@@ -54,9 +63,7 @@ export function AppCard({ app, job, guestSdk, installed, onOpen, onInstall }: Pr
         {app.iconUrl ? (
           <img className="store-card-icon" src={app.iconUrl} alt="" />
         ) : (
-          <span className="store-card-icon store-card-icon-fallback" aria-hidden="true">
-            {app.name.slice(0, 1).toUpperCase()}
-          </span>
+          <AppMark name={app.name} seed={app.packageName} />
         )}
         <span className="store-card-text">
           <span className="store-card-name">{app.name}</span>
@@ -66,28 +73,42 @@ export function AppCard({ app, job, guestSdk, installed, onOpen, onInstall }: Pr
 
       <div className="store-card-foot">
         <span className="store-card-meta">
-          {app.versionName && <span>{app.versionName}</span>}
+          {app.versionName && <span>v{app.versionName}</span>}
           <span>{formatBytes(app.sizeBytes)}</span>
-          <span className="store-card-source">{app.source}</span>
+          {app.license && <span className="store-card-license">{app.license}</span>}
+          <span className="store-card-source">{sourceLabel(app.source)}</span>
         </span>
         <button
           type="button"
           className="store-install"
           disabled={disabled}
-          title={blocked ?? undefined}
+          title={compat.sentence ?? undefined}
           onClick={() => onInstall(app)}
         >
           {buttonLabel(job, here, blocked)}
         </button>
       </div>
 
+      {busy && (
+        <span className="store-card-progress" aria-hidden="true">
+          <span
+            className={`store-card-progress-fill ${job?.state === 'verifying' || job?.state === 'installing' ? 'install-fill-pulsing' : ''}`}
+            style={{
+              width: job?.state === 'verifying' || job?.state === 'installing' ? '100%' : `${fraction * 100}%`,
+            }}
+          />
+        </span>
+      )}
+
       {job?.state === 'failed' && <p className="store-card-error">{job.error}</p>}
-      {!job && blocked && <p className="store-card-note">{blocked}</p>}
+      {!job && compat.sentence && (
+        <p className={`store-card-note store-card-note-${compat.kind}`}>{compat.sentence}</p>
+      )}
       {app.antiFeatures.length > 0 && (
         <p className="store-card-flags">
           {app.antiFeatures.map((flag) => (
             <span key={flag} className="store-flag">
-              {flag}
+              {antiFeatureLabel(flag)}
             </span>
           ))}
         </p>

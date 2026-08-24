@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, type ReactNode } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
 import { useGuestScreen } from '../hooks/useGuestScreen';
 
@@ -7,6 +7,8 @@ interface Props {
   onFirstFrame?: () => void;
   className?: string;
   waitingLabel?: string;
+  /** Replaces the default waiting copy. Must not float — it sits where the frame will. */
+  placeholder?: ReactNode;
 }
 
 /** Below this much movement, a drag was someone tapping with an unsteady hand. */
@@ -31,7 +33,12 @@ function cssRotation(el: HTMLElement): 0 | 90 | 180 | 270 {
  * works in one and not the other would be a bug report waiting to happen, and the Play client is
  * unusable without scrolling.
  */
-export function GuestSurface({ onFirstFrame, className, waitingLabel = 'Waiting for first frame…' }: Props) {
+export function GuestSurface({
+  onFirstFrame,
+  className,
+  waitingLabel = 'Waiting for first frame…',
+  placeholder,
+}: Props) {
   const frameUrl = useGuestScreen();
   const imgRef = useRef<HTMLImageElement | null>(null);
   const downRef = useRef<{ x: number; y: number; at: number } | null>(null);
@@ -113,10 +120,12 @@ export function GuestSurface({ onFirstFrame, className, waitingLabel = 'Waiting 
           onPointerUp={handlePointerUp}
         />
       ) : (
-        <div className="waiting">
-          <span className="waiting-mark" aria-hidden="true" />
-          <span>{waitingLabel}</span>
-        </div>
+        (placeholder ?? (
+          <div className="waiting">
+            <span className="waiting-mark" aria-hidden="true" />
+            <span>{waitingLabel}</span>
+          </div>
+        ))
       )}
     </div>
   );

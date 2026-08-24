@@ -93,10 +93,10 @@ export function App() {
               <SignInDialog state={account} onChange={updateAccount} onClose={() => setShowAccount(false)} />
             ) : tab === 'screen' ? (
               <div className={rotation ? `viewport is-rot-${rotation}` : 'viewport'}>
-                <AndroidScreen onFirstFrame={() => setBooted(true)} />
+                <AndroidScreen device={device} onFirstFrame={() => setBooted(true)} />
               </div>
             ) : tab === 'apps' ? (
-              <AppLibrary />
+              <AppLibrary onOpenStore={() => selectWorkspace('store')} />
             ) : (
               <StoreView />
             )}
