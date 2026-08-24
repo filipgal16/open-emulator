@@ -80,6 +80,17 @@ export interface AndroidEngine {
    */
   displayHandle(): Promise<number | null>;
 
+  /**
+   * One PNG of the guest's screen, or undefined when this engine cannot capture cheaply.
+   *
+   * Optional because the two runtimes differ in kind here. A native engine can call
+   * `adb exec-out screencap` directly and hand back the bytes. The WSL engine has to keep a
+   * long-lived shell loop inside the distro, because paying for a `wsl.exe` round trip per frame
+   * cannot reach even a few frames a second — so it mirrors through `ScreenMirror` instead, and
+   * leaves this undefined.
+   */
+  screencap?(): Promise<Buffer>;
+
   /** Which guest profile later commands should drive, or null to let the runtime pick. */
   setProfile(profile: string | null): void;
 }

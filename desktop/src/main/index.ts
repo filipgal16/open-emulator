@@ -6,6 +6,10 @@ import { createEngine, resolveEngineId } from './engine/factory';
 import { OpenEmuClient } from './open-emu-client';
 import { buildSteps, SetupRunner } from './setup-wizard';
 import { ScreenMirror } from './screen-mirror';
+import { EngineMirror } from './engine/engine-mirror';
+import { buildNativeSteps } from './engine/sdk/setup-steps';
+import { loadProfile } from './engine/env-file';
+import { repoRootWinPath } from './win-paths';
 import { createAccount } from './account';
 import { AppLibrary } from './app-library';
 import { createStore, registerStoreSchemes } from './store';
@@ -32,7 +36,7 @@ const bridge = new WslBridge(target);
 // native engine has booted a guest on a real machine: shipping an untested runtime as the default
 // would trade a slow product for a broken one.
 const engineId = resolveEngineId(process.env.OPEN_EMULATOR_ENGINE);
-const { engine } = createEngine({
+const { engine, layout } = createEngine({
   id: engineId,
   profile: target.profile,
   wsl: { bridge, target },
@@ -40,8 +44,26 @@ const { engine } = createEngine({
 });
 console.log(`[engine] using the ${engineId} runtime`);
 const openEmu = new OpenEmuClient(engine);
-const setupRunner = new SetupRunner(buildSteps(bridge, openEmu, target));
-const mirror = new ScreenMirror(target);
+
+/**
+ * The setup steps and the mirror both follow the engine, and have to.
+ *
+ * A native run driven through the WSL wizard would try to install a Linux distribution it will
+ * never use, and a native guest mirrored through `ScreenMirror` would have `wsl.exe` photograph a
+ * distro that is not running the emulator. Neither fails loudly — the first wastes twenty minutes,
+ * the second shows a blank screen — so the choice is made once, here, alongside the engine.
+ */
+const setupRunner = new SetupRunner(
+  engineId === 'wsl'
+    ? buildSteps(bridge, openEmu, target)
+    : buildNativeSteps({
+        layout,
+        openEmu,
+        profile: () => loadProfile(path.join(repoRootWinPath(), 'android'), target.profile ?? 'fast'),
+      }),
+);
+
+const mirror = engineId === 'wsl' ? new ScreenMirror(target) : new EngineMirror(engine);
 const library = new AppLibrary(openEmu);
 
 // Custom schemes have to be declared before the app is ready, so this runs at module scope.
