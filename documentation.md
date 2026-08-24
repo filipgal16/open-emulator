@@ -635,6 +635,14 @@ Also worth knowing:
 | `OPEN_EMULATOR_WSL_DISTRO` | `OpenEmulator` | Which WSL distro to drive |
 | `OPEN_EMULATOR_ANDROID_PROFILE` | `fast` | Guest profile the shell starts |
 | `OPEN_EMULATOR_REMOTE_PATH` | — | Path to the backend checkout inside the distro |
+| `OPEN_EMULATOR_ENGINE` | `wsl` | Which runtime drives the guest — `wsl` or `sdk` (native Windows, in progress) |
+
+> **The native Windows runtime is not the default yet.** `OPEN_EMULATOR_ENGINE=sdk` runs
+> `emulator.exe` and `adb.exe` as ordinary Windows processes with no WSL involved, downloading the
+> SDK to `%LOCALAPPDATA%\open-emulator` instead of into a distro. It has been verified as far as
+> starting the emulator and having adb see the guest; it has **not** yet booted Android to a usable
+> state, because that needs the Windows Hypervisor Platform enabled. Until it has, `wsl` remains the
+> default — shipping an untested runtime as the default would trade a slow product for a broken one.
 
 ### Android runtime
 
@@ -683,7 +691,7 @@ desktop/                    Electron app
     App.tsx, components/{Store,Account,SetupWizard,…}
   src/preload/                context bridge
   src/shared/                 types crossing IPC
-  test/                       node --test suites (124)
+  test/                       node --test suites (251)
   scripts/                    build-renderer, copy-static, make-icon
 
 android/                    Android runtime
@@ -716,7 +724,7 @@ Makefile                    open-vmm, android-*, desktop-* targets
 cd desktop && npm test
 ```
 
-124 tests, `node --test` over the compiled output in `dist/`. The suite runs in well under a second
+251 tests, `node --test` over the compiled output in `dist/`. The suite runs in about a second
 because nothing in it needs Electron, WSL, or a guest: everything under `store/` and `account/` is
 plain Node except the `index.ts` files that own the IPC surface, and those are the only files
 importing `electron`.
