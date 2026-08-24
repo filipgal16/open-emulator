@@ -1,4 +1,5 @@
-import { app, BrowserWindow, ipcMain, Menu } from 'electron';
+import { app, BrowserWindow, ipcMain, Menu, nativeTheme } from 'electron';
+import os from 'os';
 import path from 'path';
 import { DevicePrefsStore, parseStatus } from './device-status';
 import { LogHandler, WslBridge, WslTarget } from './wsl-bridge';
@@ -10,6 +11,12 @@ import { EngineMirror } from './engine/engine-mirror';
 import { buildNativeSteps } from './engine/sdk/setup-steps';
 import { loadProfile } from './engine/env-file';
 import { repoRootWinPath } from './win-paths';
+import { SettingsStore, storageUsage } from './settings';
+import { DEFAULT_SETTINGS } from '../shared/settings-types';
+import type { SettingsState, ThemeChoice } from '../shared/settings-types';
+import { cleanup } from './engine/sdk/dependencies';
+import { tuneForHost } from './engine/sdk/host';
+import { detectAcceleration } from './engine/acceleration';
 import { createAccount } from './account';
 import { AppLibrary } from './app-library';
 import { createStore, registerStoreSchemes } from './store';
@@ -39,6 +46,9 @@ const engineId = resolveEngineId(process.env.OPEN_EMULATOR_ENGINE);
 const { engine, layout } = createEngine({
   id: engineId,
   profile: target.profile,
+  // Read live rather than captured: settings load after this, and a change should apply to the
+  // next boot without restarting the app.
+  device: () => settings?.get().device ?? 'generic',
   wsl: { bridge, target },
   onLog: (line) => console.log(line),
 });
@@ -313,8 +323,70 @@ ipcMain.handle('device:set-profile', async (_event, id: unknown): Promise<Device
   return refreshDeviceState();
 });
 
+/**
+ * Settings.
+ *
+ * The store lives under `userData` — the user's own preferences — while everything the runtime
+ * downloads lives under `%LOCALAPPDATA%\open-emulator`. Keeping them apart is what lets "free up
+ * space" delete gigabytes without touching the account or a single preference.
+ */
+let settings: SettingsStore | null = null;
+
+async function settingsState(): Promise<SettingsState> {
+  const current = settings?.get() ?? DEFAULT_SETTINGS;
+  const acceleration = await detectAcceleration();
+
+  const hostCpus = os.cpus().length;
+  const hostRamMb = Math.round(os.totalmem() / (1024 * 1024));
+  const tuning = tuneForHost(
+    { cpus: hostCpus, totalRamMb: hostRamMb, accelerated: acceleration.available, hasWindow: true },
+    { cores: current.cores ?? undefined, ramMb: current.ramMb ?? undefined },
+  );
+
+  return {
+    settings: current,
+    engine: engineId,
+    tuning: {
+      ...tuning,
+      accelerated: acceleration.available,
+      accelerationDetail: acceleration.detail,
+      hostCpus,
+      hostRamMb,
+    },
+    storage: storageUsage(layout.root, [
+      path.join(layout.root, 'downloads'),
+      path.join(layout.sdkRoot, '.temp'),
+      path.join(layout.sdkRoot, '.downloadIntermediates'),
+    ]),
+  };
+}
+
+/** `system` follows the OS; the other two are an explicit override the renderer stamps on <html>. */
+function applyTheme(choice: ThemeChoice): void {
+  nativeTheme.themeSource = choice;
+}
+
 app.whenReady().then(() => {
   devicePrefs = new DevicePrefsStore(path.join(app.getPath('userData'), 'device.json'));
+  settings = new SettingsStore(path.join(app.getPath('userData'), 'settings.json'));
+  applyTheme(settings.get().theme);
+
+  ipcMain.handle('settings:state', (): Promise<SettingsState> => settingsState());
+
+  ipcMain.handle('settings:set', async (_event, patch: unknown): Promise<SettingsState> => {
+    const next = settings?.set(patch) ?? DEFAULT_SETTINGS;
+    applyTheme(next.theme);
+    // The device identity is baked in at boot, so a change only takes effect on the next start —
+    // the engine is told now so it is not left describing the previous choice.
+    return settingsState();
+  });
+
+  ipcMain.handle('settings:free-space', async (): Promise<SettingsState> => {
+    const freed = cleanup(layout);
+    console.log(`[settings] freed ${freed.bytesFreed} bytes across ${freed.removed.length} paths`);
+    return settingsState();
+  });
+
   // An explicit environment override still wins — it is how a developer pins a guest for a run.
   if (!process.env.OPEN_EMULATOR_ANDROID_PROFILE) openEmu.setProfile(devicePrefs.get());
 

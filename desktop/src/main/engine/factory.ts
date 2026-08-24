@@ -37,6 +37,8 @@ export interface EngineContext {
 export interface CreateEngineOptions {
   id: EngineId;
   profile: string | null;
+  /** Which device identity the guest should report as. Read live. */
+  device?: () => string;
   /** Shared mutable target, only needed by the WSL engine. */
   wsl?: { bridge: WslBridge; target: { profile: string | null } };
   onLog?: (message: string) => void;
@@ -73,6 +75,7 @@ export function createEngine(options: CreateEngineOptions): EngineContext {
         layout,
         androidRoot: path.join(repoRootWinPath(), 'android'),
         profile: options.profile,
+        device: options.device,
         accelerated: () => accelerated,
         windowed: true,
         onLog: options.onLog,

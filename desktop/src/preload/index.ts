@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
 import type { FillField } from '../shared/account-types';
 import type { DeviceState, ProfileId } from '../shared/device-types';
+import type { Settings } from '../shared/settings-types';
 import type { InstallJob, SourceId, StoreState } from '../shared/store-types';
 import type { LogEvent, OpenEmuApi, SetupStepStatus } from '../shared/ipc-types';
 
@@ -83,6 +84,10 @@ const api: OpenEmuApi = {
   accountSignOut: () => ipcRenderer.invoke('account:sign-out'),
   accountBeginSignIn: () => ipcRenderer.invoke('account:begin-signin'),
   accountFill: (field: FillField) => ipcRenderer.invoke('account:fill', field),
+
+  settingsState: () => ipcRenderer.invoke('settings:state'),
+  settingsSet: (patch: Partial<Settings>) => ipcRenderer.invoke('settings:set', patch),
+  settingsFreeSpace: () => ipcRenderer.invoke('settings:free-space'),
 };
 
 contextBridge.exposeInMainWorld('openEmu', api);
