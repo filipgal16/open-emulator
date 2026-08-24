@@ -15,7 +15,8 @@ import { WslEngine } from './wsl-engine';
  * may reasonably want to delete, while userData holds their account and preferences. Keeping them
  * apart means "free up space" cannot take the account with it.
  */
-export function nativeRoot(): string {
+export function nativeRoot(override?: string | null): string {
+  if (override && override.trim().length > 0) return override;
   const base = process.env.LOCALAPPDATA ?? path.join(process.env.USERPROFILE ?? 'C:\\', 'AppData', 'Local');
   return path.join(base, 'open-emulator');
 }
@@ -36,6 +37,8 @@ export interface EngineContext {
 
 export interface CreateEngineOptions {
   id: EngineId;
+  /** Where downloads live. Null uses the default under %LOCALAPPDATA%. */
+  downloadRoot?: string | null;
   profile: string | null;
   /** Which device identity the guest should report as. Read live. */
   device?: () => string;
@@ -51,7 +54,7 @@ export interface CreateEngineOptions {
  * which one it got, which is what makes this switch a one-line change rather than a migration.
  */
 export function createEngine(options: CreateEngineOptions): EngineContext {
-  const layout = createSdkLayout(nativeRoot());
+  const layout = createSdkLayout(nativeRoot(options.downloadRoot));
 
   let cached: Promise<AccelerationState> | null = null;
   const acceleration = () => {

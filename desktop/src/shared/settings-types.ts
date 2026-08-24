@@ -54,6 +54,14 @@ export function isDeviceId(value: unknown): value is DeviceId {
  */
 export interface Settings {
   theme: ThemeChoice;
+  /**
+   * Where the Android SDK and system images are downloaded.
+   *
+   * Null means the default under %LOCALAPPDATA%. This is the largest thing the product puts on a
+   * disk — several gigabytes — so pinning it to the system drive is exactly the assumption someone
+   * with a small SSD and a large second drive needs to override.
+   */
+  downloadRoot: string | null;
   device: DeviceId;
   /** Null means "choose from this machine". */
   cores: number | null;
@@ -62,6 +70,7 @@ export interface Settings {
 
 export const DEFAULT_SETTINGS: Settings = {
   theme: 'system',
+  downloadRoot: null,
   device: 'generic',
   cores: null,
   ramMb: null,
@@ -79,6 +88,13 @@ export interface TuningPreview {
   hostRamMb: number;
 }
 
+export interface MoveResult {
+  ok: boolean;
+  /** What happened, in a sentence the UI can show directly. */
+  message: string;
+  movedBytes: number;
+}
+
 export interface StorageUsage {
   /** Where the runtime keeps the SDK, images, and per-guest state. */
   root: string;
@@ -91,6 +107,8 @@ export interface SettingsState {
   settings: Settings;
   tuning: TuningPreview;
   storage: StorageUsage;
-  /** `wsl` or `sdk` — which runtime is driving, so the UI can be honest about it. */
+  /**  or  — which runtime is driving, so the UI can be honest about it. */
   engine: string;
+  /** Result of the last action that had something to say, e.g. moving the download folder. */
+  lastMessage?: string;
 }

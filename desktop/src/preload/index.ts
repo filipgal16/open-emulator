@@ -88,6 +88,8 @@ const api: OpenEmuApi = {
   settingsState: () => ipcRenderer.invoke('settings:state'),
   settingsSet: (patch: Partial<Settings>) => ipcRenderer.invoke('settings:set', patch),
   settingsFreeSpace: () => ipcRenderer.invoke('settings:free-space'),
+  settingsChooseDownloadFolder: () => ipcRenderer.invoke('settings:choose-download-folder'),
+  settingsRestartApp: () => ipcRenderer.invoke('settings:restart-app'),
 };
 
 contextBridge.exposeInMainWorld('openEmu', api);

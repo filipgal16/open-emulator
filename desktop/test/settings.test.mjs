@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
 import { loadDist, withTempDir } from './helpers.mjs';
 
-const { SettingsStore, storageUsage } = loadDist('settings.js');
+const { SettingsStore, storageUsage, moveDownloadRoot } = loadDist('settings.js');
 const { DEFAULT_SETTINGS } = loadDist('../shared/settings-types.js');
 
 const file = (dir) => path.join(dir, 'settings.json');
@@ -107,5 +107,83 @@ test('a missing root reports zero rather than throwing', async () => {
     const usage = storageUsage(path.join(dir, 'nope'), [path.join(dir, 'also-nope')]);
     assert.equal(usage.totalBytes, 0);
     assert.equal(usage.reclaimableBytes, 0);
+  });
+});
+
+// ── Download location ──────────────────────────────────────────────────────────────────────────
+
+test('a download folder must be absolute, or it means "use the default"', async () => {
+  await withTempDir(async (dir) => {
+    const store = new SettingsStore(file(dir));
+
+    const absolute = process.platform === 'win32' ? 'D:\\Games\\Android' : '/mnt/games/android';
+    assert.equal(store.set({ downloadRoot: absolute }).downloadRoot, absolute);
+
+    // A relative path resolves against whatever working directory the app inherited, which is how
+    // a packaged build once created a folder beside itself and downloaded gigabytes into it.
+    assert.equal(store.set({ downloadRoot: 'somewhere' }).downloadRoot, null);
+    // `D:Android` looks absolute and is not — it is drive-relative, resolving against the current
+    // directory *on that drive*. Exactly the shape that would land gigabytes somewhere surprising.
+    assert.equal(store.set({ downloadRoot: 'D:Android' }).downloadRoot, null);
+    assert.equal(store.set({ downloadRoot: '   ' }).downloadRoot, null);
+    assert.equal(store.set({ downloadRoot: null }).downloadRoot, null);
+  });
+});
+
+test('moving to the same folder is a no-op, not a destructive round trip', async () => {
+  await withTempDir(async (dir) => {
+    const from = path.join(dir, 'root');
+    mkdirSync(from, { recursive: true });
+    writeFileSync(path.join(from, 'keep.bin'), Buffer.alloc(64));
+
+    const result = moveDownloadRoot(from, from);
+
+    assert.equal(result.ok, true);
+    assert.ok(existsSync(path.join(from, 'keep.bin')), 'the files must survive');
+  });
+});
+
+test('moving an existing download relocates it rather than orphaning it', async () => {
+  await withTempDir(async (dir) => {
+    const from = path.join(dir, 'old');
+    const to = path.join(dir, 'new');
+    mkdirSync(path.join(from, 'sdk'), { recursive: true });
+    writeFileSync(path.join(from, 'sdk', 'system.img'), Buffer.alloc(4096));
+
+    const result = moveDownloadRoot(from, to);
+
+    // Leaving the old copy behind would silently re-download several gigabytes and strand the
+    // original — the worst of both outcomes.
+    assert.equal(result.ok, true, result.message);
+    assert.ok(existsSync(path.join(to, 'sdk', 'system.img')));
+    assert.ok(!existsSync(from), 'the old location must not be left behind');
+    assert.ok(result.movedBytes >= 4096);
+  });
+});
+
+test('moving into a folder that already has files is refused', async () => {
+  await withTempDir(async (dir) => {
+    const from = path.join(dir, 'old');
+    const to = path.join(dir, 'occupied');
+    mkdirSync(from, { recursive: true });
+    mkdirSync(to, { recursive: true });
+    writeFileSync(path.join(from, 'a.bin'), Buffer.alloc(16));
+    writeFileSync(path.join(to, 'someone-elses-file.txt'), 'important');
+
+    const result = moveDownloadRoot(from, to);
+
+    assert.equal(result.ok, false, 'half-merging into someone else’s directory is worse than refusing');
+    assert.match(result.message, /already contains files/);
+    assert.equal(readFileSync(path.join(to, 'someone-elses-file.txt'), 'utf8'), 'important');
+    assert.ok(existsSync(path.join(from, 'a.bin')), 'and the source is untouched');
+  });
+});
+
+test('moving before anything is downloaded succeeds quietly', async () => {
+  await withTempDir(async (dir) => {
+    const result = moveDownloadRoot(path.join(dir, 'never-existed'), path.join(dir, 'new'));
+
+    assert.equal(result.ok, true);
+    assert.equal(result.movedBytes, 0);
   });
 });

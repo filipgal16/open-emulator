@@ -123,14 +123,39 @@ export function buildNativeSteps(context: NativeSetupContext): Step[] {
     {
       id: 'provisioned',
       label: 'Preparing your device',
-      blocking: true,
+      // Not blocking, and that is the point of the whole reordering. Everything above this can
+      // finish without a restart, so setup completes and the several-gigabyte download is banked.
+      // The one thing that genuinely needs a hypervisor is starting Android, and deferring it here
+      // means a restart is something the user does when convenient rather than a gate they hit
+      // before anything useful has happened.
+      blocking: false,
       working: 'Starting Android for the first time and saving a snapshot, so later launches are quick.',
       check: async (): Promise<CheckResult> => {
         const result = await openEmu.status(() => undefined);
-        const ok = result.stdout.some((line) => line.startsWith('provisioned_at='));
-        return { pass: ok, detail: ok ? 'Ready' : 'Not prepared yet' };
+        if (result.stdout.some((line) => line.startsWith('provisioned_at='))) {
+          return { pass: true, detail: 'Ready' };
+        }
+
+        // Preparing means booting, and on Windows the emulator will not boot without a hypervisor
+        // — it starts and then sits there. Attempting it anyway would hang setup for an hour and
+        // then fail, so say what is needed instead.
+        const acceleration = await detectAcceleration();
+        if (!acceleration.available) {
+          return {
+            pass: false,
+            warn: true,
+            detail: `Everything is downloaded. ${acceleration.detail}`,
+          };
+        }
+
+        return { pass: false, detail: 'Not prepared yet' };
       },
       fix: async (onLog: LogHandler) => {
+        const acceleration = await detectAcceleration();
+        // Skip rather than fail: the download succeeded, and reporting a red step for something
+        // that is waiting on a restart misrepresents what happened.
+        if (!acceleration.available) return;
+
         const result = await openEmu.provision(onLog);
         if (result.code !== 0) {
           throw new Error(result.stderr.join(' ') || 'the device could not be prepared');
