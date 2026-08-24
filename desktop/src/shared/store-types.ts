@@ -41,8 +41,7 @@ export const DEFAULT_GUEST_SDK = 30;
  * One app as shown in the grid.
  *
  * `iconUrl` is an `oe-app://` URL, never a remote one: the renderer's CSP forbids remote origins,
- * and the main process is the only thing that ever talks to a repository. Same reasoning as the
- * ad system's `oe-ad://` creatives.
+ * and the main process is the only thing that ever talks to a repository.
  */
 export interface StoreApp {
   /** Stable across refreshes: `${source}:${packageName}`. */

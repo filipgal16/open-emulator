@@ -1,6 +1,4 @@
 import { useEffect, useRef, useState } from 'react';
-import { AdSlot } from '../AdSlot';
-import { ADS_ENABLED } from '../../../shared/ads-types';
 import type { LogEvent, SetupStepStatus } from '../../../shared/ipc-types';
 
 const ICONS: Record<SetupStepStatus['status'], string> = {
@@ -161,10 +159,6 @@ export function SetupWizard({ steps, onContinue }: Props) {
             </pre>
           </div>
         )}
-
-        {/* The SDK fetch and first boot run for minutes behind this screen — that dwell is the
-            least intrusive inventory in the product, because nothing else wants the attention. */}
-        {ADS_ENABLED && <AdSlot slot="wizard-footer" />}
       </div>
     </div>
   );

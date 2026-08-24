@@ -61,7 +61,7 @@ export function SignInDialog({ state, onChange, onClose }: Props) {
         <label className="account-field">
           <span>Google address</span>
           <input
-            className="license-input"
+            className="field-input"
             type="email"
             autoComplete="off"
             placeholder="you@gmail.com"
@@ -75,7 +75,7 @@ export function SignInDialog({ state, onChange, onClose }: Props) {
           <label className="account-field">
             <span>Password (optional)</span>
             <input
-              className="license-input"
+              className="field-input"
               type="password"
               autoComplete="off"
               placeholder={state.profile.hasStoredPassword ? '•••••••• saved in the OS keychain' : 'Not saved'}

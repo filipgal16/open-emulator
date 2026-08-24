@@ -1,6 +1,5 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
 import type { FillField } from '../shared/account-types';
-import type { SlotBounds, SlotId } from '../shared/ads-types';
 import type { DeviceState, ProfileId } from '../shared/device-types';
 import type { InstallJob, SourceId, StoreState } from '../shared/store-types';
 import type { LogEvent, OpenEmuApi, SetupStepStatus } from '../shared/ipc-types';
@@ -38,20 +37,6 @@ const api: OpenEmuApi = {
     ipcRenderer.send('input:swipe', x1, y1, x2, y2, durationMs),
   key: (keycode: string) => ipcRenderer.send('input:key', keycode),
   typeText: (value: string) => ipcRenderer.invoke('input:text', value),
-  adsState: () => ipcRenderer.invoke('ads:state'),
-  adsRequest: (slot) => ipcRenderer.invoke('ads:request', slot),
-  adsSetOptedOut: (optedOut: boolean) => ipcRenderer.invoke('ads:set-opted-out', optedOut),
-  adsImpression: (token: string) => ipcRenderer.send('ads:impression', token),
-  adsClick: (token: string) => ipcRenderer.send('ads:click', token),
-  adsSetConsent: (granted: boolean) => ipcRenderer.invoke('ads:set-consent', granted),
-  adsActivateLicense: (key: string) => ipcRenderer.invoke('ads:activate-license', key),
-  adsTagPlan: (slot: SlotId) => ipcRenderer.invoke('ads:tag-plan', slot),
-  adsMountTag: (slot: SlotId, bounds: SlotBounds) => ipcRenderer.send('ads:mount-tag', slot, bounds),
-  adsUpdateTagBounds: (slot: SlotId, bounds: SlotBounds) => ipcRenderer.send('ads:update-tag-bounds', slot, bounds),
-  adsUnmountTag: (slot: SlotId) => ipcRenderer.send('ads:unmount-tag', slot),
-  onAdsTagResult: (callback) => {
-    ipcRenderer.on('ads:tag-result', (_event, slot: SlotId, filled: boolean) => callback(slot, filled));
-  },
   listApps: () => ipcRenderer.invoke('apps:list'),
   launchApp: (packageName: string) => ipcRenderer.invoke('apps:launch', packageName),
 

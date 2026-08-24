@@ -13,8 +13,6 @@ export interface AccountRuntimeOptions {
   userData: string;
   /** Which AVD is answering, so status isn't attributed to the wrong guest profile. */
   avdName: () => string | null;
-  /** Surfaced through the account so entitlement and identity are one thing to the user. */
-  adsRemoved: () => boolean;
   onLog?: (message: string) => void;
 }
 
@@ -28,7 +26,7 @@ export interface AccountRuntime {
  * The device-wide account.
  *
  * The only file under `account/` that imports electron — the stores and the driver stay plain Node
- * so they can be exercised without an Electron runtime, exactly as `ads/` is arranged.
+ * so they can be exercised without an Electron runtime, exactly as `store/` is arranged.
  */
 export function createAccount(openEmu: OpenEmuClient, options: AccountRuntimeOptions): AccountRuntime {
   const log = (message: string) => options.onLog?.(`[account] ${message}`);
@@ -42,7 +40,6 @@ export function createAccount(openEmu: OpenEmuClient, options: AccountRuntimeOpt
     profile: profile.get(),
     guest: monitor.current(),
     vaultAvailable: vault.available(),
-    adsRemoved: options.adsRemoved(),
   });
 
   const refresh = async (force = false): Promise<AccountState> => {

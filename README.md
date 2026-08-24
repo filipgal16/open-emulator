@@ -136,7 +136,7 @@ Full command reference: [`documentation.md`](documentation.md#the-open-emu-cli).
 cd desktop
 npm install
 npm run build        # compile main, typecheck renderer, bundle
-npm test             # 227 tests
+npm test             # 124 tests
 npm run dev          # build and launch
 npm run dist:win     # -> desktop/release/open-emulator-Setup-0.0.1.exe
 ```
@@ -194,7 +194,6 @@ command, the store and account internals, packaging, configuration, and troubles
 | [`LICENSING.md`](LICENSING.md) | What every dependency means if you sell this |
 | [`desktop/STORE.md`](desktop/STORE.md) | How the store and account work |
 | [`desktop/PACKAGING.md`](desktop/PACKAGING.md) | Building and shipping the installer |
-| [`desktop/ADS.md`](desktop/ADS.md) | The optional ad-supported mode, off by default |
 | [`android/MODIFICATIONS.md`](android/MODIFICATIONS.md) | What the guest is tuned for |
 
 ## Status

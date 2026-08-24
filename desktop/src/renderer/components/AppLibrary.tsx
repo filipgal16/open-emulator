@@ -1,19 +1,7 @@
 import { useEffect, useState } from 'react';
-import { AdSlot } from './AdSlot';
-import { ADS_ENABLED } from '../../shared/ads-types';
 import type { InstalledApp } from '../../shared/ipc-types';
 
-/** Where the sponsored tile sits in the grid. Third position: visible, but not the first thing. */
-const SPONSORED_INDEX = 2;
-
-/**
- * The apps installed in the guest, with one clearly-labelled sponsored tile mixed into the grid.
- *
- * A sponsored tile is worth more than a banner because it's in context — someone browsing for
- * something to run is the audience an install campaign is paying for. That only holds while the
- * label is honest: the tile is visibly an ad, it never imitates an installed app, and clicking it
- * opens a store page in the browser rather than installing anything.
- */
+/** The apps installed in the guest. Click one to launch it. */
 export function AppLibrary() {
   const [apps, setApps] = useState<InstalledApp[] | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -62,13 +50,6 @@ export function AppLibrary() {
       <span className="app-package">{app.packageName}</span>
     </button>
   ));
-
-  // Splice rather than append: a sponsored tile pinned to the end of a long list is never seen,
-  // and one pinned to the front reads as a hijack of the user's own library.
-  if (ADS_ENABLED) {
-    const sponsored = <AdSlot key="sponsored" slot="library-tile" />;
-    tiles.splice(Math.min(SPONSORED_INDEX, tiles.length), 0, sponsored);
-  }
 
   return (
     <div className="library">

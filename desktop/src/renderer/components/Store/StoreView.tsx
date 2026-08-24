@@ -1,10 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { DragEvent } from 'react';
-import { ADS_ENABLED } from '../../../shared/ads-types';
 import type { InstallJob, SourceId, StoreApp, StoreState } from '../../../shared/store-types';
 import { INITIAL_STORE_STATE } from '../../../shared/store-types';
 import { onIndexUpdated, onInstalled, onJob } from '../../hooks/storeEvents';
-import { AdSlot } from '../AdSlot';
 import { AppCard } from './AppCard';
 import { AppDetail } from './AppDetail';
 import { InstallQueue } from './InstallQueue';
@@ -21,8 +19,6 @@ const FILTERS: Array<{ id: Filter; label: string }> = [
 
 /** Long enough that typing doesn't re-rank on every keystroke, short enough to feel immediate. */
 const SEARCH_DEBOUNCE_MS = 180;
-/** Where the sponsored card sits. Far enough in to be past the results someone actually asked for. */
-const SPONSORED_INDEX = 4;
 
 export function StoreView() {
   const [state, setState] = useState<StoreState>(INITIAL_STORE_STATE);
@@ -125,9 +121,6 @@ export function StoreView() {
       onInstall={(target) => install(target)}
     />
   ));
-  if (ADS_ENABLED && tiles.length > SPONSORED_INDEX) {
-    tiles.splice(SPONSORED_INDEX, 0, <AdSlot key="sponsored" slot="store-tile" />);
-  }
 
   return (
     <div

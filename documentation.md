@@ -29,7 +29,6 @@ The complete reference. [`README.md`](README.md) is the short version; this is e
 - [open-vmm](#open-vmm)
 - [Building from source](#building-from-source)
 - [Packaging and shipping](#packaging-and-shipping)
-- [Ads](#ads)
 - [Licensing and monetization](#licensing-and-monetization)
 - [Configuration reference](#configuration-reference)
 - [Repository layout](#repository-layout)
@@ -226,8 +225,7 @@ AVD name — come from `src/main/store/guest-facts.ts`.
 ### Account
 
 One profile spanning every AVD and device profile the shell manages, rather than living inside one
-guest. It sits in the tab bar next to *Remove ads*, which it also surfaces, so "the account" means
-one thing across the whole shell.
+guest. It sits in the tab bar, so "the account" means one thing across the whole shell.
 
 Sign-in is a ladder, each rung falling through to the next:
 
@@ -263,10 +261,9 @@ Storing a Google password locally is a real risk, so:
 These are load-bearing invariants, not style choices:
 
 - **The renderer issues no network requests.** CSP is `default-src 'self'` with
-  `connect-src 'none'`. No repository, ad host, or store page can fingerprint or track it.
+  `connect-src 'none'`. No repository or store page can fingerprint or track it.
 - **Every byte the renderer displays is fetched by main.** Icons and screenshots arrive over the
-  private `oe-app://` scheme, served from an on-disk cache after the bytes have been sniffed; ad
-  creatives use `oe-ad://` the same way.
+  private `oe-app://` scheme, served from an on-disk cache after the bytes have been sniffed.
 - **No "open this URL" primitive is reachable from the renderer.** An app's website and source links
   render as selectable text rather than clickable links; a store page is not a good enough reason to
   add one.
@@ -501,14 +498,6 @@ npm run dist:win         # full installer  -> release/open-emulator-Setup-<versi
 npm run dist:dir         # unpacked only   -> release/win-unpacked/   (faster)
 ```
 
-Ad tooling:
-
-```bash
-npm run ads:check        # validate ads config
-npm run ads:build        # build the campaign manifest
-npm run ads:keygen       # generate a licence keypair
-```
-
 ---
 
 ## Packaging and shipping
@@ -593,40 +582,6 @@ electron-builder finds the populated directory and skips the download.
 
 ---
 
-## Ads
-
-**Off unless explicitly configured.** A source checkout, a fork, or a distro package ships no ads
-and renders no ad markup at all. Only the Electron shell is involved; nothing here touches
-`open-vmm` or the guest. Full detail in [`desktop/ADS.md`](desktop/ADS.md).
-
-```bash
-cp desktop/ads.config.example.json desktop/ads.config.json   # gitignored
-# set "enabled": true, then fill in the sections you have accounts for
-
-OPEN_EMULATOR_ADS=1 npm run dev    # force on, house inventory only
-OPEN_EMULATOR_ADS=0 npm run dev    # force off, overrides the config file
-```
-
-| You provide | In `ads.config.json` | Turns on |
-|---|---|---|
-| nothing | — | House ads (project promotion) |
-| Affiliate program ids | `affiliates` + `manifestUrl` | Paid affiliate and CPI campaigns |
-| An ad network's tag | `network.provider` + `network.tagHtml` | Third-party fill, plus a consent prompt |
-| A licence keypair | `entitlement.publicKey` | Paid remove-ads |
-
-Providers are consulted in registration order and the first fill wins, so the array in
-`src/main/ads/index.ts` *is* the monetization priority. A provider returning null is normal; one
-that throws is skipped, so a partner outage cannot blank a slot the house ad would have filled.
-
-The invariants in [Security model](#security-model) apply here in full — no remote origin loads in
-the app window, and the renderer never sees a destination URL.
-
-> Three files carry secrets and are gitignored: `desktop/ads.config.json` (affiliate/publisher ids),
-> `desktop/ads/campaigns.json`, and `desktop/ads-license-private.pem` — anyone holding the last one
-> can mint remove-ads licences.
-
----
-
 ## Licensing and monetization
 
 Full audit in [`LICENSING.md`](LICENSING.md). **Engineering research, not legal advice.**
@@ -680,7 +635,6 @@ Also worth knowing:
 | `OPEN_EMULATOR_WSL_DISTRO` | `OpenEmulator` | Which WSL distro to drive |
 | `OPEN_EMULATOR_ANDROID_PROFILE` | `fast` | Guest profile the shell starts |
 | `OPEN_EMULATOR_REMOTE_PATH` | — | Path to the backend checkout inside the distro |
-| `OPEN_EMULATOR_ADS` | unset | `1` forces ads on, `0` forces off, overriding the config file |
 
 ### Android runtime
 
@@ -725,13 +679,12 @@ desktop/                    Electron app
     win-paths.ts                repoRootWinPath() — asar-aware
     store/                      catalog, fdroid-index, installer, play, guest-facts, sources/
     account/                    profile, vault, guest-account, signin-driver
-    ads/                        providers, manifest, consent, frequency, entitlement
   src/renderer/               UI (React)
     App.tsx, components/{Store,Account,SetupWizard,…}
   src/preload/                context bridge
   src/shared/                 types crossing IPC
-  test/                       node --test suites (227)
-  scripts/                    build-renderer, copy-static, make-icon, ads tooling
+  test/                       node --test suites (124)
+  scripts/                    build-renderer, copy-static, make-icon
 
 android/                    Android runtime
   bin/open-emu                control plane CLI (Google SDK)
@@ -753,8 +706,7 @@ Makefile                    open-vmm, android-*, desktop-* targets
 
 **Gitignored and never committed:** `android/sdk`, `android/avd`, `android/state`, `android/logs`,
 `android/images`, `*.iso`, `*.img`, `*.qcow2`, `android/apps/*.apk`, `build/`,
-`desktop/node_modules`, `desktop/dist`, `desktop/release`, `desktop/build`,
-`desktop/ads.config.json`, `desktop/ads/campaigns.json`, `desktop/ads-license-private.pem`.
+`desktop/node_modules`, `desktop/dist`, `desktop/release`, `desktop/build`.
 
 ---
 
@@ -764,10 +716,10 @@ Makefile                    open-vmm, android-*, desktop-* targets
 cd desktop && npm test
 ```
 
-227 tests, `node --test` over the compiled output in `dist/`. The suite runs in about 1.5 seconds
-because nothing in it needs Electron, WSL, or a guest: everything under `store/`, `account/`, and
-`ads/` is plain Node except the `index.ts` files that own the IPC surface, and those are the only
-files importing `electron`.
+124 tests, `node --test` over the compiled output in `dist/`. The suite runs in well under a second
+because nothing in it needs Electron, WSL, or a guest: everything under `store/` and `account/` is
+plain Node except the `index.ts` files that own the IPC surface, and those are the only files
+importing `electron`.
 
 `open-vmm` has its own path:
 

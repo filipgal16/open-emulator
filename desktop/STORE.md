@@ -80,8 +80,7 @@ guest, which knows the answer exactly and for free.
 ## The device-wide account
 
 One profile that spans every AVD and device profile the shell manages, rather than living inside
-one guest. It is in the tab bar, next to *Remove ads* — which it also surfaces, so "the account"
-means one thing across the whole shell.
+one guest. It is in the tab bar, so "the account" means one thing across the whole shell.
 
 Sign-in is a ladder, each rung falling through to the next:
 
@@ -118,7 +117,7 @@ Storing a Google password locally is a real risk, so:
 ```
 src/shared/store-types.ts        StoreApp, AppDetail, InstallJob, StoreState
 src/shared/account-types.ts      AccountProfile, GuestAccountState, AccountState
-src/main/image-cache.ts          shared with ads/ — https-only, byte-sniffed, hex ids
+src/main/image-cache.ts          https-only, byte-sniffed, hex ids
 src/main/guest-input.ts          tap/swipe/key/text command builders + escaping
 src/main/shell-quote.ts          POSIX quoting for the two shells between here and the guest
 src/main/store/
@@ -138,15 +137,15 @@ src/renderer/components/GuestSurface.tsx   mirror + input, shared by Screen and 
 ```
 
 Everything under `store/` and `account/` except the two `index.ts` files is plain Node with no
-electron import — the same arrangement as `ads/`, and what lets the logic be tested against the
-compiled output with `node --test`.
+electron import, which is what lets the logic be tested against the compiled output with
+`node --test`.
 
 ## Renderer boundaries
 
 The window keeps `default-src 'self'` with `connect-src 'none'`. It issues no network request of
-its own, so no repository or ad host can fingerprint or track it. Icons and screenshots reach it
-over `oe-app://`, served by the main process from its own on-disk cache after the bytes have been
-sniffed — the same arrangement ad creatives use over `oe-ad://`.
+its own, so no repository can fingerprint or track it. Icons and screenshots reach it over
+`oe-app://`, served by the main process from its own on-disk cache after the bytes have been
+sniffed.
 
 For the same reason, an app's website and source links render as selectable text rather than
 clickable links: the shell deliberately has no "open this URL" primitive reachable from the

@@ -5,11 +5,9 @@ import { LogHandler, WslBridge, WslTarget } from './wsl-bridge';
 import { OpenEmuClient } from './open-emu-client';
 import { buildSteps, SetupRunner } from './setup-wizard';
 import { ScreenMirror } from './screen-mirror';
-import { createAds, registerAdSchemes } from './ads';
 import { createAccount } from './account';
 import { AppLibrary } from './app-library';
 import { createStore, registerStoreSchemes } from './store';
-import { ADS_ENABLED } from '../shared/ads-types';
 import type { DeviceState, EmuPhase, ProfileId } from '../shared/device-types';
 import { INITIAL_DEVICE_STATE, isProfileId } from '../shared/device-types';
 import type { CommandResult, InstalledApp, SetupStepStatus } from '../shared/ipc-types';
@@ -31,11 +29,9 @@ const mirror = new ScreenMirror(target);
 const library = new AppLibrary(openEmu);
 
 // Custom schemes have to be declared before the app is ready, so this runs at module scope.
-if (ADS_ENABLED) registerAdSchemes();
 registerStoreSchemes();
 
 let mainWindow: BrowserWindow | null = null;
-let ads: ReturnType<typeof createAds> | null = null;
 let store: ReturnType<typeof createStore> | null = null;
 
 function createWindow(): void {
@@ -83,7 +79,6 @@ function createWindow(): void {
 
   mainWindow.on('closed', () => {
     mirror.stop();
-    ads?.dispose();
     store?.dispose();
     mainWindow = null;
   });
@@ -287,20 +282,14 @@ app.whenReady().then(() => {
 
   // Built here rather than at module scope: these stores live under `app.getPath('userData')`,
   // which isn't resolvable until the app is ready.
-  if (ADS_ENABLED) {
-    ads = createAds((line) => console.log(line));
-    ads.registerIpc(() => mainWindow, library);
-  }
-
   store = createStore(openEmu, library, (line) => console.log(line));
   store.registerIpc(() => mainWindow);
 
   const account = createAccount(openEmu, {
     userData: app.getPath('userData'),
-    // Both come from subsystems that already know the answer — the store's guest probe reports
-    // which AVD replied, and the ad service owns entitlement.
+    // The store's guest probe already reports which AVD replied, so the account reads the answer
+    // from there rather than asking the guest a second time.
     avdName: () => store?.avdName() ?? null,
-    adsRemoved: () => ads?.service.state().adsRemoved ?? false,
     onLog: (line) => console.log(line),
   });
   account.registerIpc();
@@ -310,7 +299,6 @@ app.whenReady().then(() => {
 
 app.on('window-all-closed', () => {
   mirror.stop();
-  ads?.dispose();
   store?.dispose();
   if (process.platform !== 'darwin') app.quit();
 });

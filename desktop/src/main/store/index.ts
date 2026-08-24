@@ -20,11 +20,11 @@ const MAX_SEARCH_LIMIT = 120;
 const MAX_ICON_BYTES = 4 * 1024 * 1024;
 
 /**
- * Must run before `app.whenReady()`, alongside the ad schemes.
+ * Must run before `app.whenReady()`.
  *
- * App icons and screenshots reach the renderer over `oe-app://` for the same reason ad creatives
- * use `oe-ad://`: the window keeps a CSP with no remote origins, so it cannot be tracked by, or
- * leak anything to, whoever is hosting the art.
+ * App icons and screenshots reach the renderer over `oe-app://` rather than their real URLs: the
+ * window keeps a CSP with no remote origins, so it cannot be tracked by, or leak anything to,
+ * whoever is hosting the art.
  */
 export function registerStoreSchemes(): void {
   protocol.registerSchemesAsPrivileged([
