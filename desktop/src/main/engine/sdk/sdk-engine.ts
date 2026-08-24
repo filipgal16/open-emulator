@@ -91,6 +91,45 @@ export class SdkEngine implements AndroidEngine {
     return existsSync(snapshotDir(this.options.layout, avdName, SNAPSHOT));
   }
 
+  private pidFile(avdName: string): string {
+    return path.join(avdState(this.options.layout, avdName), 'emulator.pid');
+  }
+
+  /**
+   * Is an emulator running for this AVD — including one this process did not start?
+   *
+   * The in-memory handle is not enough, and the gap is not theoretical. Close the app while Android
+   * is running and reopen it, and the handle is gone while the emulator is very much still there.
+   * Two things then go wrong: `status` reports the guest as stopped while it is plainly running,
+   * and `start` misses the warm path and launches a **second** emulator against the same AVD —
+   * which is what the AVD's own `multiinstance.lock` exists to complain about, and which corrupts
+   * the userdata both instances are writing.
+   *
+   * So the pid file is read back, and the process actually checked. `process.kill(pid, 0)` sends no
+   * signal; it only asks whether the pid can be signalled, and works on Windows.
+   */
+  private runningPid(avdName: string): number | null {
+    if (this.emulator?.child.exitCode === null && this.emulator.pid) return this.emulator.pid;
+
+    let pid: number;
+    try {
+      pid = Number.parseInt(readFileSync(this.pidFile(avdName), 'utf8').trim(), 10);
+    } catch {
+      return null;
+    }
+    if (!Number.isFinite(pid) || pid <= 0) return null;
+
+    try {
+      process.kill(pid, 0);
+      return pid;
+    } catch {
+      // The pid belongs to a process that has since exited. Clear the stale file so this is not
+      // re-checked on every status poll.
+      rmSync(this.pidFile(avdName), { force: true });
+      return null;
+    }
+  }
+
   private provisionedAt(avdName: string): string | null {
     const marker = path.join(avdState(this.options.layout, avdName), 'provisioned_at');
     try {
@@ -156,8 +195,11 @@ export class SdkEngine implements AndroidEngine {
 
     // Warm path: a guest that is already up is not rebooted. Reconnecting to it is the whole
     // reason `start` is safe to call from a button.
+    // Adopted on adb's word plus a live pid, NOT on holding the child handle — after an app
+    // restart the handle is gone but the emulator is not, and starting a second one against the
+    // same AVD corrupts the userdata both are writing.
     const existing = await this.adb.waitForDevice(2_000).catch(() => null);
-    if (existing && this.emulator) {
+    if (existing && this.runningPid(profile.avdName) !== null) {
       this.serial = existing;
       this.log(`already running on ${existing} — warm path, no reboot`);
       return ok([`adb_device=${existing}`]);
@@ -190,7 +232,8 @@ export class SdkEngine implements AndroidEngine {
       },
     });
 
-    writeFileSync(path.join(this.stateDir(profile.avdName), 'emulator.pid'), String(this.emulator.pid ?? ''), 'utf8');
+    this.stateDir(profile.avdName);
+    writeFileSync(this.pidFile(profile.avdName), String(this.emulator.pid ?? ''), 'utf8');
 
     const serial = await this.adb.waitForDevice(useSnapshot ? 120_000 : 300_000);
     if (!serial) {
@@ -230,9 +273,19 @@ export class SdkEngine implements AndroidEngine {
       }
     }
 
+    // A guest this process did not start has no child handle, so fall back to the pid.
+    const orphan = this.runningPid(profile.avdName);
+    if (orphan !== null && !child) {
+      try {
+        process.kill(orphan);
+      } catch {
+        // Already gone between the check and the signal, which is the outcome we wanted anyway.
+      }
+    }
+
     this.emulator = null;
     this.serial = null;
-    rmSync(path.join(avdState(this.options.layout, profile.avdName), 'emulator.pid'), { force: true });
+    rmSync(this.pidFile(profile.avdName), { force: true });
     return ok(['emulator=stopped']);
   }
 
@@ -253,9 +306,11 @@ export class SdkEngine implements AndroidEngine {
     }
 
     const lines = [`avd=${profile.avdName}`];
-    const running = this.emulator?.child.exitCode === null;
-    lines.push(`emulator=${running ? 'running' : 'stopped'}`);
-    if (running && this.emulator?.pid) lines.push(`pid=${this.emulator.pid}`);
+    // From the pid file, not just the in-memory handle — otherwise a guest that outlived an app
+    // restart is reported as stopped while it is plainly running.
+    const pid = this.runningPid(profile.avdName);
+    lines.push(`emulator=${pid !== null ? 'running' : 'stopped'}`);
+    if (pid !== null) lines.push(`pid=${pid}`);
 
     const serial = this.serial ?? (await this.adb.devices().catch(() => []))[0] ?? null;
     lines.push(`adb_device=${serial ?? 'none'}`);
