@@ -20,7 +20,8 @@ export interface SdkEngineOptions {
   /** The tree holding `profiles/` and `devices/` — `repoRootWinPath()/android`. */
   androidRoot: string;
   profile: string | null;
-  device?: string;
+  /** Read live, so changing the identity in settings does not need an app restart. */
+  device?: () => string;
   /** Whether a hypervisor the emulator can use is available. Decides accel and renderer. */
   accelerated: () => boolean;
   /** False forces `-no-window`; true lets the emulator paint a window we can embed. */
@@ -69,7 +70,7 @@ export class SdkEngine implements AndroidEngine {
   }
 
   private device(): DeviceIdentity {
-    return loadDevice(this.options.androidRoot, this.options.device ?? 'generic');
+    return loadDevice(this.options.androidRoot, this.options.device?.() ?? 'generic');
   }
 
   private tuning(): GuestTuning {

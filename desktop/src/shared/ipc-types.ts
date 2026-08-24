@@ -3,6 +3,7 @@
 
 import type { AccountState, FillField, FillResult } from './account-types';
 import type { DeviceState, ProfileId } from './device-types';
+import type { Settings, SettingsState } from './settings-types';
 import type { AppDetail, InstallJob, SourceId, StoreApp, StoreState } from './store-types';
 
 export interface InstalledApp {
@@ -105,4 +106,11 @@ export interface OpenEmuApi {
   accountBeginSignIn(): Promise<FillResult>;
   /** Types the stored value for `field` into the guest's focused input. */
   accountFill(field: FillField): Promise<FillResult>;
+
+  // ── Settings ─────────────────────────────────────────────────────────────────────────────────
+  settingsState(): Promise<SettingsState>;
+  /** Merges a partial update; invalid values fall back rather than being stored. */
+  settingsSet(patch: Partial<Settings>): Promise<SettingsState>;
+  /** Deletes archives and scratch. Never touches the extracted SDK or a guest. */
+  settingsFreeSpace(): Promise<SettingsState>;
 }
