@@ -20,6 +20,7 @@ export const ICON_NAMES = [
   'volume-up',
   'volume-down',
   'power',
+  'key',
 ] as const;
 
 export type IconName = (typeof ICON_NAMES)[number];
@@ -121,6 +122,14 @@ const SYMBOLS: Record<IconName, ReactNode> = {
     <>
       <path d="M12 2v10" />
       <path d="M18.4 6.6a9 9 0 1 1-12.77.04" />
+    </>
+  ),
+  key: (
+    <>
+      <circle cx="8" cy="15" r="5" />
+      <path d="M13 11 21 3" />
+      <path d="M16 6h5" />
+      <path d="M18 8h4" />
     </>
   ),
 };
