@@ -1,6 +1,6 @@
 import { spawn } from 'child_process';
 import { decodeWindowsProcessOutput } from '../windows-text';
-import { runElevated } from './elevation';
+import { isRebootPending, runElevated } from './elevation';
 import type { EngineLogHandler } from './types';
 
 /**
@@ -113,6 +113,13 @@ export interface AccelerationProbes {
   aehdRunning: boolean;
   whpxEnabled: boolean;
   firmwareVirtualization: boolean;
+  /**
+   * Windows has staged feature changes that need a restart.
+   *
+   * Only meaningful alongside `whpxEnabled`: the feature reports itself enabled the moment DISM
+   * finishes, and stays that way — while doing nothing at all — until the machine restarts.
+   */
+  rebootPending: boolean;
 }
 
 /**
@@ -140,6 +147,22 @@ export function decideAcceleration(probes: AccelerationProbes): AccelerationStat
   }
 
   if (probes.whpxEnabled) {
+    // Enabled is not the same as working. DISM reports success and flips the feature's state
+    // immediately, but nothing actually changes until the machine restarts — so believing the flag
+    // here would have the app pass `-accel whpx` to an emulator that then refuses to start, and
+    // blame the emulator. This is the same trap `wsl --install` sets, and the reason
+    // `isRebootPending` exists at all.
+    if (probes.rebootPending) {
+      return {
+        available: false,
+        method: 'none',
+        detail:
+          'Hardware acceleration is switched on but needs a restart to take effect. ' +
+          'Restart Windows, then reopen open-emulator.',
+        // Not fixable from here: the fix is a restart, which is the user's to perform.
+        fixable: false,
+      };
+    }
     return { available: true, method: 'whpx', detail: 'Windows Hypervisor Platform is enabled', fixable: false };
   }
 
@@ -169,14 +192,17 @@ export async function detectAcceleration(): Promise<AccelerationState> {
       aehdRunning: false,
       whpxEnabled: false,
       firmwareVirtualization: false,
+      rebootPending: false,
     });
   }
 
   const aehdRunning = await isAehdRunning();
   const whpxEnabled = aehdRunning ? false : await isWhpxEnabled();
   const firmwareVirtualization = aehdRunning || whpxEnabled ? true : await isVirtualizationEnabledInFirmware();
+  // Only asked when it could change the answer — the check costs a reg.exe round trip.
+  const rebootPending = whpxEnabled && !aehdRunning ? await isRebootPending() : false;
 
-  return decideAcceleration({ windows: true, aehdRunning, whpxEnabled, firmwareVirtualization });
+  return decideAcceleration({ windows: true, aehdRunning, whpxEnabled, firmwareVirtualization, rebootPending });
 }
 
 /**
