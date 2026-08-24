@@ -63,7 +63,7 @@ export function InstallQueue({ jobs, onDismiss }: Props) {
   if (jobs.length === 0) return null;
 
   return (
-    <div className="install-queue">
+    <div className="install-queue" role="region" aria-label="Install progress">
       {jobs.map((job) => {
         const fraction = job.bytesTotal > 0 ? Math.min(1, job.bytesDone / job.bytesTotal) : 0;
         const indeterminate = job.state === 'installing' || job.state === 'verifying';
@@ -122,7 +122,9 @@ export function InstallQueue({ jobs, onDismiss }: Props) {
             </span>
 
             <div className="install-meta">
-              <span className="install-status">{copy.title}</span>
+              <span className="install-status" aria-live="polite">
+                {copy.title}
+              </span>
               <span className="install-detail">{copy.detail}</span>
             </div>
           </div>

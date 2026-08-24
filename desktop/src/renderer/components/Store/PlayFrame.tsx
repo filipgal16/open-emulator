@@ -118,7 +118,7 @@ export function PlayFrame({ state, onRecheck }: Props) {
           void run(() => window.openEmu.playSearch(query));
         }}
       >
-        <button type="button" className="play-nav" onClick={() => void run(() => window.openEmu.playBack())}>
+        <button type="button" className="play-nav" aria-label="Back" onClick={() => void run(() => window.openEmu.playBack())}>
           ←
         </button>
         <button type="button" className="play-nav" onClick={() => void run(() => window.openEmu.playOpen())}>
@@ -128,6 +128,7 @@ export function PlayFrame({ state, onRecheck }: Props) {
           className="play-search"
           type="search"
           placeholder="Search Google Play…"
+          aria-label="Search Google Play"
           value={query}
           onChange={(event) => setQuery(event.target.value)}
         />
@@ -136,7 +137,11 @@ export function PlayFrame({ state, onRecheck }: Props) {
         </button>
       </form>
 
-      <GuestSurface className="play-surface" waitingLabel="Waiting for the guest to paint…" />
+      <GuestSurface
+        className="play-surface"
+        waitingLabel="Waiting for the guest to paint…"
+        alt="Live view of Google Play on the Android device"
+      />
     </div>
   );
 }

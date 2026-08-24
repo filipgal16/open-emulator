@@ -179,6 +179,7 @@ export function SetupWizard({ steps, onContinue }: Props) {
           aria-valuemin={0}
           aria-valuemax={100}
           aria-valuenow={compact && !ready ? undefined : percent}
+          aria-busy={!failed && !ready}
           aria-label={headline}
         >
           <span className={`setup-bar-fill ${failed ? 'setup-bar-failed' : ''}`} style={{ width: `${barWidth}%` }} />
@@ -196,7 +197,7 @@ export function SetupWizard({ steps, onContinue }: Props) {
           </div>
         ) : (
           <>
-            <div className="setup-status">
+            <div className="setup-status" aria-live="polite" aria-atomic="true">
               <span className="setup-headline">{headline}</span>
               {!compact && (
                 <span className="setup-metrics">

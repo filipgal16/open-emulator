@@ -1,3 +1,4 @@
+import { forwardRef } from 'react';
 import type { AccountState } from '../../../shared/account-types';
 
 interface Props {
@@ -26,18 +27,23 @@ function caption(state: AccountState): string {
  * those can legitimately differ (a profile set up before the guest was ever started), and showing
  * the guest's answer first keeps the chip honest about the state that matters.
  */
-export function AccountChip({ state, open = false, onOpen }: Props) {
+export const AccountChip = forwardRef<HTMLButtonElement, Props>(function AccountChip(
+  { state, open = false, onOpen },
+  ref,
+) {
   if (!state) return null;
 
   const signedIn = state.guest.state === 'signed-in';
 
   return (
     <button
+      ref={ref}
       type="button"
       className={`account-chip ${signedIn ? 'account-chip-on' : ''} ${open ? 'is-open' : ''}`}
       onClick={onOpen}
       aria-expanded={open}
       aria-controls="account-page"
+      aria-haspopup="dialog"
       title={signedIn ? 'Account — signed in on this device' : 'Account'}
     >
       <span className="account-avatar" aria-hidden="true">
@@ -46,4 +52,4 @@ export function AccountChip({ state, open = false, onOpen }: Props) {
       <span className="account-caption">{caption(state)}</span>
     </button>
   );
-}
+});

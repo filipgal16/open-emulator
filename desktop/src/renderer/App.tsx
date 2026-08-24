@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { SetupWizard } from './components/SetupWizard/SetupWizard';
 import { AndroidScreen } from './components/AndroidScreen';
 import { DeviceBar } from './components/DeviceBar';
@@ -13,6 +13,7 @@ import { ToolRail } from './components/ToolRail';
 import type { AccountState } from '../shared/account-types';
 import { INITIAL_DEVICE_STATE, type DeviceState } from '../shared/device-types';
 import type { SetupStepStatus } from '../shared/ipc-types';
+import { isTypingTarget, WORKSPACE_SHORTCUTS } from './keyboard';
 import { applyDocumentTheme } from './theme';
 
 export function App() {
@@ -25,8 +26,20 @@ export function App() {
   const [theater, setTheater] = useState(false);
   const [rotation, setRotation] = useState(0);
   const [device, setDevice] = useState<DeviceState>(INITIAL_DEVICE_STATE);
+  const accountBtnRef = useRef<HTMLButtonElement>(null);
+  const theaterBtnRef = useRef<HTMLButtonElement>(null);
 
   const updateAccount = useCallback((next: AccountState) => setAccount(next), []);
+
+  const closeAccount = useCallback(() => {
+    setShowAccount(false);
+    accountBtnRef.current?.focus();
+  }, []);
+
+  const exitTheater = useCallback(() => {
+    setTheater(false);
+    theaterBtnRef.current?.focus();
+  }, []);
 
   useEffect(() => {
     window.openEmu.getSetupSteps().then(setSteps);
@@ -48,17 +61,31 @@ export function App() {
 
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
-      if (event.key !== 'Escape') return;
-      if (theater) {
-        setTheater(false);
-        event.preventDefault();
+      if (event.key === 'Escape') {
+        if (theater) {
+          exitTheater();
+          event.preventDefault();
+          return;
+        }
+        if (showAccount) {
+          closeAccount();
+          event.preventDefault();
+        }
         return;
       }
-      if (showAccount) setShowAccount(false);
+
+      if (event.altKey && !event.ctrlKey && !event.metaKey && !isTypingTarget(event.target)) {
+        const workspace = WORKSPACE_SHORTCUTS.find((entry) => event.key === entry.digit);
+        if (workspace) {
+          setShowAccount(false);
+          setTab(workspace.id);
+          event.preventDefault();
+        }
+      }
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [theater, showAccount]);
+  }, [theater, showAccount, closeAccount, exitTheater]);
 
   if (!ready) {
     return (
@@ -86,7 +113,12 @@ export function App() {
             open-emulator
           </span>
           <span className="titlebar-spacer" />
-          <AccountChip state={account} open={showAccount} onOpen={() => setShowAccount(true)} />
+          <AccountChip
+            ref={accountBtnRef}
+            state={account}
+            open={showAccount}
+            onOpen={() => setShowAccount(true)}
+          />
         </header>
 
         <div className="workspace">
@@ -94,7 +126,7 @@ export function App() {
 
           <main className="stage">
             {showAccount && account ? (
-              <SignInDialog state={account} onChange={updateAccount} onClose={() => setShowAccount(false)} />
+              <SignInDialog state={account} onChange={updateAccount} onClose={closeAccount} />
             ) : tab === 'screen' ? (
               <div className={rotation ? `viewport is-rot-${rotation}` : 'viewport'}>
                 <AndroidScreen device={device} onFirstFrame={() => setBooted(true)} />
@@ -111,7 +143,8 @@ export function App() {
           <ToolRail
             live={live}
             theater={theater}
-            onToggleTheater={() => setTheater((value) => !value)}
+            theaterButtonRef={theaterBtnRef}
+            onToggleTheater={() => (theater ? exitTheater() : setTheater(true))}
             onRotate={() => setRotation((deg) => (deg + 90) % 360)}
           />
         </div>

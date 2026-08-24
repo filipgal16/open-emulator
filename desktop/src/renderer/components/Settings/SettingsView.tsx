@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { DEVICES, DEVICE_IDS, type DeviceId, type Settings, type SettingsState, type ThemeChoice } from '../../../shared/settings-types';
 import { formatBytes } from '../../../shared/store-types';
+import { SHORTCUT_HELP } from '../../keyboard';
 import { applyDocumentTheme } from '../../theme';
 import { Icon } from '../Icon';
 
@@ -272,6 +273,21 @@ export function SettingsView() {
               </p>
             </div>
           )}
+        </section>
+
+        <section className="settings-block">
+          <h3 className="settings-label">Keyboard</h3>
+          <p className="settings-copy">
+            These work anywhere except while typing in a field.
+          </p>
+          <ul className="settings-shortcuts">
+            {SHORTCUT_HELP.map((row) => (
+              <li key={row.keys}>
+                <kbd>{row.keys}</kbd>
+                <span>{row.action}</span>
+              </li>
+            ))}
+          </ul>
         </section>
 
         <p className="settings-engine">{engineLabel(engine)}</p>
