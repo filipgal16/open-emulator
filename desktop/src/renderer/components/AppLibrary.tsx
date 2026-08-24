@@ -1,8 +1,14 @@
 import { useEffect, useState } from 'react';
 import type { InstalledApp } from '../../shared/ipc-types';
+import { AppMark } from './AppMark';
+import { Icon } from './Icon';
+
+interface Props {
+  onOpenStore: () => void;
+}
 
 /** The apps installed in the guest. Click one to launch it. */
-export function AppLibrary() {
+export function AppLibrary({ onOpenStore }: Props) {
   const [apps, setApps] = useState<InstalledApp[] | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
 
@@ -28,45 +34,75 @@ export function AppLibrary() {
   if (apps === null) {
     return (
       <div className="library library-loading">
-        <div className="empty-state empty-state-center">
-          <p className="empty-title">Reading installed apps…</p>
+        <div className="empty-panel">
+          <span className="empty-panel-icon" aria-hidden="true">
+            <Icon name="loader" size={22} />
+          </span>
+          <p className="empty-title">Reading installed apps</p>
+          <p className="empty-copy">Asking the device what it has.</p>
         </div>
       </div>
     );
   }
 
-  const tiles = apps.map((app) => (
-    <button
-      key={app.packageName}
-      type="button"
-      className="app-tile"
-      disabled={busy === app.packageName}
-      onClick={() => void launch(app.packageName)}
-    >
-      <span className="app-icon" aria-hidden="true">
-        {app.label.slice(0, 1).toUpperCase()}
-      </span>
-      <span className="app-label">{app.label}</span>
-      <span className="app-package">{app.packageName}</span>
-    </button>
-  ));
+  if (apps.length === 0) {
+    return (
+      <div className="library">
+        <div className="library-head">
+          <h2>Your apps</h2>
+          <p className="library-sub">Installed on this device</p>
+        </div>
+        <div className="empty-panel">
+          <span className="empty-panel-icon" aria-hidden="true">
+            <Icon name="apps" size={22} />
+          </span>
+          <p className="empty-title">Nothing installed yet</p>
+          <p className="empty-copy">
+            The Store has thousands of free apps, or drop an APK onto it to install one of your
+            own. Anything you install shows up here.
+          </p>
+          <button type="button" className="setup-primary" onClick={onOpenStore}>
+            Open the Store
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="library">
       <div className="library-head">
         <h2>Your apps</h2>
-        <p className="library-sub">Installed on this device</p>
+        <p className="library-sub">
+          {apps.length === 1 ? '1 app installed on this device' : `${apps.length} apps installed on this device`}
+        </p>
       </div>
-      {apps.length === 0 && (
-        <div className="empty-state">
-          <p className="empty-title">Nothing installed yet</p>
-          <p className="library-empty">
-            Open the Store to browse F-Droid, or drop an APK onto the Store to install one
-            directly.
-          </p>
-        </div>
-      )}
-      <div className="app-grid">{tiles}</div>
+      <div className="app-grid">
+        {apps.map((app) => {
+          const launching = busy === app.packageName;
+          return (
+            <button
+              key={app.packageName}
+              type="button"
+              className="app-tile"
+              disabled={launching}
+              onClick={() => void launch(app.packageName)}
+            >
+              <span className="app-icon-wrap">
+                {launching ? (
+                  <span className="app-mark app-mark-busy" aria-hidden="true">
+                    <Icon name="loader" size={20} />
+                  </span>
+                ) : (
+                  <AppMark name={app.label} seed={app.packageName} />
+                )}
+              </span>
+              <span className="app-label">{app.label}</span>
+              <span className="app-package">{app.packageName}</span>
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }

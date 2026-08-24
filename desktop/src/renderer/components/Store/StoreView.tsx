@@ -110,17 +110,24 @@ export function StoreView() {
     void window.openEmu.storeProbeGuest(true).then(setState);
   }
 
-  const tiles = (results ?? []).map((app) => (
-    <AppCard
-      key={app.id}
-      app={app}
-      job={jobFor.get(`${app.source}:${app.packageName}`) ?? null}
-      guestSdk={state.guestSdk}
-      installed={installed.has(app.packageName)}
-      onOpen={setSelected}
-      onInstall={(target) => install(target)}
-    />
-  ));
+  const browsing = query.trim() === '';
+  const list = results ?? [];
+  const localApps = browsing ? list.filter((app) => app.source === 'local') : [];
+  const catalogApps = browsing ? list.filter((app) => app.source !== 'local') : list;
+
+  function renderCard(app: StoreApp) {
+    return (
+      <AppCard
+        key={app.id}
+        app={app}
+        job={jobFor.get(`${app.source}:${app.packageName}`) ?? null}
+        guestSdk={state.guestSdk}
+        installed={installed.has(app.packageName)}
+        onOpen={setSelected}
+        onInstall={(target) => install(target)}
+      />
+    );
+  }
 
   return (
     <div
@@ -137,7 +144,13 @@ export function StoreView() {
           <input
             className="store-search"
             type="search"
-            placeholder={filter === 'play' ? 'Search happens in the Play tab below' : 'Search apps…'}
+            placeholder={
+              filter === 'play'
+                ? 'Search happens in the Play tab below'
+                : state.indexReady
+                  ? `Search ${state.indexAppCount.toLocaleString()} apps…`
+                  : 'Search apps…'
+            }
             value={query}
             disabled={filter === 'play'}
             onChange={(event) => {
@@ -174,28 +187,86 @@ export function StoreView() {
             job={jobFor.get(`${selected.source}:${selected.packageName}`) ?? null}
             guestSdk={state.guestSdk}
             installed={installed.has(selected.packageName)}
+            backLabel={browsing ? 'Back to browse' : 'Back to results'}
             onBack={() => setSelected(null)}
             onInstall={install}
           />
         ) : (
           <>
             {results === null && (
-              <div className="empty-state">
-                <p className="empty-title">Loading the catalogue…</p>
-                <p className="store-note">This happens once, then search is local.</p>
+              <div className="empty-panel">
+                <p className="empty-title">Loading the catalogue</p>
+                <p className="empty-copy">This happens once, then search is local.</p>
               </div>
             )}
+            {results !== null && browsing && (
+              <header className="store-home">
+                <div>
+                  <h2>{filter === 'local' ? 'On this PC' : 'Browse'}</h2>
+                  <p className="store-home-copy">
+                    {filter === 'local'
+                      ? 'APKs you dropped here, and anything in the local apps folder.'
+                      : state.indexReady
+                        ? `${state.indexAppCount.toLocaleString()} free and open-source apps from F-Droid, searched on this PC.`
+                        : 'Fetching the F-Droid catalogue — this happens once, then search is local.'}
+                  </p>
+                </div>
+                <p className="store-home-hint">Drop an APK anywhere on this window to install it.</p>
+              </header>
+            )}
+            {results !== null && !browsing && (
+              <p className="store-section-label">
+                {list.length === 0
+                  ? state.indexReady
+                    ? `Nothing matched “${query.trim()}”`
+                    : 'Fetching the catalogue'
+                  : `${list.length} ${list.length === 1 ? 'result' : 'results'} for “${query.trim()}”`}
+              </p>
+            )}
             {results !== null && results.length === 0 && (
-              <div className="empty-state">
-                <p className="empty-title">{state.indexReady ? 'Nothing matched' : 'Fetching the catalogue'}</p>
-                <p className="store-note">
-                  {state.indexReady
-                    ? 'Try a different name, or drop an APK onto this window to install one directly.'
-                    : 'The F-Droid index is downloaded once, then searched locally.'}
+              <div className="empty-panel">
+                <p className="empty-title">
+                  {browsing
+                    ? filter === 'local'
+                      ? 'No local APKs yet'
+                      : state.indexReady
+                        ? 'The catalogue is empty'
+                        : 'Fetching the catalogue'
+                    : state.indexReady
+                      ? 'Nothing matched'
+                      : 'Fetching the catalogue'}
+                </p>
+                <p className="empty-copy">
+                  {browsing && filter === 'local'
+                    ? 'Drop an APK onto this window, or put one in android/apps/.'
+                    : state.indexReady
+                      ? 'Try a different name, or drop an APK onto this window to install one directly.'
+                      : 'The F-Droid index is downloaded once, then searched locally.'}
                 </p>
               </div>
             )}
-            <div className="store-grid">{tiles}</div>
+            {results !== null && browsing && localApps.length > 0 && filter === 'all' && (
+              <section className="store-section">
+                <h3 className="store-section-label">On this PC</h3>
+                <div className="store-grid">{localApps.map(renderCard)}</div>
+              </section>
+            )}
+            {results !== null && browsing && catalogApps.length > 0 && (
+              <section className="store-section">
+                {filter !== 'local' && (
+                  <h3 className="store-section-label">
+                    {state.indexReady ? 'Recently updated' : 'Catalogue'}
+                  </h3>
+                )}
+                <div className="store-grid">{catalogApps.map(renderCard)}</div>
+              </section>
+            )}
+            {results !== null && browsing && filter === 'local' && localApps.length > 0 && (
+              <div className="store-grid">{localApps.map(renderCard)}</div>
+            )}
+            {results !== null && !browsing && list.length > 0 && (
+              <div className="store-grid">{list.map(renderCard)}</div>
+            )}
           </>
         )}
       </div>
