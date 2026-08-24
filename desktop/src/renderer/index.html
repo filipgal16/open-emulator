@@ -300,7 +300,7 @@
 
       html {
         height: 100%;
-        font-size: 16px;
+        font-size: 100%;
         color-scheme: dark;
       }
 
@@ -323,6 +323,11 @@
 
       :focus { outline: none; }
       :focus-visible { box-shadow: var(--focus); }
+
+      @keyframes panel-in {
+        from { opacity: 0; transform: translateY(6px); }
+        to { opacity: 1; transform: none; }
+      }
 
       ::selection { background: var(--selection-bg); color: var(--selection-fg); }
 
@@ -722,6 +727,7 @@
         padding: var(--space-3) var(--space-3-5) var(--space-2);
         background: var(--raised);
         border-bottom: 1px solid var(--border-subtle);
+        animation: panel-in var(--duration-fast) var(--ease-emphasized);
       }
       .device-menu-head {
         grid-column: 1 / -1;
@@ -736,6 +742,7 @@
       }
       .device-menu-item:hover { background: var(--surface-hover); }
       .device-menu-item.on { background: var(--accent-soft); }
+      .device-menu-item.on:focus-visible { box-shadow: var(--focus); }
       .device-menu-item.on .device-menu-label { color: var(--accent); }
       .device-menu-label { font-size: var(--text-sm); color: var(--text); display: flex; gap: var(--space-2); align-items: center; font-weight: var(--weight-semibold); }
       .device-menu-check { color: var(--accent); display: inline-flex; }
@@ -753,6 +760,7 @@
         overflow-y: auto;
         padding: var(--space-6) var(--space-7);
         background: var(--bg);
+        animation: panel-in var(--duration-normal) var(--ease-emphasized);
       }
       .account-sheet { max-width: 34rem; }
 
@@ -835,7 +843,10 @@
       .device-idle-bar { width: 180px; margin-top: var(--space-1); }
       .device-idle .setup-primary { margin-top: var(--space-2); }
 
-      .library { flex: 1; min-width: 0; overflow-y: auto; padding: var(--space-6) var(--space-7); }
+      .library {
+        flex: 1; min-width: 0; overflow-y: auto; padding: var(--space-6) var(--space-7);
+        animation: panel-in var(--duration-normal) var(--ease-emphasized);
+      }
       .library-head { margin: 0 0 var(--space-5); }
       .library h2 {
         margin: 0; font-size: var(--text-xl); font-weight: var(--weight-semibold);
@@ -914,7 +925,10 @@
       /* ── Store ───────────────────────────────────────────────────────────────────────────────
          Same palette and the same tile geometry as .app-tile above, so the Store and the Apps
          grid read as one surface rather than two apps bolted together. */
-      .store { flex: 1; min-width: 0; display: flex; flex-direction: column; background: var(--bg); }
+      .store {
+        flex: 1; min-width: 0; display: flex; flex-direction: column; background: var(--bg);
+        animation: panel-in var(--duration-normal) var(--ease-emphasized);
+      }
       .store-dropping { outline: 2px dashed var(--accent-border); outline-offset: calc(var(--space-2) * -1); background: var(--accent-soft); }
 
       .store-bar {
@@ -948,9 +962,9 @@
       }
       .store-search:focus, .play-search:focus {
         outline: none; border-color: var(--accent-border);
-        box-shadow: 0 0 0 3px var(--accent-glow);
+        box-shadow: var(--focus);
       }
-      .store-search:focus-visible, .play-search:focus-visible { box-shadow: 0 0 0 3px var(--accent-glow); }
+      .store-search:focus-visible, .play-search:focus-visible { box-shadow: var(--focus); }
       .store-search:disabled { opacity: 0.5; }
       .store-search::-webkit-search-decoration { display: none; }
       .source-chips { display: flex; gap: var(--space-1-5); flex: none; }
@@ -962,6 +976,7 @@
       }
       .chip:hover { color: var(--text); border-color: var(--border-strong); background: var(--hover-overlay); }
       .chip.on { background: var(--accent-fill); border-color: var(--accent-border); color: var(--accent-strong); }
+      .chip.on:focus-visible { box-shadow: var(--focus); }
 
       .store-body { flex: 1; min-height: 0; overflow-y: auto; padding: var(--space-5) var(--space-5); }
       .store-body-play { overflow: hidden; display: flex; flex-direction: column; padding: var(--space-4) var(--space-4); }
@@ -995,7 +1010,7 @@
         background: none; border: none; color: inherit; font: inherit; cursor: pointer;
         padding: var(--space-3-5) var(--space-3-5) var(--space-2-5);
       }
-      .store-card-open:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; box-shadow: none; }
+      .store-card-open:focus-visible { box-shadow: var(--focus); outline: none; }
       .store-card-icon { width: var(--space-12); height: var(--space-12); flex: none; border-radius: var(--space-3); object-fit: cover; background: var(--bg); }
       .store-card-icon-fallback { display: grid; place-items: center; background: var(--icon-well); color: var(--accent); font-size: var(--text-2xl); font-weight: var(--weight-semibold); }
       .store-card-text { display: flex; flex-direction: column; gap: var(--space-1); min-width: 0; }
@@ -1105,6 +1120,7 @@
         background: var(--chrome);
         padding: var(--space-2) var(--space-5) var(--space-2-5);
         max-height: 220px; overflow-y: auto;
+        animation: panel-in var(--duration-fast) var(--ease-emphasized);
       }
       .install-row { display: flex; flex-direction: column; gap: var(--space-1-5); padding: var(--space-2-5) 0; }
       .install-row + .install-row { border-top: 1px solid var(--border-subtle); }
@@ -1191,7 +1207,7 @@
       .play-setup code { background: var(--raised); padding: 1px var(--space-1-5); border-radius: var(--radius-xs); font-size: var(--text-xs); }
       .play-commands {
         background: var(--bg-deep); color: var(--accent); padding: var(--space-3) var(--space-3-5);
-        border-radius: var(--radius-sm); font-size: var(--text-xs); line-height: 1.7; overflow-x: auto; user-select: text;
+        border-radius: var(--radius-sm); font-size: var(--text-xs); line-height: var(--leading-relaxed); overflow-x: auto; user-select: text;
         font-family: var(--font-mono);
       }
       .play-note { color: var(--faint) !important; }
@@ -1282,9 +1298,9 @@
       }
       .account-input:focus {
         outline: none; border-color: var(--accent-border);
-        box-shadow: 0 0 0 3px var(--accent-glow);
+        box-shadow: var(--focus);
       }
-      .account-input:focus-visible { box-shadow: 0 0 0 3px var(--accent-glow); }
+      .account-input:focus-visible { box-shadow: var(--focus); }
       .account-field-hint {
         display: block; margin: var(--space-1-5) 0 0; font-size: var(--text-xs);
         color: var(--faint); line-height: var(--leading-normal);
@@ -1354,7 +1370,10 @@
       /* ── Settings ──────────────────────────────────────────────────────────────────────────
          A workspace page in the stage, never a overlay on the device. The viewport will later
          host a native child window; this surface replaces the device rather than covering it. */
-      .settings { flex: 1; min-width: 0; min-height: 0; overflow-y: auto; padding: var(--space-6) var(--space-7); background: var(--bg); }
+      .settings {
+        flex: 1; min-width: 0; min-height: 0; overflow-y: auto; padding: var(--space-6) var(--space-7); background: var(--bg);
+        animation: panel-in var(--duration-normal) var(--ease-emphasized);
+      }
       .settings-loading { display: flex; align-items: center; justify-content: center; }
       .settings-sheet { max-width: 38rem; padding-bottom: var(--space-10); }
 
@@ -1398,7 +1417,7 @@
       }
 
       .settings-seg {
-        display: flex; padding: 3px; gap: 3px;
+        display: flex; padding: var(--space-0-5); gap: var(--space-0-5);
         background: var(--bg-deep); border: 1px solid var(--border); border-radius: var(--radius);
       }
       .settings-seg-item {
@@ -1410,6 +1429,7 @@
       }
       .settings-seg-item:hover { color: var(--text); background: var(--hover-overlay); }
       .settings-seg-item.on { color: var(--text); background: var(--surface); box-shadow: var(--shadow-sm); }
+      .settings-seg-item.on:focus-visible { box-shadow: var(--focus); }
 
       .settings-devices { display: flex; flex-direction: column; gap: var(--space-2); }
       .settings-device {
@@ -1422,6 +1442,7 @@
       }
       .settings-device:hover { background: var(--surface-hover); border-color: var(--border-strong); }
       .settings-device.on { background: var(--accent-soft); border-color: var(--accent-border); }
+      .settings-device.on:focus-visible { box-shadow: var(--focus); }
       .settings-device-label {
         display: flex; align-items: center; gap: var(--space-2);
         font-size: var(--text-sm); font-weight: var(--weight-semibold); color: var(--text); line-height: var(--leading-snug);
@@ -1457,6 +1478,7 @@
       }
       .settings-pill:hover { color: var(--text); border-color: var(--border-strong); background: var(--surface-hover); }
       .settings-pill.on { background: var(--accent-fill); border-color: var(--accent-border); color: var(--accent-strong); }
+      .settings-pill.on:focus-visible { box-shadow: var(--focus); }
       .settings-pill-auto { padding-inline: var(--space-3-5); }
       .settings-pill-detail { font-weight: var(--weight-regular); color: var(--faint); }
       .settings-pill.on .settings-pill-detail { color: var(--accent-strong); opacity: 0.8; }
@@ -1470,6 +1492,20 @@
         color: var(--text); line-height: var(--leading-snug);
       }
       .settings-quiet .settings-copy { margin: 0; }
+
+      .settings-shortcuts {
+        list-style: none; margin: var(--space-3) 0 0; padding: 0;
+        display: flex; flex-direction: column; gap: var(--space-2);
+      }
+      .settings-shortcuts li {
+        display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-4);
+        font-size: var(--text-sm); color: var(--muted);
+      }
+      kbd {
+        font: inherit; font-family: var(--font-mono); font-size: var(--text-2xs); font-weight: var(--weight-semibold);
+        padding: 0 var(--space-1); border: 1px solid var(--border); border-radius: var(--radius-xs);
+        background: var(--raised); color: var(--text-dim);
+      }
 
       .settings-engine { margin: var(--space-2) 0 0; font-size: var(--text-2xs); color: var(--faint); line-height: var(--leading-snug); }
 

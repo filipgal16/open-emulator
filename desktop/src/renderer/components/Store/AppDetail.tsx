@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { AppDetail as AppDetailData, InstallJob, StoreApp } from '../../../shared/store-types';
 import { formatBytes, installBlockedReason } from '../../../shared/store-types';
 import { AppMark } from '../AppMark';
@@ -45,6 +45,11 @@ function actionLabel(job: InstallJob | null, here: boolean, blocked: string | nu
  */
 export function AppDetail({ app, job, guestSdk, installed, backLabel = 'Back', onBack, onInstall }: Props) {
   const [detail, setDetail] = useState<AppDetailData | null>(null);
+  const backRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    backRef.current?.focus();
+  }, [app.packageName]);
 
   useEffect(() => {
     let live = true;
@@ -64,7 +69,7 @@ export function AppDetail({ app, job, guestSdk, installed, backLabel = 'Back', o
 
   return (
     <div className="store-detail">
-      <button type="button" className="store-back" onClick={onBack}>
+      <button ref={backRef} type="button" className="store-back" onClick={onBack}>
         <Icon name="back" size={16} />
         {backLabel}
       </button>

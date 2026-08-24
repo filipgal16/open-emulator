@@ -7,6 +7,8 @@ interface Props {
   onFirstFrame?: () => void;
   className?: string;
   waitingLabel?: string;
+  /** Accessible name for the live mirror. Kept off the tab order so a focus ring cannot cover the native window. */
+  alt?: string;
   /** Replaces the default waiting copy. Must not float — it sits where the frame will. */
   placeholder?: ReactNode;
 }
@@ -37,6 +39,7 @@ export function GuestSurface({
   onFirstFrame,
   className,
   waitingLabel = 'Waiting for first frame…',
+  alt = 'Live view of the Android device',
   placeholder,
 }: Props) {
   const frameUrl = useGuestScreen();
@@ -114,7 +117,7 @@ export function GuestSurface({
         <img
           ref={imgRef}
           src={frameUrl}
-          alt="Android screen"
+          alt={alt}
           draggable={false}
           onPointerDown={handlePointerDown}
           onPointerUp={handlePointerUp}

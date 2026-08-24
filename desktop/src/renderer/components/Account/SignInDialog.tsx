@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { AccountState } from '../../../shared/account-types';
 import { Icon } from '../Icon';
 
@@ -48,10 +48,15 @@ export function SignInDialog({ state, onChange, onClose }: Props) {
   const [password, setPassword] = useState('');
   const [status, setStatus] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const closeRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     void window.openEmu.accountRefresh(true).then(onChange);
   }, [onChange]);
+
+  useEffect(() => {
+    closeRef.current?.focus();
+  }, []);
 
   async function act(label: string, action: () => Promise<void>) {
     setBusy(true);
@@ -76,7 +81,7 @@ export function SignInDialog({ state, onChange, onClose }: Props) {
   return (
     <section className="account" id="account-page" aria-labelledby="account-title">
       <div className="account-sheet">
-        <button type="button" className="store-back" onClick={onClose}>
+        <button ref={closeRef} type="button" className="store-back" onClick={onClose}>
           <Icon name="back" size={16} />
           Close
         </button>

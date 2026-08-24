@@ -59,7 +59,7 @@ export function AppCard({ app, job, guestSdk, installed, onOpen, onInstall }: Pr
 
   return (
     <div className="store-card">
-      <button type="button" className="store-card-open" onClick={() => onOpen(app)}>
+      <button type="button" className="store-card-open" id={`store-app-${app.id}`} onClick={() => onOpen(app)}>
         {app.iconUrl ? (
           <img className="store-card-icon" src={app.iconUrl} alt="" />
         ) : (

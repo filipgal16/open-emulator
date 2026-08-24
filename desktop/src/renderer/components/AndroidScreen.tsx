@@ -37,7 +37,9 @@ function DevicePlaceholder({ device }: { device: DeviceState }) {
         {(kind === 'starting' || kind === 'booting') && <span className="waiting-screen" />}
       </span>
 
-      <h2 className="device-idle-title">{titleFor(kind, device)}</h2>
+      <h2 className="device-idle-title" aria-live="polite">
+        {titleFor(kind, device)}
+      </h2>
       <p className="device-idle-copy">{copyFor(kind, device)}</p>
 
       {(kind === 'starting' || kind === 'booting') && (
@@ -47,7 +49,13 @@ function DevicePlaceholder({ device }: { device: DeviceState }) {
       )}
 
       {(kind === 'starting' || kind === 'booting') && (
-        <div className="device-idle-bar setup-bar setup-bar-pulsing" aria-hidden="true">
+        <div
+          className="device-idle-bar setup-bar setup-bar-pulsing"
+          role="progressbar"
+          aria-label={titleFor(kind, device)}
+          aria-valuemin={0}
+          aria-valuemax={100}
+        >
           <span className="setup-bar-fill" style={{ width: '100%' }} />
         </div>
       )}

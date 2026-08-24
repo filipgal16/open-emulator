@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { DeviceState, ProfileId } from '../../shared/device-types';
 import { INITIAL_DEVICE_STATE, PROFILE_IDS, PROFILES } from '../../shared/device-types';
 import { Icon } from './Icon';
+import { isTypingTarget, rovingIndex } from '../keyboard';
 
 interface Props {
   onState?: (state: DeviceState) => void;
@@ -32,10 +33,17 @@ function phaseLabel(state: DeviceState): string {
 export function DeviceBar({ onState }: Props) {
   const [state, setState] = useState<DeviceState>(INITIAL_DEVICE_STATE);
   const [open, setOpen] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const optionRefs = useRef<Array<HTMLButtonElement | null>>([]);
 
   function apply(next: DeviceState) {
     setState(next);
     onState?.(next);
+  }
+
+  function closeMenu() {
+    setOpen(false);
+    triggerRef.current?.focus();
   }
 
   useEffect(() => {
@@ -50,32 +58,71 @@ export function DeviceBar({ onState }: Props) {
     return () => window.clearInterval(timer);
   }, []);
 
+  useEffect(() => {
+    if (!open) return;
+    const selected = Math.max(0, PROFILE_IDS.indexOf(state.profile));
+    optionRefs.current[selected]?.focus();
+  }, [open, state.profile]);
+
+  useEffect(() => {
+    function onKey(event: KeyboardEvent) {
+      if (event.key === 'Escape' && open) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        closeMenu();
+        return;
+      }
+      if (event.key !== 's' && event.key !== 'S') return;
+      if (!event.altKey || event.ctrlKey || event.metaKey) return;
+      if (isTypingTarget(event.target)) return;
+      if (state.busy) return;
+      event.preventDefault();
+      const running = state.phase === 'running';
+      void (running ? window.openEmu.deviceStop() : window.openEmu.deviceStart()).then(apply);
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open, state.busy, state.phase]);
+
   const running = state.phase === 'running';
   const profile = PROFILES[state.profile];
+  const startLabel = state.busy ? 'Working…' : running ? 'Stop' : 'Start';
 
   return (
     <div className="device-status">
       {open && (
-        <div className="device-menu" role="listbox" aria-label="Android version">
-          <p className="device-menu-head">Android version</p>
-          {PROFILE_IDS.map((id) => {
+        <div className="device-menu" role="listbox" aria-label="Android version" id="device-version-menu">
+          <p className="device-menu-head" id="device-version-label">
+            Android version
+          </p>
+          {PROFILE_IDS.map((id, index) => {
             const spec = PROFILES[id];
             return (
               <button
                 key={id}
+                ref={(node) => {
+                  optionRefs.current[index] = node;
+                }}
                 type="button"
                 role="option"
                 aria-selected={id === state.profile}
                 className={`device-menu-item ${id === state.profile ? 'on' : ''}`}
                 onClick={() => {
                   setOpen(false);
+                  triggerRef.current?.focus();
                   void window.openEmu.deviceSetProfile(id as ProfileId).then(apply);
+                }}
+                onKeyDown={(event) => {
+                  const next = rovingIndex(event.key, index, PROFILE_IDS.length);
+                  if (next < 0) return;
+                  event.preventDefault();
+                  optionRefs.current[next]?.focus();
                 }}
               >
                 <span className="device-menu-label">
                   {spec.label}
                   {id === state.profile && (
-                    <span className="device-menu-check">
+                    <span className="device-menu-check" aria-hidden="true">
                       <Icon name="check" size={14} />
                     </span>
                   )}
@@ -95,8 +142,13 @@ export function DeviceBar({ onState }: Props) {
       )}
 
       <div className="device-bar">
-        <span className={`device-dot device-dot-${running ? (state.bootCompleted ? 'on' : 'boot') : state.phase}`} />
-        <span className="device-phase">{phaseLabel(state)}</span>
+        <span
+          className={`device-dot device-dot-${running ? (state.bootCompleted ? 'on' : 'boot') : state.phase}`}
+          aria-hidden="true"
+        />
+        <span className="device-phase" aria-live="polite" aria-atomic="true">
+          {phaseLabel(state)}
+        </span>
 
         {state.androidVersion && (
           <span className="device-meta">
@@ -107,7 +159,11 @@ export function DeviceBar({ onState }: Props) {
 
         <span className="device-spacer" />
 
-        {state.error && <span className="device-error">{state.error}</span>}
+        {state.error && (
+          <span className="device-error" role="status">
+            {state.error}
+          </span>
+        )}
 
         {!state.provisioned && !state.busy && (
           <button type="button" className="device-btn device-btn-primary" onClick={() => void window.openEmu.devicePrepare().then(apply)}>
@@ -119,18 +175,23 @@ export function DeviceBar({ onState }: Props) {
           type="button"
           className={`device-btn ${running ? 'device-btn-stop' : 'device-btn-primary'}`}
           disabled={state.busy}
+          aria-keyshortcuts="Alt+S"
+          title={`${startLabel} (Alt+S)`}
           onClick={() => void (running ? window.openEmu.deviceStop() : window.openEmu.deviceStart()).then(apply)}
         >
-          {state.busy ? 'Working…' : running ? 'Stop' : 'Start'}
+          {startLabel}
         </button>
 
         <div className="device-profile">
           <button
+            ref={triggerRef}
             type="button"
             className="device-btn"
             aria-expanded={open}
             aria-haspopup="listbox"
-            onClick={() => setOpen((v) => !v)}
+            aria-controls="device-version-menu"
+            aria-label={`Android version, ${profile.label}`}
+            onClick={() => setOpen((value) => !value)}
             disabled={state.busy}
           >
             {profile.label}

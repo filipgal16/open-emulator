@@ -31,6 +31,36 @@ export function StoreView() {
   const [installed, setInstalled] = useState<Set<string>>(new Set());
   const [dropping, setDropping] = useState(false);
   const searchSeq = useRef(0);
+  const openerIdRef = useRef<string | null>(null);
+
+  const closeDetail = useCallback(() => {
+    setSelected(null);
+  }, []);
+
+  function openApp(app: StoreApp) {
+    openerIdRef.current = app.id;
+    setSelected(app);
+  }
+
+  useEffect(() => {
+    if (selected !== null) return;
+    const id = openerIdRef.current;
+    if (!id) return;
+    openerIdRef.current = null;
+    document.getElementById(`store-app-${id}`)?.focus();
+  }, [selected]);
+
+  useEffect(() => {
+    if (!selected) return;
+    function onKey(event: KeyboardEvent) {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      closeDetail();
+    }
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [selected, closeDetail]);
 
   const refreshInstalled = useCallback(() => {
     void window.openEmu.listApps().then((apps) => {
@@ -123,7 +153,7 @@ export function StoreView() {
         job={jobFor.get(`${app.source}:${app.packageName}`) ?? null}
         guestSdk={state.guestSdk}
         installed={installed.has(app.packageName)}
-        onOpen={setSelected}
+        onOpen={openApp}
         onInstall={(target) => install(target)}
       />
     );
@@ -153,8 +183,10 @@ export function StoreView() {
             }
             value={query}
             disabled={filter === 'play'}
+            aria-label="Search apps"
             onChange={(event) => {
               setQuery(event.target.value);
+              openerIdRef.current = null;
               setSelected(null);
             }}
           />
@@ -165,8 +197,10 @@ export function StoreView() {
               key={entry.id}
               type="button"
               className={filter === entry.id ? 'chip on' : 'chip'}
+              aria-pressed={filter === entry.id}
               onClick={() => {
                 setFilter(entry.id);
+                openerIdRef.current = null;
                 setSelected(null);
               }}
             >
@@ -188,7 +222,7 @@ export function StoreView() {
             guestSdk={state.guestSdk}
             installed={installed.has(selected.packageName)}
             backLabel={browsing ? 'Back to browse' : 'Back to results'}
-            onBack={() => setSelected(null)}
+            onBack={closeDetail}
             onInstall={install}
           />
         ) : (
