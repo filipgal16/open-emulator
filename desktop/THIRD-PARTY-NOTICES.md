@@ -27,6 +27,20 @@ The MIT License (MIT) — Copyright (c) 2014, 2015, 2016, 2017, 2018 Simon Lydel
 
 ---
 
+## Loaded by the main process
+
+Not bundled into the renderer, but shipped with the application.
+
+### koffi
+
+MIT License — Copyright (c) Niels Martignène
+
+A foreign-function interface, used to call `user32` and `kernel32` so the emulator's own window can
+be embedded in the app rather than photographed frame by frame. Chosen over a native addon because
+it ships prebuilt binaries, which keeps node-gyp, MSVC, and `electron-rebuild` out of the build.
+
+---
+
 ## The MIT License
 
 Applies to every package listed above.

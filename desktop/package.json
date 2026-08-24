@@ -21,19 +21,43 @@
     "appId": "com.openemulator.desktop",
     "productName": "open-emulator",
     "copyright": "open-emulator contributors",
-    "directories": { "output": "release", "buildResources": "build" },
-    "files": ["dist/**/*", "package.json", "!**/*.map"],
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "dist/**/*",
+      "package.json",
+      "!**/*.map"
+    ],
     "extraResources": [
       {
         "from": "../android",
         "to": "backend/android",
-        "filter": ["**/*", "!sdk/**", "!avd/**", "!state/**", "!logs/**", "!apps/*.apk", "!**/*.img", "!**/*.qcow2"]
+        "filter": [
+          "**/*",
+          "!sdk/**",
+          "!avd/**",
+          "!state/**",
+          "!logs/**",
+          "!apps/*.apk",
+          "!**/*.img",
+          "!**/*.qcow2"
+        ]
       },
-      { "from": "../scripts", "to": "backend/scripts" },
-      { "from": "../Makefile", "to": "backend/Makefile" }
+      {
+        "from": "../scripts",
+        "to": "backend/scripts"
+      },
+      {
+        "from": "../Makefile",
+        "to": "backend/Makefile"
+      }
     ],
     "win": {
-      "target": ["nsis"],
+      "target": [
+        "nsis"
+      ],
       "icon": "build/icon.png",
       "artifactName": "${productName}-Setup-${version}.${ext}"
     },
@@ -48,6 +72,7 @@
     }
   },
   "dependencies": {
+    "koffi": "^3.1.6",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },
@@ -62,6 +87,7 @@
   },
   "allowScripts": {
     "electron@31.7.7": true,
-    "esbuild@0.23.1": true
+    "esbuild@0.23.1": true,
+    "koffi@3.1.6": true
   }
 }
