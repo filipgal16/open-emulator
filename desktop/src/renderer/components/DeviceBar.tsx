@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { DeviceState, ProfileId } from '../../shared/device-types';
 import { INITIAL_DEVICE_STATE, PROFILE_IDS, PROFILES } from '../../shared/device-types';
+import { Icon } from './Icon';
 
 interface Props {
   onState?: (state: DeviceState) => void;
@@ -85,7 +86,8 @@ export function DeviceBar({ onState }: Props) {
 
       <div className="device-profile">
         <button type="button" className="device-btn" onClick={() => setOpen((v) => !v)} disabled={state.busy}>
-          {profile.label} ▾
+          {profile.label}
+          <Icon name="chevron-down" size={14} />
         </button>
         {open && (
           <>
@@ -106,7 +108,11 @@ export function DeviceBar({ onState }: Props) {
                   >
                     <span className="device-menu-label">
                       {spec.label}
-                      {id === state.profile && <span className="device-menu-check">✓</span>}
+                      {id === state.profile && (
+                        <span className="device-menu-check">
+                          <Icon name="check" size={14} />
+                        </span>
+                      )}
                     </span>
                     <span className="device-menu-desc">{spec.description}</span>
                     {spec.proprietary && (

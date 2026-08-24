@@ -6,6 +6,7 @@ import { AppLibrary } from './components/AppLibrary';
 import { StoreView } from './components/Store/StoreView';
 import { AccountChip } from './components/Account/AccountChip';
 import { SignInDialog } from './components/Account/SignInDialog';
+import { IconSprite } from './components/Icon';
 import type { AccountState } from '../shared/account-types';
 import type { SetupStepStatus } from '../shared/ipc-types';
 
@@ -38,39 +39,47 @@ export function App() {
   }, [booted]);
 
   if (!ready) {
-    return <SetupWizard steps={steps} onContinue={() => setReady(true)} />;
+    return (
+      <>
+        <IconSprite />
+        <SetupWizard steps={steps} onContinue={() => setReady(true)} />
+      </>
+    );
   }
 
   return (
-    <div className="app">
-      <nav className="tabs">
-        <span className="tabs-logo" aria-hidden="true" />
-        <div className="tabs-list">
-          <button type="button" className={tab === 'screen' ? 'on' : ''} onClick={() => setTab('screen')}>
-            Screen
-          </button>
-          <button type="button" className={tab === 'apps' ? 'on' : ''} onClick={() => setTab('apps')}>
-            Apps
-          </button>
-          <button type="button" className={tab === 'store' ? 'on' : ''} onClick={() => setTab('store')}>
-            Store
-          </button>
+    <>
+      <IconSprite />
+      <div className="app">
+        <nav className="tabs">
+          <span className="tabs-logo" aria-hidden="true" />
+          <div className="tabs-list">
+            <button type="button" className={tab === 'screen' ? 'on' : ''} onClick={() => setTab('screen')}>
+              Screen
+            </button>
+            <button type="button" className={tab === 'apps' ? 'on' : ''} onClick={() => setTab('apps')}>
+              Apps
+            </button>
+            <button type="button" className={tab === 'store' ? 'on' : ''} onClick={() => setTab('store')}>
+              Store
+            </button>
+          </div>
+          <span className="tabs-spacer" />
+          <AccountChip state={account} onOpen={() => setShowAccount(true)} />
+        </nav>
+
+        <DeviceBar />
+
+        <div className="stage">
+          {tab === 'screen' && <AndroidScreen onFirstFrame={() => setBooted(true)} />}
+          {tab === 'apps' && <AppLibrary />}
+          {tab === 'store' && <StoreView />}
         </div>
-        <span className="tabs-spacer" />
-        <AccountChip state={account} onOpen={() => setShowAccount(true)} />
-      </nav>
 
-      <DeviceBar />
-
-      <div className="stage">
-        {tab === 'screen' && <AndroidScreen onFirstFrame={() => setBooted(true)} />}
-        {tab === 'apps' && <AppLibrary />}
-        {tab === 'store' && <StoreView />}
+        {showAccount && account && (
+          <SignInDialog state={account} onChange={updateAccount} onClose={() => setShowAccount(false)} />
+        )}
       </div>
-
-      {showAccount && account && (
-        <SignInDialog state={account} onChange={updateAccount} onClose={() => setShowAccount(false)} />
-      )}
-    </div>
+    </>
   );
 }
