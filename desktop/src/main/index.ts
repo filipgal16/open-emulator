@@ -2,6 +2,7 @@ import { app, BrowserWindow, ipcMain, Menu } from 'electron';
 import path from 'path';
 import { DevicePrefsStore, parseStatus } from './device-status';
 import { LogHandler, WslBridge, WslTarget } from './wsl-bridge';
+import { WslEngine } from './engine/wsl-engine';
 import { OpenEmuClient } from './open-emu-client';
 import { buildSteps, SetupRunner } from './setup-wizard';
 import { ScreenMirror } from './screen-mirror';
@@ -23,7 +24,11 @@ const target: WslTarget = {
 };
 
 const bridge = new WslBridge(target);
-const openEmu = new OpenEmuClient(bridge);
+// The one place a runtime is chosen. Everything downstream holds `openEmu` and cannot tell which
+// engine is underneath — that is what makes swapping WSL for a native Windows process a local
+// change rather than a rewrite.
+const engine = new WslEngine(bridge, target);
+const openEmu = new OpenEmuClient(engine);
 const setupRunner = new SetupRunner(buildSteps(bridge, openEmu, target));
 const mirror = new ScreenMirror(target);
 const library = new AppLibrary(openEmu);
@@ -269,7 +274,7 @@ ipcMain.handle('device:set-profile', async (_event, id: unknown): Promise<Device
   }
 
   deviceError = null;
-  target.profile = id;
+  openEmu.setProfile(id);
   devicePrefs?.set(id);
   lastStatus = {};
   return refreshDeviceState();
@@ -278,7 +283,7 @@ ipcMain.handle('device:set-profile', async (_event, id: unknown): Promise<Device
 app.whenReady().then(() => {
   devicePrefs = new DevicePrefsStore(path.join(app.getPath('userData'), 'device.json'));
   // An explicit environment override still wins — it is how a developer pins a guest for a run.
-  if (!process.env.OPEN_EMULATOR_ANDROID_PROFILE) target.profile = devicePrefs.get();
+  if (!process.env.OPEN_EMULATOR_ANDROID_PROFILE) openEmu.setProfile(devicePrefs.get());
 
   // Built here rather than at module scope: these stores live under `app.getPath('userData')`,
   // which isn't resolvable until the app is ready.

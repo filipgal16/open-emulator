@@ -4,7 +4,6 @@ import path from 'path';
 import type { InstallJob } from '../../shared/store-types';
 import type { AppLibrary } from '../app-library';
 import type { OpenEmuClient } from '../open-emu-client';
-import { toWslMountPath } from '../win-paths';
 import type { DownloadSpec } from './sources/source';
 
 const MAX_APK_BYTES = 1_500 * 1024 * 1024;
@@ -142,16 +141,10 @@ export class Installer {
 
     this.update(job, { state: 'installing' });
 
-    let wslPath: string;
     try {
-      wslPath = toWslMountPath(apkPath);
-    } catch (err) {
-      this.fail(job, (err as Error).message);
-      return;
-    }
-
-    try {
-      const result = await this.openEmu.install(wslPath, () => undefined, INSTALL_TIMEOUT_MS);
+      // A Windows path, handed over as-is. Whether it needs translating for the runtime carrying
+      // it is the engine's problem, which is what keeps this class runtime-agnostic.
+      const result = await this.openEmu.install(apkPath, () => undefined, INSTALL_TIMEOUT_MS);
       if (result.code !== 0) {
         // `fail` rather than `failure`: adb's own wording is "failed to install" and
         // "INSTALL_FAILED_…", and matching only the noun threw away the one line worth showing.
