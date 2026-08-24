@@ -1,6 +1,13 @@
 import { spawn } from 'child_process';
 import { decodeWindowsProcessOutput } from './windows-text';
+import { isRebootPending, runElevated } from './engine/elevation';
 import type { LogStream } from '../shared/ipc-types';
+
+// Re-exported so existing callers keep a single import site while the WSL path is retired. The
+// implementations moved to engine/elevation.ts because enabling the Windows Hypervisor Platform
+// needs exactly the same two things installing WSL did: one elevated command, and an honest answer
+// about whether Windows wants a restart before it takes effect.
+export { isRebootPending, runElevated };
 
 /**
  * Matches `LogHandler` in wsl-bridge, declared here so detection stays independent of the bridge.
@@ -58,41 +65,6 @@ export async function isWslAvailable(): Promise<boolean> {
   }
 }
 
-/**
- * True when Windows has staged feature changes that need a restart to take effect.
- *
- * `wsl --install` enables the Virtual Machine Platform optional feature. On a machine that did not
- * already have it, the command reports success, registers no distro, and everything stays that way
- * until the machine reboots — while `wsl --status` keeps exiting 0 throughout, so
- * `isWslAvailable()` sees nothing wrong.
- *
- * That combination is what a first-time user actually hits: a green "Windows Subsystem for Linux —
- * Installed" immediately followed by "no usable distro found", and no mention anywhere of the one
- * action that fixes it. This is only ever used to *explain* a failure, never to cause one — a
- * reboot pending for unrelated reasons (a Windows update) must not block setup on a machine where
- * WSL already works.
- *
- * The CBS key is the one servicing sets when an optional feature is enabled but not yet live.
- */
-export function isRebootPending(): Promise<boolean> {
-  const key = 'HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Component Based Servicing\\RebootPending';
-  return new Promise((resolve) => {
-    const child = spawn('reg.exe', ['query', key], { windowsHide: true });
-    let settled = false;
-    const done = (value: boolean) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      resolve(value);
-    };
-    // Absence of the key is the common case and exits non-zero; anything unexpected is reported as
-    // "not pending" so this can never be the reason setup fails.
-    const timer = setTimeout(() => done(false), 10_000);
-    child.on('error', () => done(false));
-    child.on('close', (code) => done(code === 0));
-  });
-}
-
 export async function listDistros(): Promise<DistroInfo[]> {
   const { stdout } = await runWslRaw(['-l', '-v']);
   const lines = stdout
@@ -113,44 +85,6 @@ export async function listDistros(): Promise<DistroInfo[]> {
     distros.push({ name, state, version, isDefault });
   }
   return distros;
-}
-
-/**
- * Runs a command elevated, via a UAC prompt.
- *
- * Resolves only if the user accepts and the command exits 0. Declining the prompt throws, which
- * the caller surfaces as a setup failure rather than a silent no-op.
- */
-function runElevated(file: string, args: string[], timeoutMs = 15 * 60_000): Promise<void> {
-  const quoted = args.map((a) => `'${a.replace(/'/g, "''")}'`).join(',');
-  const script = `$p = Start-Process -FilePath '${file}' -ArgumentList ${quoted} -Verb RunAs -Wait -PassThru; exit $p.ExitCode`;
-
-  return new Promise((resolve, reject) => {
-    const child = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], {
-      windowsHide: true,
-    });
-    let settled = false;
-    const timer = setTimeout(() => {
-      if (settled) return;
-      settled = true;
-      child.kill();
-      reject(new Error('the elevated command timed out'));
-    }, timeoutMs);
-
-    child.on('error', (err) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      reject(err);
-    });
-    child.on('close', (code) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      if (code === 0) resolve();
-      else reject(new Error(`elevation was declined or the command failed (exit ${code})`));
-    });
-  });
 }
 
 /**
