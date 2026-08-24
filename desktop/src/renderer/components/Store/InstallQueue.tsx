@@ -1,5 +1,6 @@
 import type { InstallJob } from '../../../shared/store-types';
 import { formatBytes } from '../../../shared/store-types';
+import { Icon } from '../Icon';
 
 interface Props {
   jobs: InstallJob[];
@@ -52,7 +53,7 @@ export function InstallQueue({ jobs, onDismiss }: Props) {
             <span className="install-status">{describe(job)}</span>
             {(job.state === 'done' || job.state === 'failed') && (
               <button type="button" className="install-dismiss" onClick={() => onDismiss(job.id)} aria-label="Dismiss">
-                ×
+                <Icon name="x" size={16} />
               </button>
             )}
           </div>

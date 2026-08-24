@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 import type { LogEvent, SetupStepStatus } from '../../../shared/ipc-types';
+import { Icon, type IconName } from '../Icon';
 
-const ICONS: Record<SetupStepStatus['status'], string> = {
-  pending: '○',
-  running: '◐',
-  pass: '✓',
-  fail: '✕',
-  warn: '!',
+const STEP_ICONS: Record<SetupStepStatus['status'], IconName> = {
+  pending: 'circle',
+  running: 'loader',
+  pass: 'check',
+  fail: 'x',
+  warn: 'alert',
 };
 
 interface Props {
@@ -148,7 +149,9 @@ export function SetupWizard({ steps, onContinue }: Props) {
             <ul className="steps">
               {steps.map((step) => (
                 <li key={step.id} className={`step step-${step.status}`}>
-                  <span className="icon">{ICONS[step.status]}</span>
+                  <span className="icon">
+                    <Icon name={STEP_ICONS[step.status]} size={14} />
+                  </span>
                   <span className="label">{step.label}</span>
                   <span className="detail">{step.detail}</span>
                 </li>

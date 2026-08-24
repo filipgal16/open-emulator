@@ -24,3 +24,6 @@ desktop/out/
 # Installer output, and the generated app icon (rebuild with `npm run icon`).
 desktop/release/
 desktop/build/
+
+# Scoped briefs handed to the Cursor CLI. Working files, not part of the product.
+.cursor-brief.md
