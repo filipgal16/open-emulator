@@ -7,18 +7,22 @@ import { StoreView } from './components/Store/StoreView';
 import { AccountChip } from './components/Account/AccountChip';
 import { SignInDialog } from './components/Account/SignInDialog';
 import { IconSprite } from './components/Icon';
+import { NavRail, type WorkspaceId } from './components/NavRail';
+import { ToolRail } from './components/ToolRail';
 import type { AccountState } from '../shared/account-types';
+import { INITIAL_DEVICE_STATE, type DeviceState } from '../shared/device-types';
 import type { SetupStepStatus } from '../shared/ipc-types';
-
-type Tab = 'screen' | 'apps' | 'store';
 
 export function App() {
   const [steps, setSteps] = useState<SetupStepStatus[]>([]);
   const [ready, setReady] = useState(false);
-  const [tab, setTab] = useState<Tab>('screen');
+  const [tab, setTab] = useState<WorkspaceId>('screen');
   const [account, setAccount] = useState<AccountState | null>(null);
   const [booted, setBooted] = useState(false);
   const [showAccount, setShowAccount] = useState(false);
+  const [theater, setTheater] = useState(false);
+  const [rotation, setRotation] = useState(0);
+  const [device, setDevice] = useState<DeviceState>(INITIAL_DEVICE_STATE);
 
   const updateAccount = useCallback((next: AccountState) => setAccount(next), []);
 
@@ -38,6 +42,20 @@ export function App() {
     if (booted) void window.openEmu.accountRefresh(true).then(setAccount);
   }, [booted]);
 
+  useEffect(() => {
+    function onKey(event: KeyboardEvent) {
+      if (event.key !== 'Escape') return;
+      if (theater) {
+        setTheater(false);
+        event.preventDefault();
+        return;
+      }
+      if (showAccount) setShowAccount(false);
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [theater, showAccount]);
+
   if (!ready) {
     return (
       <>
@@ -47,38 +65,52 @@ export function App() {
     );
   }
 
+  const live = device.phase === 'running';
+
+  function selectWorkspace(id: WorkspaceId) {
+    setShowAccount(false);
+    setTab(id);
+  }
+
   return (
     <>
       <IconSprite />
-      <div className="app">
-        <nav className="tabs">
-          <span className="tabs-logo" aria-hidden="true" />
-          <div className="tabs-list">
-            <button type="button" className={tab === 'screen' ? 'on' : ''} onClick={() => setTab('screen')}>
-              Screen
-            </button>
-            <button type="button" className={tab === 'apps' ? 'on' : ''} onClick={() => setTab('apps')}>
-              Apps
-            </button>
-            <button type="button" className={tab === 'store' ? 'on' : ''} onClick={() => setTab('store')}>
-              Store
-            </button>
-          </div>
-          <span className="tabs-spacer" />
+      <div className={theater ? 'app app-theater' : 'app'}>
+        <header className="titlebar">
+          <span className="titlebar-brand">
+            <span className="titlebar-logo" aria-hidden="true" />
+            open-emulator
+          </span>
+          <span className="titlebar-spacer" />
           <AccountChip state={account} onOpen={() => setShowAccount(true)} />
-        </nav>
+        </header>
 
-        <DeviceBar />
+        <div className="workspace">
+          <NavRail active={tab} onSelect={selectWorkspace} />
 
-        <div className="stage">
-          {tab === 'screen' && <AndroidScreen onFirstFrame={() => setBooted(true)} />}
-          {tab === 'apps' && <AppLibrary />}
-          {tab === 'store' && <StoreView />}
+          <main className="stage">
+            {showAccount && account ? (
+              <SignInDialog state={account} onChange={updateAccount} onClose={() => setShowAccount(false)} />
+            ) : tab === 'screen' ? (
+              <div className={rotation ? `viewport is-rot-${rotation}` : 'viewport'}>
+                <AndroidScreen onFirstFrame={() => setBooted(true)} />
+              </div>
+            ) : tab === 'apps' ? (
+              <AppLibrary />
+            ) : (
+              <StoreView />
+            )}
+          </main>
+
+          <ToolRail
+            live={live}
+            theater={theater}
+            onToggleTheater={() => setTheater((value) => !value)}
+            onRotate={() => setRotation((deg) => (deg + 90) % 360)}
+          />
         </div>
 
-        {showAccount && account && (
-          <SignInDialog state={account} onChange={updateAccount} onClose={() => setShowAccount(false)} />
-        )}
+        <DeviceBar onState={setDevice} />
       </div>
     </>
   );

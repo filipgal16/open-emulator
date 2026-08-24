@@ -31,6 +31,11 @@ function wire(): void {
   });
 }
 
+/** Latest mirrored frame URL, or null before the guest has painted. Does not subscribe. */
+export function peekGuestFrame(): string | null {
+  return currentUrl;
+}
+
 /** The latest mirrored frame as an object URL, or null before the guest has painted. */
 export function useGuestScreen(): string | null {
   const [url, setUrl] = useState<string | null>(currentUrl);

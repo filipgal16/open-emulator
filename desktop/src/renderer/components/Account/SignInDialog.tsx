@@ -53,8 +53,8 @@ export function SignInDialog({ state, onChange, onClose }: Props) {
   }
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal modal-wide" onClick={(event) => event.stopPropagation()}>
+    <div className="account-panel">
+      <div className="modal modal-wide">
         <h2>Account</h2>
         <p className={state.guest.state === 'signed-in' ? 'account-ok' : 'modal-note'}>{guestSummary(state)}</p>
 
@@ -140,8 +140,8 @@ export function SignInDialog({ state, onChange, onClose }: Props) {
         <h3 className="account-subhead">Sign in on this guest</h3>
         <p className="modal-note">
           Opens Google&apos;s own add-account screen in the guest. Fill the fields from here if you
-          like; you complete the flow, including any two-factor or verification step, on the Screen
-          tab. Once it is done, <code>open-emu provision</code> folds it into the snapshot and the
+          like; you complete the flow, including any two-factor or verification step, on the device.
+          Once it is done, <code>open-emu provision</code> folds it into the snapshot and the
           guest comes back signed in on every later start.
         </p>
 

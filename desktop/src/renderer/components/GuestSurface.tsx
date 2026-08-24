@@ -12,10 +12,22 @@ interface Props {
 /** Below this much movement, a drag was someone tapping with an unsteady hand. */
 const SWIPE_THRESHOLD_PX = 12;
 
+function cssRotation(el: HTMLElement): 0 | 90 | 180 | 270 {
+  const t = getComputedStyle(el).transform;
+  if (!t || t === 'none') return 0;
+  const m = new DOMMatrix(t);
+  const a = Math.round(m.a);
+  const b = Math.round(m.b);
+  if (a === 0 && b === 1) return 90;
+  if (a === -1 && b === 0) return 180;
+  if (a === 0 && b === -1) return 270;
+  return 0;
+}
+
 /**
  * The mirrored guest, with pointer input forwarded.
  *
- * Shared by the Screen tab and the Store's Play frame so both behave identically — a scroll that
+ * Shared by the device workspace and the Store's Play frame so both behave identically — a scroll that
  * works in one and not the other would be a bug report waiting to happen, and the Play client is
  * unusable without scrolling.
  */
@@ -36,15 +48,30 @@ export function GuestSurface({ onFirstFrame, className, waitingLabel = 'Waiting 
    * Display coordinates → guest coordinates.
    *
    * The captured PNG is at full device resolution, so naturalWidth/naturalHeight give the scale
-   * factor directly — no separate `wm size` round trip needed.
+   * factor directly — no separate `wm size` round trip needed. A CSS rotate on the image (the
+   * tool-rail control) is inverted here so taps still land on the pixel that was clicked.
    */
   function toGuest(clientX: number, clientY: number): { x: number; y: number } | null {
     const img = imgRef.current;
     if (!img || !img.naturalWidth || !img.naturalHeight) return null;
     const rect = img.getBoundingClientRect();
+    if (!rect.width || !rect.height) return null;
+
+    const turn = cssRotation(img);
+    if (turn === 0) {
+      return {
+        x: Math.round((clientX - rect.left) * (img.naturalWidth / rect.width)),
+        y: Math.round((clientY - rect.top) * (img.naturalHeight / rect.height)),
+      };
+    }
+
+    const nx = (clientX - rect.left) / rect.width;
+    const ny = (clientY - rect.top) / rect.height;
+    const localX = turn === 90 ? 1 - ny : turn === 180 ? 1 - nx : ny;
+    const localY = turn === 90 ? nx : turn === 180 ? 1 - ny : 1 - nx;
     return {
-      x: Math.round((clientX - rect.left) * (img.naturalWidth / rect.width)),
-      y: Math.round((clientY - rect.top) * (img.naturalHeight / rect.height)),
+      x: Math.round(localX * img.naturalWidth),
+      y: Math.round(localY * img.naturalHeight),
     };
   }
 

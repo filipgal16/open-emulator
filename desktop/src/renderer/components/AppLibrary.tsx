@@ -61,7 +61,7 @@ export function AppLibrary() {
         <div className="empty-state">
           <p className="empty-title">Nothing installed yet</p>
           <p className="library-empty">
-            Open the Store tab to browse F-Droid, or drop an APK onto the Store to install one
+            Open the Store to browse F-Droid, or drop an APK onto the Store to install one
             directly.
           </p>
         </div>
