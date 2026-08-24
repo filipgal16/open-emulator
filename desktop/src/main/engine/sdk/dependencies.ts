@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readdirSync, rmSync, statSync } from 'fs';
+import { existsSync, mkdirSync, readdirSync, renameSync, rmSync, statSync } from 'fs';
 import path from 'path';
 import { downloadAll, type DownloadProgress, type DownloadSpec } from '../download';
 import type { GuestProfile } from '../env-file';
@@ -85,16 +85,17 @@ export interface AcquireOptions {
   keepArchives?: boolean;
 }
 
-/** Where a package's zip lands before extraction, and where it unpacks to. */
+/**
+ * Where a package's zip lands, and the directory it must end up as.
+ *
+ * A package coordinate maps directly onto the SDK's directory layout: `platforms;android-30`
+ * becomes `platforms/android-30`, and `system-images;android-30;default;x86_64` becomes the
+ * matching four-deep path. `platform-tools` and `emulator` have a single segment and sit at the
+ * root.
+ */
 function archivePaths(layout: SdkLayout, archive: SdkArchive): { zip: string; dest: string } {
   const zip = path.join(layout.root, 'downloads', archive.url.split('/').pop() ?? `${archive.path}.zip`);
-  // Package coordinates are `a;b;c` and map to nested directories. `platform-tools` unpacks with
-  // its own top-level directory, so it extracts to the SDK root; the others sit under their path.
-  const segments = archive.path.split(';');
-  const dest =
-    archive.path === 'platform-tools' || archive.path === 'emulator'
-      ? layout.sdkRoot
-      : path.join(layout.sdkRoot, ...segments.map(sanitizeSegment));
+  const dest = path.join(layout.sdkRoot, ...archive.path.split(';').map(sanitizeSegment));
   return { zip, dest };
 }
 
@@ -138,12 +139,55 @@ export async function acquireDependencies(options: AcquireOptions): Promise<void
   for (const archive of plan.archives) {
     const { zip, dest } = archivePaths(layout, archive);
     onLog('stdout', `extracting ${archive.displayName}`);
-    mkdirSync(dest, { recursive: true });
-    await extractZip(zip, dest);
+    await extractInto(zip, dest);
 
     // Only after the extraction it belongs to has succeeded. Deleting eagerly would mean a failure
     // here costs the whole download again.
     if (!keepArchives) rmSync(zip, { force: true });
+  }
+
+  // The archives are gone; the directory that held them is just clutter.
+  const downloads = path.join(layout.root, 'downloads');
+  if (!keepArchives && existsSync(downloads) && readdirSync(downloads).length === 0) {
+    rmSync(downloads, { recursive: true, force: true });
+  }
+}
+
+/**
+ * Unpacks an SDK archive and puts it exactly where the SDK layout requires.
+ *
+ * Every one of these zips already contains a single top-level directory, and its name is **not**
+ * always the name the destination needs:
+ *
+ *   platform-tools                            zip has `platform-tools/`  → platform-tools
+ *   emulator                                  zip has `emulator/`        → emulator
+ *   platforms;android-30                      zip has `android-11/`      → platforms/android-30
+ *   system-images;android-30;default;x86_64   zip has `x86_64/`          → …/default/x86_64
+ *
+ * So extracting straight into the destination is wrong twice over: it nests a redundant level
+ * (`…/default/x86_64/x86_64/system.img`, which is where a real run actually put it) and it leaves
+ * the platform under its version name rather than its API level. `sdkmanager` handles this by
+ * extracting aside and renaming, and so does this.
+ */
+export async function extractInto(zip: string, dest: string): Promise<void> {
+  const staging = `${dest}.staging`;
+  rmSync(staging, { recursive: true, force: true });
+  mkdirSync(staging, { recursive: true });
+
+  try {
+    await extractZip(zip, staging);
+
+    const entries = readdirSync(staging, { withFileTypes: true });
+    const roots = entries.filter((entry) => entry.isDirectory());
+    // One directory and nothing else is the shape every SDK archive has. Anything else means the
+    // packaging changed, and guessing which part to promote would put files somewhere arbitrary.
+    const source = roots.length === 1 && entries.length === 1 ? path.join(staging, roots[0].name) : staging;
+
+    rmSync(dest, { recursive: true, force: true });
+    mkdirSync(path.dirname(dest), { recursive: true });
+    renameSync(source, dest);
+  } finally {
+    rmSync(staging, { recursive: true, force: true });
   }
 }
 
