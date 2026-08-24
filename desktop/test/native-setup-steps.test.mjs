@@ -81,8 +81,11 @@ test('every step that can fail itself offers a fix, and blocking steps are marke
     const byId = Object.fromEntries(all.map((s) => [s.id, s]));
 
     assert.equal(byId.sdk.blocking, true);
-    assert.equal(byId.provisioned.blocking, true);
     assert.equal(byId.extractor.blocking, true);
+    // Preparing the device is deliberately NOT blocking. It is the only step that needs a
+    // hypervisor, so blocking on it would gate the whole several-gigabyte setup behind a restart —
+    // this way everything downloads, and the restart is something the user does when convenient.
+    assert.equal(byId.provisioned.blocking, false);
     // The extractor ships with Windows; there is nothing this app can do to install it.
     assert.equal(typeof byId.extractor.fix, 'undefined');
     assert.equal(typeof byId.sdk.fix, 'function');

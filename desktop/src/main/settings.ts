@@ -1,6 +1,6 @@
-import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, statSync, writeFileSync } from 'fs';
+import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from 'fs';
 import path from 'path';
-import type { Settings, StorageUsage, ThemeChoice } from '../shared/settings-types';
+import type { MoveResult, Settings, StorageUsage, ThemeChoice } from '../shared/settings-types';
 import { DEFAULT_SETTINGS, isDeviceId } from '../shared/settings-types';
 
 function isTheme(value: unknown): value is ThemeChoice {
@@ -68,10 +68,78 @@ function sanitize(raw: unknown): Settings {
 
   return {
     theme: isTheme(input.theme) ? input.theme : DEFAULT_SETTINGS.theme,
+    downloadRoot: sanitizeRoot(input.downloadRoot),
     device: isDeviceId(input.device) ? input.device : DEFAULT_SETTINGS.device,
     cores: clamp(input.cores, 1, 32),
     ramMb: clamp(input.ramMb, 1024, 16_384),
   };
+}
+
+/**
+ * A download location, or null for the default.
+ *
+ * Required to be absolute. A relative path would be resolved against whatever working directory
+ * the app happened to inherit, which is how a packaged build once created a directory beside
+ * itself and downloaded four gigabytes into it.
+ */
+function sanitizeRoot(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  if (trimmed.length === 0) return null;
+  return path.isAbsolute(trimmed) ? path.normalize(trimmed) : null;
+}
+
+/**
+ * Moves an existing download directory to a new location.
+ *
+ * The case that matters is the one where someone changes the folder *after* the four-gigabyte
+ * download: leaving the old copy behind would silently re-download everything and orphan the
+ * original, which is the worst of both outcomes.
+ *
+ * A rename is tried first and is instantaneous within a volume — which is the common case of
+ * tidying a folder on the same disk. Across volumes a rename fails with EXDEV, and only then does
+ * this fall back to a recursive copy, which is slow enough to be worth avoiding when it can be.
+ */
+export function moveDownloadRoot(from: string, to: string): MoveResult {
+  if (path.resolve(from) === path.resolve(to)) {
+    return { ok: true, message: 'That is already the current location.', movedBytes: 0 };
+  }
+  if (!existsSync(from)) {
+    return { ok: true, message: 'Nothing had been downloaded yet, so there was nothing to move.', movedBytes: 0 };
+  }
+
+  const bytes = directorySize(from);
+
+  // Refusing beats half-merging into someone else's directory.
+  if (existsSync(to) && readdirSync(to).length > 0) {
+    return { ok: false, message: `${to} already contains files. Choose an empty folder.`, movedBytes: 0 };
+  }
+
+  try {
+    mkdirSync(path.dirname(to), { recursive: true });
+    renameSync(from, to);
+    return { ok: true, message: `Moved ${formatBytes(bytes)} to ${to}.`, movedBytes: bytes };
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'EXDEV') {
+      return { ok: false, message: `Could not move the files: ${(err as Error).message}`, movedBytes: 0 };
+    }
+  }
+
+  // Different volume. Copy, verify it arrived, and only then remove the original — losing a
+  // multi-gigabyte download to a failed copy is not a recoverable mistake.
+  try {
+    cpSync(from, to, { recursive: true });
+    rmSync(from, { recursive: true, force: true });
+    return { ok: true, message: `Copied ${formatBytes(bytes)} to ${to}.`, movedBytes: bytes };
+  } catch (err) {
+    return { ok: false, message: `Could not copy the files: ${(err as Error).message}`, movedBytes: 0 };
+  }
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes >= 1024 ** 3) return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
+  if (bytes >= 1024 ** 2) return `${Math.round(bytes / 1024 ** 2)} MB`;
+  return `${Math.max(1, Math.round(bytes / 1024))} KB`;
 }
 
 /**

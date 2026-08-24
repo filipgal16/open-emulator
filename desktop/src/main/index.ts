@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, Menu, nativeTheme } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, Menu, nativeTheme } from 'electron';
 import os from 'os';
 import path from 'path';
 import { DevicePrefsStore, parseStatus } from './device-status';
@@ -11,7 +11,7 @@ import { EngineMirror } from './engine/engine-mirror';
 import { buildNativeSteps } from './engine/sdk/setup-steps';
 import { loadProfile } from './engine/env-file';
 import { repoRootWinPath } from './win-paths';
-import { SettingsStore, storageUsage } from './settings';
+import { moveDownloadRoot, SettingsStore, storageUsage } from './settings';
 import { DEFAULT_SETTINGS } from '../shared/settings-types';
 import type { SettingsState, ThemeChoice } from '../shared/settings-types';
 import { cleanup } from './engine/sdk/dependencies';
@@ -34,6 +34,13 @@ const target: WslTarget = {
   profile: process.env.OPEN_EMULATOR_ANDROID_PROFILE ?? null,
 };
 
+/**
+ * Settings load before the engine, because the download location is one of them and the engine
+ * bakes its paths in at construction. app.getPath('userData') is available at module scope —
+ * only windows and custom protocols have to wait for 'ready'.
+ */
+const settings = new SettingsStore(path.join(app.getPath('userData'), 'settings.json'));
+
 const bridge = new WslBridge(target);
 // The one place a runtime is chosen. Everything downstream holds `openEmu` and cannot tell which
 // engine is underneath — that is what makes swapping WSL for a native Windows process a local
@@ -46,9 +53,10 @@ const engineId = resolveEngineId(process.env.OPEN_EMULATOR_ENGINE);
 const { engine, layout } = createEngine({
   id: engineId,
   profile: target.profile,
+  downloadRoot: settings.get().downloadRoot,
   // Read live rather than captured: settings load after this, and a change should apply to the
   // next boot without restarting the app.
-  device: () => settings?.get().device ?? 'generic',
+  device: () => settings.get().device,
   wsl: { bridge, target },
   onLog: (line) => console.log(line),
 });
@@ -330,10 +338,8 @@ ipcMain.handle('device:set-profile', async (_event, id: unknown): Promise<Device
  * downloads lives under `%LOCALAPPDATA%\open-emulator`. Keeping them apart is what lets "free up
  * space" delete gigabytes without touching the account or a single preference.
  */
-let settings: SettingsStore | null = null;
-
 async function settingsState(): Promise<SettingsState> {
-  const current = settings?.get() ?? DEFAULT_SETTINGS;
+  const current = settings.get();
   const acceleration = await detectAcceleration();
 
   const hostCpus = os.cpus().length;
@@ -368,17 +374,53 @@ function applyTheme(choice: ThemeChoice): void {
 
 app.whenReady().then(() => {
   devicePrefs = new DevicePrefsStore(path.join(app.getPath('userData'), 'device.json'));
-  settings = new SettingsStore(path.join(app.getPath('userData'), 'settings.json'));
   applyTheme(settings.get().theme);
 
   ipcMain.handle('settings:state', (): Promise<SettingsState> => settingsState());
 
   ipcMain.handle('settings:set', async (_event, patch: unknown): Promise<SettingsState> => {
-    const next = settings?.set(patch) ?? DEFAULT_SETTINGS;
+    const next = settings.set(patch);
     applyTheme(next.theme);
     // The device identity is baked in at boot, so a change only takes effect on the next start —
     // the engine is told now so it is not left describing the previous choice.
     return settingsState();
+  });
+
+  /**
+   * Choosing where the multi-gigabyte download lives.
+   *
+   * A native folder picker rather than a text field: this path has to be absolute and has to
+   * exist, and both are things a picker guarantees and a text box invites people to get wrong.
+   */
+  ipcMain.handle('settings:choose-download-folder', async (): Promise<SettingsState> => {
+    const window = mainWindow;
+    const chosen = await dialog.showOpenDialog(window ?? undefined!, {
+      title: 'Where should Android be downloaded?',
+      defaultPath: layout.root,
+      properties: ['openDirectory', 'createDirectory'],
+      buttonLabel: 'Use this folder',
+    });
+    if (chosen.canceled || chosen.filePaths.length === 0) return settingsState();
+
+    // Someone picking "D:\Android" almost certainly means a folder for this app, not for its
+    // contents to be strewn across whatever else is in there.
+    const target = path.join(chosen.filePaths[0], 'open-emulator');
+    const moved = moveDownloadRoot(layout.root, target);
+    console.log(`[settings] download folder: ${moved.message}`);
+
+    if (!moved.ok) return { ...(await settingsState()), lastMessage: moved.message };
+
+    settings.set({ downloadRoot: target });
+    return {
+      ...(await settingsState()),
+      lastMessage: `${moved.message} The change takes effect when open-emulator restarts.`,
+    };
+  });
+
+  /** Relaunches so a changed download location takes effect without the user hunting for it. */
+  ipcMain.handle('settings:restart-app', (): void => {
+    app.relaunch();
+    app.quit();
   });
 
   ipcMain.handle('settings:free-space', async (): Promise<SettingsState> => {

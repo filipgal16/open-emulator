@@ -113,4 +113,8 @@ export interface OpenEmuApi {
   settingsSet(patch: Partial<Settings>): Promise<SettingsState>;
   /** Deletes archives and scratch. Never touches the extracted SDK or a guest. */
   settingsFreeSpace(): Promise<SettingsState>;
+  /** Opens a native folder picker and moves any existing download to the chosen folder. */
+  settingsChooseDownloadFolder(): Promise<SettingsState>;
+  /** Relaunches the app, so a changed download location takes effect. */
+  settingsRestartApp(): Promise<void>;
 }
