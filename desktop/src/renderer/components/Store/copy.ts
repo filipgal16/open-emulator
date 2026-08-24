@@ -45,17 +45,6 @@ export function antiFeatureLabel(id: string): string {
   return ANTI_FEATURES[id] ?? id.replace(/([a-z])([A-Z])/g, '$1 $2');
 }
 
-export function formatUpdated(timestamp: number): string | null {
-  if (!Number.isFinite(timestamp) || timestamp <= 0) return null;
-  const days = Math.round((Date.now() - timestamp) / 86_400_000);
-  if (days < 1) return 'Updated today';
-  if (days === 1) return 'Updated yesterday';
-  if (days < 14) return `Updated ${days} days ago`;
-  if (days < 60) return `Updated ${Math.round(days / 7)} weeks ago`;
-  if (days < 365) return `Updated ${Math.round(days / 30)} months ago`;
-  return `Updated ${Math.round(days / 365)} years ago`;
-}
-
 export function sourceLabel(source: StoreApp['source']): string {
   if (source === 'fdroid') return 'F-Droid';
   if (source === 'local') return 'Local';

@@ -214,24 +214,18 @@ export function StoreView() {
                 <p className="store-home-hint">Drop an APK anywhere on this window to install it.</p>
               </header>
             )}
-            {results !== null && !browsing && (
+            {results !== null && !browsing && list.length > 0 && (
               <p className="store-section-label">
-                {list.length === 0
-                  ? state.indexReady
-                    ? `Nothing matched “${query.trim()}”`
-                    : 'Fetching the catalogue'
-                  : `${list.length} ${list.length === 1 ? 'result' : 'results'} for “${query.trim()}”`}
+                {`${list.length} ${list.length === 1 ? 'result' : 'results'} for “${query.trim()}”`}
               </p>
             )}
-            {results !== null && results.length === 0 && (
+            {results !== null && results.length === 0 && (!browsing || filter === 'local' || state.indexReady) && (
               <div className="empty-panel">
                 <p className="empty-title">
                   {browsing
                     ? filter === 'local'
                       ? 'No local APKs yet'
-                      : state.indexReady
-                        ? 'The catalogue is empty'
-                        : 'Fetching the catalogue'
+                      : 'The catalogue is empty'
                     : state.indexReady
                       ? 'Nothing matched'
                       : 'Fetching the catalogue'}
@@ -275,7 +269,7 @@ export function StoreView() {
 
       <div className="store-status">
         {state.indexReady && <span>{state.indexAppCount.toLocaleString()} apps</span>}
-        <span>{state.guestSdk === null ? 'guest not reachable' : `guest API ${state.guestSdk}`}</span>
+        <span>{state.guestSdk === null ? 'Device not running' : `Device API ${state.guestSdk}`}</span>
         <button type="button" className="store-link" onClick={() => void window.openEmu.storeRefreshIndex(true).then(setState)}>
           Refresh catalogue
         </button>

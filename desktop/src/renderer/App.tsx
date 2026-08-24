@@ -82,7 +82,7 @@ export function App() {
             open-emulator
           </span>
           <span className="titlebar-spacer" />
-          <AccountChip state={account} onOpen={() => setShowAccount(true)} />
+          <AccountChip state={account} open={showAccount} onOpen={() => setShowAccount(true)} />
         </header>
 
         <div className="workspace">

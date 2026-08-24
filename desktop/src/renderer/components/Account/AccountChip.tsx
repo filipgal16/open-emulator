@@ -2,6 +2,7 @@ import type { AccountState } from '../../../shared/account-types';
 
 interface Props {
   state: AccountState | null;
+  open?: boolean;
   onOpen: () => void;
 }
 
@@ -25,7 +26,7 @@ function caption(state: AccountState): string {
  * those can legitimately differ (a profile set up before the guest was ever started), and showing
  * the guest's answer first keeps the chip honest about the state that matters.
  */
-export function AccountChip({ state, onOpen }: Props) {
+export function AccountChip({ state, open = false, onOpen }: Props) {
   if (!state) return null;
 
   const signedIn = state.guest.state === 'signed-in';
@@ -33,9 +34,11 @@ export function AccountChip({ state, onOpen }: Props) {
   return (
     <button
       type="button"
-      className={`account-chip ${signedIn ? 'account-chip-on' : ''}`}
+      className={`account-chip ${signedIn ? 'account-chip-on' : ''} ${open ? 'is-open' : ''}`}
       onClick={onOpen}
-      title={signedIn ? 'Account — signed in on this guest' : 'Account'}
+      aria-expanded={open}
+      aria-controls="account-page"
+      title={signedIn ? 'Account — signed in on this device' : 'Account'}
     >
       <span className="account-avatar" aria-hidden="true">
         {initial(state)}
