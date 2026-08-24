@@ -11,7 +11,8 @@ No terminal. No configuration. Double-click, wait once, use Android.
 
 ### [⬇ Download open-emulator for Windows](https://github.com/filipgal16/open-emulator/releases/latest)
 
-**`open-emulator-Setup-0.0.1.exe`** — about 75 MB. One click, per-user install, no options to pick.
+**`open-emulator-Setup-0.0.1.exe`** — about 76 MB. Per-user install, no administrator prompt. The
+installer asks where to put the app, and the app asks where to put Android.
 
 Direct link to the current build:
 <https://github.com/filipgal16/open-emulator/releases/latest/download/open-emulator-Setup-0.0.1.exe>
@@ -29,7 +30,7 @@ file in `desktop/release/`.
 |---|---|
 | **OS** | Windows 10 or 11, x64 |
 | **Virtualization** | Enabled in BIOS — almost always already on |
-| **Disk** | **~15 GB free.** The installer is small; Android itself is ~4 GB and lives inside WSL |
+| **Disk** | **~10 GB free**, and you choose the drive. The installer is small; Android is the rest |
 | **Network** | Required for the first run only |
 
 ---
@@ -38,17 +39,21 @@ file in `desktop/release/`.
 
 Double-click and wait. There is nothing to configure and no terminal involved.
 
-The app installs Windows Subsystem for Linux (one Windows permission prompt), sets up a Linux
-environment, installs the packages Android needs, downloads the Android system image, and boots the
-guest once to save a snapshot so later starts are quick.
+The installer asks where to install — it defaults to your user folder and never needs an
+administrator prompt. Everything after that happens by itself: the app works out what this PC
+already has, downloads Android, and prepares a device.
 
-Budget **20–40 minutes**, most of it the 4 GB download. It happens once. If Windows asks you to
-restart after the WSL step, restart and reopen the app — it picks up where it left off.
+**Where Android is downloaded is up to you.** It is by far the largest thing here, so if your system
+drive is small, point it at another one — Settings → Storage → *Change folder*. Moving it later
+relocates what has already been downloaded rather than fetching it again.
 
-After that, starting Android takes about **10 seconds**.
+**Setup does not require a restart.** Everything downloads and completes in one go. Windows may need
+a restart before hardware acceleration is available, and without it the device cannot start — but
+that is the last step rather than a gate you hit at the beginning, and the download is already
+banked by then.
 
 If something fails, the setup screen says what failed and offers **Try again**; **Details** shows
-the step list and the full log.
+the step list and the full log. Nothing already downloaded is fetched twice.
 
 ---
 
@@ -84,6 +89,13 @@ same job a password manager does. You complete the flow, including two-factor.
 
 The password is optional, off by default, and stored in the Windows credential store. If that is
 unavailable the app stores nothing rather than falling back to a plain file.
+
+### Settings
+
+Theme, which handset the guest reports as, how many cores and how much memory it gets, and where
+Android is downloaded. The performance defaults are measured rather than obvious — more memory
+makes the guest *slower* to resume, because a warm start is dominated by restoring the snapshot's
+memory image — so the automatic answer is shown beside every override.
 
 ### Android versions
 
@@ -136,7 +148,7 @@ Full command reference: [`documentation.md`](documentation.md#the-open-emu-cli).
 cd desktop
 npm install
 npm run build        # compile main, typecheck renderer, bundle
-npm test             # 251 tests
+npm test             # 331 tests
 npm run dev          # build and launch
 npm run dist:win     # -> desktop/release/open-emulator-Setup-0.0.1.exe
 ```
@@ -196,15 +208,33 @@ command, the store and account internals, packaging, configuration, and troubles
 | [`desktop/PACKAGING.md`](desktop/PACKAGING.md) | Building and shipping the installer |
 | [`android/MODIFICATIONS.md`](android/MODIFICATIONS.md) | What the guest is tuned for |
 
+## Two runtimes
+
+The shell drives Android through one narrow interface, so the runtime underneath is swappable.
+
+| | |
+|---|---|
+| **WSL2** (default) | Google's SDK emulator inside a Linux distro. The original arrangement, and what ships today. Costs a ~4 GB distro install on top of Android itself. |
+| **Native Windows** | `emulator.exe` and `adb.exe` as ordinary Windows processes, no Linux involved. Set `OPEN_EMULATOR_ENGINE=sdk`. |
+
+The native runtime is **verified working** — cold boot 64s, snapshot restore 46s, on a Ryzen 7 6800H
+with the Windows Hypervisor Platform enabled — and downloads roughly **1.1 GB instead of 4.5–6.5 GB**
+because it needs no distro, no JDK, and no command-line tools. It is not yet the default only
+because it has been proven on one machine rather than many.
+
 ## Status
 
-**Working** — guest boot and snapshot restore, screen mirroring with touch input, the store across
-all three sources, the device-wide account, and a Windows installer.
+**Working** — guest boot and snapshot restore, screen mirroring with touch input, Android
+navigation, the store across all three sources, the device-wide account, settings, and a Windows
+installer.
 
-**In progress** — a licence-clean runtime (`android/foss/`) that replaces Google's SDK with stock
-QEMU and an Android-x86 image, so the product can be shipped commercially.
+**In progress** — the native Windows runtime (above), and a licence-clean runtime that replaces
+Google's SDK with stock QEMU and an Android-x86 image so the product can be shipped commercially.
+The Windows-hostile parts of that — reading an ISO without mounting it, and patching a gzipped cpio
+initrd — are done and tested.
 
-**Next** — `open-vmm` grown far enough to replace QEMU entirely, key mapping, and audio routing.
+**Next** — embedding the emulator's own window instead of streaming frames, `open-vmm` grown far
+enough to replace QEMU, key mapping, and audio routing.
 
 ## Licence
 
