@@ -59,7 +59,7 @@ export function IconSprite() {
 export function Icon({ name, size = 16, className }: IconProps) {
   return (
     <svg
-      className={className ? `oe-icon ${className}` : 'oe-icon'}
+      className={['oe-icon', `oe-icon-${name}`, className].filter(Boolean).join(' ')}
       width={size}
       height={size}
       viewBox="0 0 24 24"
