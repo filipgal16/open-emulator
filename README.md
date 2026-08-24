@@ -136,7 +136,7 @@ Full command reference: [`documentation.md`](documentation.md#the-open-emu-cli).
 cd desktop
 npm install
 npm run build        # compile main, typecheck renderer, bundle
-npm test             # 124 tests
+npm test             # 251 tests
 npm run dev          # build and launch
 npm run dist:win     # -> desktop/release/open-emulator-Setup-0.0.1.exe
 ```
