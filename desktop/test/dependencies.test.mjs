@@ -162,3 +162,47 @@ test('byte sizes read for humans', () => {
   assert.equal(formatBytes(676 * 1024 * 1024), '676 MB');
   assert.equal(formatBytes(1.2 * 1024 ** 3), '1.2 GB');
 });
+
+test('a zip whose top-level directory has a different name is renamed into place', opts, async () => {
+  await withTempDir(async (dir) => {
+    const { extractInto } = loadDist('engine/sdk/dependencies.js');
+
+    // Exactly the shape of the platform archive: the zip contains `android-11/`, but the SDK
+    // layout requires `platforms/android-30/`. A real run put it at platforms/android-30/android-11
+    // and the emulator would never have found it.
+    const zip = path.join(dir, 'platform.zip');
+    writeFileSync(zip, makeZip([['android-11/android.jar', 'classes'], ['android-11/source.properties', 'k=v']]));
+
+    const dest = path.join(dir, 'sdk', 'platforms', 'android-30');
+    await extractInto(zip, dest);
+
+    assert.equal(readFileSync(path.join(dest, 'android.jar'), 'utf8'), 'classes');
+    assert.ok(!existsSync(path.join(dest, 'android-11')), 'the redundant level must not survive');
+  });
+});
+
+test('a system image lands at the path the emulator looks for, not one level deeper', opts, async () => {
+  await withTempDir(async (dir) => {
+    const { extractInto } = loadDist('engine/sdk/dependencies.js');
+    const { createSdkLayout, systemImagePath } = loadDist('engine/sdk/layout.js');
+
+    const zip = path.join(dir, 'image.zip');
+    writeFileSync(zip, makeZip([['x86_64/system.img', 'IMG'], ['x86_64/build.prop', 'ro.x=1']]));
+
+    const layout = createSdkLayout(dir);
+    await extractInto(zip, path.join(layout.sdkRoot, 'system-images', 'android-30', 'default', 'x86_64'));
+
+    // The doubled x86_64/x86_64 this guards against is what a real acquisition actually produced.
+    assert.ok(existsSync(systemImagePath(layout, 'default')), 'system.img is not where the code looks for it');
+  });
+});
+
+test('extraction leaves no staging directory behind, even on failure', opts, async () => {
+  await withTempDir(async (dir) => {
+    const { extractInto } = loadDist('engine/sdk/dependencies.js');
+    const dest = path.join(dir, 'out');
+
+    await assert.rejects(() => extractInto(path.join(dir, 'missing.zip'), dest));
+    assert.ok(!existsSync(`${dest}.staging`), 'a failed extraction must not leave scratch behind');
+  });
+});
