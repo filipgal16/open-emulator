@@ -1,7 +1,7 @@
 import { existsSync } from 'fs';
-import type { OpenEmuClient } from '../../open-emu-client';
+import type { OpenEmuClient } from '../client';
 import type { CheckResult, Step } from '../../setup-wizard';
-import type { LogHandler } from '../../wsl-bridge';
+import type { LogHandler } from '../../wsl/bridge';
 import { detectAcceleration, enableWhpx } from '../acceleration';
 import { isRebootPending } from '../elevation';
 import { formatBytes, acquireDependencies, cleanup, resolveDependencies } from './dependencies';

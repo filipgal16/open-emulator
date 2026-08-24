@@ -8,6 +8,16 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const require = createRequire(import.meta.url);
 
 /**
+ * Anchors, so a test never counts '..' to find the tree.
+ *
+ * Tests live at varying depths under test/, and a relative walk silently resolves somewhere else
+ * the moment a file moves — which is exactly how a directory reshuffle turned a profile lookup
+ * into an empty list rather than an error.
+ */
+export const DESKTOP_ROOT = path.resolve(here, '..');
+export const REPO_ROOT = path.resolve(here, '..', '..');
+
+/**
  * Tests run against the compiled `dist/main` output rather than the TypeScript sources, so they
  * need no transpiler and no extra dependencies — `npm test` builds, then runs `node --test`.
  * Everything under `store/` and `account/` deliberately imports no electron except the `index.ts`

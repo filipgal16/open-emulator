@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import os from 'os';
 import path from 'path';
-import { guestShellArg } from '../../shell-quote';
+import { guestShellArg } from '../../platform/shell-quote';
 import { loadDevice, loadProfile, type DeviceIdentity, type GuestProfile } from '../env-file';
 import { ProcessRunner, spawnDetached, type DetachedProcess } from '../process';
 import type { AndroidEngine, EngineLogHandler, StartOptions } from '../types';

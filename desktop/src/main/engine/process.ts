@@ -1,5 +1,5 @@
 import { ChildProcess, spawn } from 'child_process';
-import { decodeWindowsProcessOutput } from '../windows-text';
+import { decodeWindowsProcessOutput } from '../platform/windows-text';
 import type { EngineLogHandler } from './types';
 import type { CommandResult, LogStream } from '../../shared/ipc-types';
 

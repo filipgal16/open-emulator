@@ -146,9 +146,9 @@ The Android display, mirrored as a stream of PNG frames pulled over the WSL chan
 drag to swipe. **Start** and **Stop** sit in the toolbar with a status light and the Android
 version.
 
-Input is built by `src/main/guest-input.ts`, which constructs tap/swipe/key/text commands and
+Input is built by `src/main/guest/input.ts`, which constructs tap/swipe/key/text commands and
 escapes them for the two shells between the app and the guest
-(`src/main/shell-quote.ts`).
+(`src/main/platform/shell-quote.ts`).
 
 ### Apps
 
@@ -674,24 +674,29 @@ Also worth knowing:
 desktop/                    Electron app
   src/main/                   privileged side
     index.ts                    entry, IPC registration
-    wsl-bridge.ts               every wsl.exe call goes through here
-    wsl-detect.ts               is WSL2 installed?
-    setup-wizard.ts             the first-run step machine
-    open-emu-client.ts          typed wrapper over the CLI
-    screen-mirror.ts            PNG frame stream
-    guest-input.ts              tap/swipe/key/text builders
-    shell-quote.ts              POSIX quoting across two shells
-    app-library.ts              installed-app list
-    device-status.ts            status light, version
+    settings.ts                 user settings + storage accounting
     image-cache.ts              https-only, byte-sniffed, hex ids
-    win-paths.ts                repoRootWinPath() — asar-aware
-    store/                      catalog, fdroid-index, installer, play, guest-facts, sources/
+    setup-wizard.ts             the first-run step machine
+    engine/                     the runtimes, and the seam above them
+      types.ts                    the AndroidEngine interface
+      client.ts                   typed facade everything above talks to
+      factory.ts                  the one place a runtime is chosen
+      process.ts download.ts      native child processes, resumable fetch
+      acceleration.ts elevation.ts
+      window-embed.ts             reparent a foreign HWND (koffi/user32)
+      sdk/                        Google's emulator, natively
+      qemu/                       Android-x86: iso9660, cpio, initrd, args
+      wsl-engine.ts               the runtime being retired
+    guest/                      talking to a running guest
+      client via engine/, app-library.ts, input.ts, device-status.ts
+    platform/                   win-paths.ts, windows-text.ts, shell-quote.ts
+    wsl/                        bridge.ts, detect.ts, screen-mirror.ts
+    store/                      catalog, fdroid-index, installer, play, sources/
     account/                    profile, vault, guest-account, signin-driver
   src/renderer/               UI (React)
-    App.tsx, components/{Store,Account,SetupWizard,…}
   src/preload/                context bridge
   src/shared/                 types crossing IPC
-  test/                       node --test suites (251)
+  test/                       node --test, mirroring src: engine/ app/ renderer/
   scripts/                    build-renderer, copy-static, make-icon
 
 android/                    Android runtime

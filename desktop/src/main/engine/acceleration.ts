@@ -1,5 +1,5 @@
 import { spawn } from 'child_process';
-import { decodeWindowsProcessOutput } from '../windows-text';
+import { decodeWindowsProcessOutput } from '../platform/windows-text';
 import { isRebootPending, runElevated } from './elevation';
 import type { EngineLogHandler } from './types';
 
