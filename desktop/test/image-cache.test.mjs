@@ -22,9 +22,8 @@ function fakeFetch(body) {
   return impl;
 }
 
-// The ads-facing behaviour is covered by creative-cache.test.mjs against the CreativeCache
-// subclass. What matters here is that the generic base serves a *different* scheme correctly —
-// that is the whole reason the store can reuse it instead of owning a second copy.
+// What matters here is that the scheme and host are genuinely configurable — that is the whole
+// reason a caller can reuse this class instead of owning a second copy of it.
 
 test('the scheme and host are configurable, which is what the store reuses', async () => {
   await withTempDir(async (dir) => {
@@ -42,18 +41,18 @@ test('the scheme and host are configurable, which is what the store reuses', asy
 
 test('two caches with different schemes do not collide on ids', async () => {
   await withTempDir(async (dir) => {
-    const ads = new ImageCache(dir, { scheme: 'oe-ad', host: 'creative', fetchImpl: fakeFetch(PNG) });
+    const shots = new ImageCache(dir, { scheme: 'oe-shot', host: 'screenshot', fetchImpl: fakeFetch(PNG) });
     const store = new ImageCache(dir, { scheme: 'oe-app', host: 'icon', fetchImpl: fakeFetch(PNG) });
 
-    const adUrl = await ads.ensure(ICON_URL);
+    const shotUrl = await shots.ensure(ICON_URL);
     const storeUrl = await store.ensure(ICON_URL);
 
-    assert.notEqual(adUrl, storeUrl, 'same bytes, different scheme');
-    assert.equal(adUrl.split('/').pop(), storeUrl.split('/').pop(), 'the id is content-addressed either way');
+    assert.notEqual(shotUrl, storeUrl, 'same bytes, different scheme');
+    assert.equal(shotUrl.split('/').pop(), storeUrl.split('/').pop(), 'the id is content-addressed either way');
   });
 });
 
-test('the size limit is per-cache, so screenshots can be larger than ad creatives', async () => {
+test('the size limit is per-cache, so screenshots can be larger than icons', async () => {
   await withTempDir(async (dir) => {
     const big = Buffer.concat([PNG, Buffer.alloc(3 * 1024 * 1024, 7)]);
 

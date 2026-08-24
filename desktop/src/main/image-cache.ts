@@ -30,9 +30,9 @@ export function sniffImageMime(bytes: Buffer): string | null {
 export interface ImageCacheOptions {
   fetchImpl?: typeof fetch;
   onLog?: (message: string) => void;
-  /** Custom scheme the cached bytes are served back over, e.g. `oe-ad`. */
+  /** Custom scheme the cached bytes are served back over, e.g. `oe-app`. */
   scheme?: string;
-  /** Host segment of the served URL, e.g. `creative` in `oe-ad://creative/<id>`. */
+  /** Host segment of the served URL, e.g. `icon` in `oe-app://icon/<id>`. */
   host?: string;
   maxBytes?: number;
 }
@@ -44,8 +44,8 @@ export interface ImageCacheOptions {
  * This is what lets the app window keep a `default-src 'self'` CSP with no remote origins at all.
  * The renderer never learns the remote hostname, issues no cross-origin request, and therefore
  * cannot be fingerprinted or tracked by whoever is hosting the art — the main process is the only
- * thing that ever talks to one. Ad creatives and app-store icons have exactly the same
- * requirement, so they share this class and differ only in scheme.
+ * thing that ever talks to one. Scheme and host are options rather than constants so several
+ * callers can share one implementation and differ only in the URL they serve under.
  */
 export class ImageCache {
   private readonly pending = new Map<string, Promise<string | null>>();

@@ -55,15 +55,12 @@ export interface AccountState {
   guest: GuestAccountState;
   /** False when the OS keychain is unavailable — the vault then refuses to store anything. */
   vaultAvailable: boolean;
-  /** Surfaced here so "the account" means one thing across the whole shell. */
-  adsRemoved: boolean;
 }
 
 export const INITIAL_ACCOUNT_STATE: AccountState = {
   profile: EMPTY_PROFILE,
   guest: { state: 'unknown', accounts: [], checkedAt: null, avd: null },
   vaultAvailable: false,
-  adsRemoved: false,
 };
 
 export type FillField = 'email' | 'password';

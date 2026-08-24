@@ -2,7 +2,6 @@
 // the tsc-compiled (CommonJS/Node) side and the esbuild-bundled (browser) renderer side.
 
 import type { AccountState, FillField, FillResult } from './account-types';
-import type { AdsState, Creative, LicenseResult, SlotBounds, SlotId, TagPlan } from './ads-types';
 import type { DeviceState, ProfileId } from './device-types';
 import type { AppDetail, InstallJob, SourceId, StoreApp, StoreState } from './store-types';
 
@@ -53,22 +52,6 @@ export interface OpenEmuApi {
   key(keycode: string): void;
   /** Types into whatever the guest has focused. False when `input` can't send the string. */
   typeText(value: string): Promise<boolean>;
-  adsState(): Promise<AdsState>;
-  adsRequest(slot: SlotId): Promise<Creative | null>;
-  adsSetOptedOut(optedOut: boolean): Promise<AdsState>;
-  /** Fire-and-forget; counted once per token, and only when the creative was really viewable. */
-  adsImpression(token: string): void;
-  /** Opens the campaign's destination in the system browser. The renderer never sees the URL. */
-  adsClick(token: string): void;
-  adsSetConsent(granted: boolean): Promise<AdsState>;
-  adsActivateLicense(key: string): Promise<LicenseResult>;
-  /** Null when no third-party tag is configured for this slot. */
-  adsTagPlan(slot: SlotId): Promise<TagPlan | null>;
-  adsMountTag(slot: SlotId, bounds: SlotBounds): void;
-  adsUpdateTagBounds(slot: SlotId, bounds: SlotBounds): void;
-  adsUnmountTag(slot: SlotId): void;
-  /** Fires with `filled: false` when the tag painted nothing and the slot should fall back. */
-  onAdsTagResult(callback: (slot: SlotId, filled: boolean) => void): void;
   listApps(): Promise<InstalledApp[]>;
   launchApp(packageName: string): Promise<boolean>;
 

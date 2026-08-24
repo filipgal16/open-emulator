@@ -24,11 +24,3 @@ desktop/out/
 # Installer output, and the generated app icon (rebuild with `npm run icon`).
 desktop/release/
 desktop/build/
-
-# Ad configuration — carries affiliate/publisher ids. Never commit; see ads.config.example.json
-desktop/ads.config.json
-# Live campaigns and the generated manifest
-desktop/ads/campaigns.json
-desktop/ads/public/
-# Licence signing key. Anyone holding this can mint remove-ads licences.
-desktop/ads-license-private.pem
