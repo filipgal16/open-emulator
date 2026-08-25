@@ -107,7 +107,7 @@ export interface SettingsState {
   settings: Settings;
   tuning: TuningPreview;
   storage: StorageUsage;
-  /**  or  — which runtime is driving, so the UI can be honest about it. */
+  /** `wsl` or `sdk` — which runtime is driving, so the UI can be honest about it. */
   engine: string;
   /** Result of the last action that had something to say, e.g. moving the download folder. */
   lastMessage?: string;
