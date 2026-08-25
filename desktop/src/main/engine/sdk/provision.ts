@@ -107,7 +107,12 @@ export async function provisionGuest(input: ProvisionInput): Promise<CommandResu
   await adb.shell(serial, 'input keyevent KEYCODE_HOME', onLog, 30_000).catch(() => undefined);
 
   log('saving the snapshot');
-  const saved = await adb.exec(serial, ['emu', 'avd', 'snapshot', 'save', 'booted'], onLog, 180_000).catch(() => null);
+  // Saved under Quick Boot's own name, so the very next start restores it. Under any other name
+  // the emulator ignores it on launch and cold-boots instead — which is what made provisioning
+  // look successful while every later start still took half a minute.
+  const saved = await adb
+    .exec(serial, ['emu', 'avd', 'snapshot', 'save', 'default_boot'], onLog, 180_000)
+    .catch(() => null);
   if (!saved || saved.code !== 0) {
     return { code: 1, signal: null, stdout: [], stderr: ['could not save the snapshot'] };
   }

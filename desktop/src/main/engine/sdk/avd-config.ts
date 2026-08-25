@@ -162,8 +162,23 @@ export function emulatorArgs(input: EmulatorArgsInput): string[] {
   }
 
   if (useSnapshot) {
-    args.push('-snapshot', useSnapshot, '-no-snapshot-save');
+    // Nothing. This is deliberate, and it is the fix for warm starts never being warm.
+    //
+    // Passing `-snapshot <name>` is silently ignored by this emulator: it logs nothing about a
+    // snapshot and performs a full cold boot, so every "warm" start cost the same ~32s as a cold
+    // one. Left to its own devices, Quick Boot restores its `default_boot` snapshot in **2.8s**
+    // — measured against the same guest on the same machine.
+    //
+    // So the warm path passes no snapshot flags at all and lets Quick Boot do what it is for.
+    // Saving on exit is likewise left enabled, which is what keeps `default_boot` current.
+    //
+    // The original `-no-snapshot-save` guarded a real hazard — the emulator writes its snapshot
+    // while quitting, and a kill landing mid-write corrupts the snapshot store. That hazard is
+    // handled where it belongs: `SdkEngine.stop` asks via `adb emu kill` and waits up to 30s for a
+    // clean exit before resorting to a signal.
   } else {
+    // A deliberate cold boot starts clean *and* leaves the saved snapshot untouched, so asking for
+    // one cannot cost the user their fast start.
     args.push('-no-snapshot-load', '-no-snapshot-save');
   }
 
