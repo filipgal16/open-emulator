@@ -39,9 +39,9 @@ function actionLabel(job: InstallJob | null, here: boolean, blocked: string | nu
 /**
  * One app, expanded.
  *
- * Links are rendered as text rather than anchors. The shell deliberately has no "open this URL"
- * primitive reachable from the renderer — the ad system routes clicks through opaque tokens for
- * exactly that reason — and a store page is not a good enough reason to add one.
+ * Links are rendered as text rather than anchors. The renderer deliberately has no "open this URL"
+ * primitive: it runs under a CSP with no remote origins, and handing it the ability to launch
+ * arbitrary URLs would undo that for the sake of a convenience a store page does not need.
  */
 export function AppDetail({ app, job, guestSdk, installed, backLabel = 'Back', onBack, onInstall }: Props) {
   const [detail, setDetail] = useState<AppDetailData | null>(null);

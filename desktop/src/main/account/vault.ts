@@ -3,7 +3,7 @@ import path from 'path';
 
 /**
  * The slice of electron's `safeStorage` this needs. Injected rather than imported so the vault
- * stays testable and so `account/` keeps the same "one file imports electron" rule as `ads/`.
+ * stays testable and so `account/` keeps the same "one file imports electron" rule as `store/`.
  */
 export interface VaultBackend {
   isEncryptionAvailable(): boolean;
