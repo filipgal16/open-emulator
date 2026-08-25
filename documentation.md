@@ -637,6 +637,20 @@ Also worth knowing:
 | `OPEN_EMULATOR_REMOTE_PATH` | — | Path to the backend checkout inside the distro |
 | `OPEN_EMULATOR_ENGINE` | `wsl` | Which runtime drives the guest — `wsl` or `sdk` (native Windows, in progress) |
 
+**Measured on a Ryzen 7 6800H with the Windows Hypervisor Platform enabled**, headless, the
+`fast` guest:
+
+| | |
+|---|---|
+| Cold boot | 37s |
+| Warm start from the snapshot | **4.9s** |
+| First-time provision | 49s, once |
+| Download | 1.1 GB in ~65s |
+
+The warm figure depends on Quick Boot being left to manage its own `default_boot` snapshot.
+Naming a snapshot and passing it back as `-snapshot <name>` is silently ignored by the
+emulator, which cold-boots instead — that mistake cost 32s on every start until it was found.
+
 > **The native Windows runtime is not the default yet.** `OPEN_EMULATOR_ENGINE=sdk` runs
 > `emulator.exe` and `adb.exe` as ordinary Windows processes with no WSL involved, downloading the
 > SDK to `%LOCALAPPDATA%\open-emulator` instead of into a distro. It has been verified as far as

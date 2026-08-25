@@ -217,7 +217,7 @@ The shell drives Android through one narrow interface, so the runtime underneath
 | **WSL2** (default) | Google's SDK emulator inside a Linux distro. The original arrangement, and what ships today. Costs a ~4 GB distro install on top of Android itself. |
 | **Native Windows** | `emulator.exe` and `adb.exe` as ordinary Windows processes, no Linux involved. Set `OPEN_EMULATOR_ENGINE=sdk`. |
 
-The native runtime is **verified working** — cold boot 64s, snapshot restore 46s, on a Ryzen 7 6800H
+The native runtime is **verified working** — cold boot 37s, snapshot restore **4.9s**, on a Ryzen 7 6800H
 with the Windows Hypervisor Platform enabled — and downloads roughly **1.1 GB instead of 4.5–6.5 GB**
 because it needs no distro, no JDK, and no command-line tools. It is not yet the default only
 because it has been proven on one machine rather than many.
