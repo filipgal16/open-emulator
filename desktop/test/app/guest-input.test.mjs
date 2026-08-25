@@ -4,6 +4,9 @@ import { loadDist } from '../helpers.mjs';
 
 const { clampCoord, isSafeKeycode, isTypeableText, keyCommand, swipeCommand, tapCommand, textCommand } =
   loadDist('guest/input.js');
+// textCommand takes the quoting function now: how deep to quote is the runtime's business, not
+// this module's. See engine/quoting-depth.test.mjs.
+const { guestShellArg } = loadDist('platform/shell-quote.js');
 
 test('coordinates are clamped, never passed through raw', () => {
   assert.equal(clampCoord(120.4), 120);
@@ -38,7 +41,7 @@ test('only real keycodes reach the guest', () => {
 });
 
 test('text is quoted rather than %s-escaped, so a literal %s is not corrupted', () => {
-  const command = textCommand('100%s off');
+  const command = textCommand('100%s off', guestShellArg);
   assert.ok(command.startsWith('input text '));
   assert.ok(command.includes('100%s off'), 'the literal text is preserved inside the quoting');
 });
@@ -48,7 +51,7 @@ test('input text refuses what Android cannot actually type', () => {
   assert.equal(isTypeableText('café'), false, 'non-ASCII arrives mangled');
   assert.equal(isTypeableText('line\nbreak'), false);
   assert.equal(isTypeableText('x'.repeat(1025)), false);
-  assert.equal(textCommand('café'), null);
+  assert.equal(textCommand('café', guestShellArg), null);
 
   assert.ok(isTypeableText('ASCII is fine ~!@#$%^&*()'));
 });

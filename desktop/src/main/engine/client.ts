@@ -1,6 +1,5 @@
 import type { AndroidEngine, EngineLogHandler } from './types';
 import { isTypeableText, keyCommand, swipeCommand, tapCommand, textCommand } from '../guest/input';
-import { guestShellArg } from '../platform/shell-quote';
 import type { CommandResult } from '../../shared/ipc-types';
 
 /**
@@ -73,7 +72,7 @@ export class OpenEmuClient {
 
   /** Types into whatever the guest currently has focused. False for text `input` can't send. */
   async text(value: string, onLog: EngineLogHandler): Promise<boolean> {
-    const command = textCommand(value);
+    const command = textCommand(value, (text) => this.engine.quoteGuestArg(text));
     if (!command) return false;
     const result = await this.engine.shell(command, onLog, 20_000);
     return result.code === 0;
@@ -110,7 +109,7 @@ export class OpenEmuClient {
   /** Fires a VIEW intent — how the Play client is driven (`market://search?q=…`). */
   async viewIntent(uri: string, onLog: EngineLogHandler): Promise<boolean> {
     const result = await this.engine.shell(
-      `am start -a android.intent.action.VIEW -d ${guestShellArg(uri)}`,
+      `am start -a android.intent.action.VIEW -d ${this.engine.quoteGuestArg(uri)}`,
       onLog,
       30_000,
     );

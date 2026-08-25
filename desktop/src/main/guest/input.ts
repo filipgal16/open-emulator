@@ -1,4 +1,3 @@
-import { guestShellArg } from '../platform/shell-quote';
 
 /**
  * Builders for the `adb shell input …` commands that drive the guest.
@@ -54,10 +53,16 @@ export function isTypeableText(value: string): boolean {
 /**
  * `input text` for arbitrary user text (a Play search, a form field).
  *
- * The value is double-quoted rather than `%s`-escaped. The `%s`-for-space convention that most
- * adb snippets use corrupts any text that legitimately contains `%s`, and it does nothing about
- * the characters that actually matter — quoting handles spaces and metacharacters together.
+ * Quoted rather than `%s`-escaped. The `%s`-for-space convention that most adb snippets use
+ * corrupts any text that legitimately contains `%s`, and does nothing about the characters that
+ * actually matter — quoting handles spaces and metacharacters together.
+ *
+ * **The quoting is supplied by the caller**, not chosen here. How many times a value must be
+ * quoted depends on how many shells sit between this process and the guest, which is a property of
+ * the runtime rather than of the text: two under WSL, one natively. Assuming a depth here is what
+ * made the native engine type `'P@ss w0rd!'` — quotes and all — into a sign-in form. See
+ * `AndroidEngine.quoteGuestArg`.
  */
-export function textCommand(value: string): string | null {
-  return isTypeableText(value) ? `input text ${guestShellArg(value)}` : null;
+export function textCommand(value: string, quote: (value: string) => string): string | null {
+  return isTypeableText(value) ? `input text ${quote(value)}` : null;
 }
