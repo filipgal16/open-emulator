@@ -210,13 +210,7 @@ ipcMain.handle('input:text', async (_event, value: unknown): Promise<boolean> =>
   }
 });
 
-/**
- * The installed-app list, for the Apps tab and the Store's "already installed" marks.
- *
- * Registered here rather than inside the ads module, which is where it used to live. That coupling
- * meant an ad-free build had no way to list or launch apps at all — the core feature depended on
- * the optional one.
- */
+/** The installed-app list, for the Apps tab and the Store's "already installed" marks. */
 ipcMain.handle('apps:list', async (): Promise<InstalledApp[]> => {
   try {
     return await library.list();
