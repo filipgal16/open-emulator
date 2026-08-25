@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import os from 'os';
 import path from 'path';
-import { guestShellArg } from '../../platform/shell-quote';
+import { posixQuote } from '../../platform/shell-quote';
 import { loadDevice, loadProfile, type DeviceIdentity, type GuestProfile } from '../env-file';
 import { ProcessRunner, spawnDetached, type DetachedProcess } from '../process';
 import type { AndroidEngine, EngineLogHandler, StartOptions } from '../types';
@@ -55,6 +55,14 @@ export class SdkEngine implements AndroidEngine {
     this.adb = new Adb(options.layout.adb, this.runner);
     this.log = (message) => options.onLog?.(`[sdk] ${message}`);
     this.profileName = options.profile;
+  }
+
+  /**
+   * One shell to cross: adb takes argv directly, so only the guest's sh re-parses. Quoting twice
+   * here would leave the outer quotes inside the value.
+   */
+  quoteGuestArg(value: string): string {
+    return posixQuote(value);
   }
 
   setProfile(profile: string | null): void {
@@ -391,7 +399,7 @@ export class SdkEngine implements AndroidEngine {
   async typeSecret(value: string, onLog: EngineLogHandler = NO_LOG, timeoutMs = 20_000): Promise<CommandResult> {
     const serial = await this.requireSerial();
     if (!serial) return fail('no running guest');
-    return this.adb.exec(serial, ['shell', 'input', 'text', guestShellArg(value)], onLog, timeoutMs);
+    return this.adb.exec(serial, ['shell', 'input', 'text', posixQuote(value)], onLog, timeoutMs);
   }
 
   async installApk(hostPath: string, onLog: EngineLogHandler = NO_LOG, timeoutMs = 10 * 60_000): Promise<CommandResult> {

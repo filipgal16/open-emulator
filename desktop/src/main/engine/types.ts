@@ -52,6 +52,22 @@ export interface AndroidEngine {
   shell(command: string, onLog: EngineLogHandler, timeoutMs?: number): Promise<CommandResult>;
 
   /**
+   * Quotes one argument so it reaches the guest's `sh` as a literal value.
+   *
+   * This belongs to the engine because the answer depends on **how many shells** sit between this
+   * process and the guest, and the two runtimes differ:
+   *
+   *   wsl   `wsl.exe -e bash -lc "…"` → bash splits it → `adb shell …` → the guest's sh. Two
+   *         shells, so a value has to be quoted twice or the first one eats the quotes.
+   *   sdk   `adb.exe shell …` with argv passed directly → the guest's sh. One shell, so quoting
+   *         twice leaves the outer quotes *in the value*.
+   *
+   * Getting this wrong is silent and ugly: a password typed into Google's sign-in page arrives as
+   * `'P@ss w0rd!'`, quotes included, and the login simply fails.
+   */
+  quoteGuestArg(value: string): string;
+
+  /**
    * Types a string into the guest's focused field without putting it on a command line.
    *
    * Semantic rather than a `shell()` call with an escaping convention attached, because the two

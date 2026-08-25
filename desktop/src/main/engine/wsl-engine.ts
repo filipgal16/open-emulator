@@ -1,4 +1,4 @@
-import { posixQuote } from '../platform/shell-quote';
+import { guestShellArg, posixQuote } from '../platform/shell-quote';
 import { toWslMountPath } from '../platform/win-paths';
 import type { WslBridge } from '../wsl/bridge';
 import type { AndroidEngine, EngineLogHandler, StartOptions } from './types';
@@ -27,6 +27,11 @@ export class WslEngine implements AndroidEngine {
      */
     private readonly target: { profile: string | null },
   ) {}
+
+  /** Two shells to cross — bash, then the guest's sh — so a value is quoted twice. */
+  quoteGuestArg(value: string): string {
+    return guestShellArg(value);
+  }
 
   setProfile(profile: string | null): void {
     this.target.profile = profile;
