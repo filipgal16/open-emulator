@@ -12,7 +12,15 @@ import { tuneForHost, type GuestTuning } from './host';
 import { avdDir, avdState, snapshotDir, systemImagePath, type SdkLayout } from './layout';
 import type { CommandResult } from '../../../shared/ipc-types';
 
-const SNAPSHOT = 'booted';
+/**
+ * Quick Boot's own snapshot name.
+ *
+ * Not a name of our choosing: this is the one the emulator writes on a clean exit and restores on
+ * the next start. A custom name saved through `adb emu avd snapshot save` and passed back as
+ * `-snapshot <name>` is silently ignored by this emulator, which is why warm starts used to cost a
+ * full cold boot. See the note in `emulatorArgs`.
+ */
+const SNAPSHOT = 'default_boot';
 const NO_LOG: EngineLogHandler = () => undefined;
 
 export interface SdkEngineOptions {

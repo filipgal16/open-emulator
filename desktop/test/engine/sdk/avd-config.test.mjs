@@ -119,12 +119,25 @@ test('a cold boot refuses to save a snapshot on the way out', () => {
   assert.ok(args.includes('-no-snapshot-save'));
 });
 
-test('a warm start loads the named snapshot and still refuses to overwrite it', () => {
-  const args = emulatorArgs({ avdName: 'A', tuning: tuning(), device: device(), useSnapshot: 'booted', headless: true });
+test('a warm start passes no snapshot flags, so Quick Boot restores its own', () => {
+  // `-snapshot <name>` is silently ignored by this emulator — it logs nothing and cold-boots, which
+  // is why every warm start used to cost a full ~32s. Left alone, Quick Boot restores in ~2.8s.
+  const args = emulatorArgs({ avdName: 'A', tuning: tuning(), device: device(), useSnapshot: 'default_boot', headless: true });
 
-  assert.equal(args[args.indexOf('-snapshot') + 1], 'booted');
-  assert.ok(args.includes('-no-snapshot-save'), 'provision writes snapshots, shutdown never does');
-  assert.ok(!args.includes('-no-snapshot-load'));
+  assert.ok(!args.includes('-snapshot'), 'naming a snapshot is what broke the warm path');
+  assert.ok(!args.includes('-no-snapshot-load'), 'loading must stay enabled or there is no warm start');
+  assert.ok(
+    !args.includes('-no-snapshot-save'),
+    'saving on exit is what keeps default_boot current; stop() protects the write by exiting cleanly',
+  );
+});
+
+test('an explicit cold boot neither loads nor overwrites the saved snapshot', () => {
+  // Asking for a clean boot must not cost the user their fast start next time.
+  const args = emulatorArgs({ avdName: 'A', tuning: tuning(), device: device(), useSnapshot: null, headless: true });
+
+  assert.ok(args.includes('-no-snapshot-load'));
+  assert.ok(args.includes('-no-snapshot-save'));
 });
 
 test('a headless run drops the window and the audio subsystem that has no sink', () => {
