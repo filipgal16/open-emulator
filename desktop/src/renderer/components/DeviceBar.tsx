@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { DeviceState, ProfileId } from '../../shared/device-types';
 import { INITIAL_DEVICE_STATE, PROFILE_IDS, PROFILES } from '../../shared/device-types';
 import { Icon } from './Icon';
@@ -6,6 +6,8 @@ import { isTypingTarget, rovingIndex } from '../keyboard';
 
 interface Props {
   onState?: (state: DeviceState) => void;
+  leading: ReactNode;
+  trailing: ReactNode;
 }
 
 function phaseLabel(state: DeviceState): string {
@@ -23,14 +25,18 @@ function phaseLabel(state: DeviceState): string {
   }
 }
 
+function versionMeta(state: DeviceState): string | undefined {
+  if (!state.androidVersion) return undefined;
+  return `Android ${state.androidVersion}${state.api ? ` · API ${state.api}` : ''}`;
+}
+
 /**
- * Ambient status bar: start, stop, prepare, and which Android to run.
+ * Titlebar cluster: start, stop, prepare, and which Android to run.
  *
- * All of this used to be terminal-only — `open-emu start`, `ANDROID_PROFILE=play make
- * android-provision`. The CLI still works and is unchanged; this is the same surface with buttons,
- * so that installing the app is enough to use it.
+ * The version menu expands in-flow below the titlebar so it never covers the viewport — a native
+ * child window will later paint there.
  */
-export function DeviceBar({ onState }: Props) {
+export function DeviceBar({ onState, leading, trailing }: Props) {
   const [state, setState] = useState<DeviceState>(INITIAL_DEVICE_STATE);
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -87,9 +93,72 @@ export function DeviceBar({ onState }: Props) {
   const running = state.phase === 'running';
   const profile = PROFILES[state.profile];
   const startLabel = state.busy ? 'Working…' : running ? 'Stop' : 'Start';
+  const meta = versionMeta(state);
 
   return (
-    <div className="device-status">
+    <header className="shell-head">
+      <div className="titlebar">
+        {leading}
+        <span className="titlebar-spacer" />
+        <div className="device-cluster">
+          <span
+            className={`device-dot device-dot-${running ? (state.bootCompleted ? 'on' : 'boot') : state.phase}`}
+            aria-hidden="true"
+          />
+          <span
+            className="device-phase"
+            aria-live="polite"
+            aria-atomic="true"
+            title={meta}
+          >
+            {phaseLabel(state)}
+          </span>
+
+          {meta && <span className="device-meta">{meta}</span>}
+
+          {state.error && (
+            <span className="device-error" role="status">
+              {state.error}
+            </span>
+          )}
+
+          {!state.provisioned && !state.busy && (
+            <button type="button" className="device-btn device-btn-primary" onClick={() => void window.openEmu.devicePrepare().then(apply)}>
+              Prepare device
+            </button>
+          )}
+
+          <button
+            type="button"
+            className={`device-btn ${running ? 'device-btn-stop' : 'device-btn-primary'}`}
+            disabled={state.busy}
+            aria-keyshortcuts="Alt+S"
+            title={`${startLabel} (Alt+S)`}
+            onClick={() => void (running ? window.openEmu.deviceStop() : window.openEmu.deviceStart()).then(apply)}
+          >
+            {startLabel}
+          </button>
+
+          <div className="device-profile">
+            <button
+              ref={triggerRef}
+              type="button"
+              className="device-btn"
+              aria-expanded={open}
+              aria-haspopup="listbox"
+              aria-controls="device-version-menu"
+              aria-label={`Android version, ${profile.label}`}
+              onClick={() => setOpen((value) => !value)}
+              disabled={state.busy}
+            >
+              {profile.label}
+              <Icon name="chevron-down" size={14} />
+            </button>
+          </div>
+        </div>
+        {trailing}
+      </div>
+
       {open && (
         <div className="device-menu" role="listbox" aria-label="Android version" id="device-version-menu">
           <p className="device-menu-head" id="device-version-label">
@@ -140,65 +209,6 @@ export function DeviceBar({ onState }: Props) {
           </p>
         </div>
       )}
-
-      <div className="device-bar">
-        <span
-          className={`device-dot device-dot-${running ? (state.bootCompleted ? 'on' : 'boot') : state.phase}`}
-          aria-hidden="true"
-        />
-        <span className="device-phase" aria-live="polite" aria-atomic="true">
-          {phaseLabel(state)}
-        </span>
-
-        {state.androidVersion && (
-          <span className="device-meta">
-            Android {state.androidVersion}
-            {state.api ? ` · API ${state.api}` : ''}
-          </span>
-        )}
-
-        <span className="device-spacer" />
-
-        {state.error && (
-          <span className="device-error" role="status">
-            {state.error}
-          </span>
-        )}
-
-        {!state.provisioned && !state.busy && (
-          <button type="button" className="device-btn device-btn-primary" onClick={() => void window.openEmu.devicePrepare().then(apply)}>
-            Prepare device
-          </button>
-        )}
-
-        <button
-          type="button"
-          className={`device-btn ${running ? 'device-btn-stop' : 'device-btn-primary'}`}
-          disabled={state.busy}
-          aria-keyshortcuts="Alt+S"
-          title={`${startLabel} (Alt+S)`}
-          onClick={() => void (running ? window.openEmu.deviceStop() : window.openEmu.deviceStart()).then(apply)}
-        >
-          {startLabel}
-        </button>
-
-        <div className="device-profile">
-          <button
-            ref={triggerRef}
-            type="button"
-            className="device-btn"
-            aria-expanded={open}
-            aria-haspopup="listbox"
-            aria-controls="device-version-menu"
-            aria-label={`Android version, ${profile.label}`}
-            onClick={() => setOpen((value) => !value)}
-            disabled={state.busy}
-          >
-            {profile.label}
-            <Icon name="chevron-down" size={14} />
-          </button>
-        </div>
-      </div>
-    </div>
+    </header>
   );
 }

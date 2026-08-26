@@ -6,6 +6,8 @@ import { isTypingTarget, rovingIndex } from '../keyboard';
 interface Props {
   /** Guest is up and can receive keys. */
   live: boolean;
+  /** Bezel is on screen. Kept mounted when hidden so Alt+← still sends Back. */
+  visible: boolean;
   theater: boolean;
   theaterButtonRef?: Ref<HTMLButtonElement>;
   onToggleTheater: () => void;
@@ -27,12 +29,13 @@ function saveScreenshot() {
 }
 
 /**
- * Right rail: Android system keys first, then capture and chrome.
+ * Guest bezel: Android system keys first, then capture and chrome.
  *
  * Lives beside the viewport on purpose — a native child window will later paint over the device,
- * so these controls must never float on top of it.
+ * so these controls must never float on top of it. Guest-only keys are omitted while the device
+ * is off rather than sitting greyed out.
  */
-export function ToolRail({ live, theater, theaterButtonRef, onToggleTheater, onRotate }: Props) {
+export function ToolRail({ live, visible, theater, theaterButtonRef, onToggleTheater, onRotate }: Props) {
   const rootRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
@@ -68,28 +71,30 @@ export function ToolRail({ live, theater, theaterButtonRef, onToggleTheater, onR
   return (
     <aside
       ref={rootRef}
-      className="tool-rail"
+      className={visible ? 'tool-rail' : 'tool-rail is-hidden'}
       role="toolbar"
       aria-label="Device controls"
       aria-orientation="vertical"
+      aria-hidden={visible ? undefined : true}
       onKeyDown={onRailKey}
     >
-      <ToolGroup>
-        <ToolButton
-          name="back"
-          label="Back"
-          shortcut="Alt+ArrowLeft"
-          disabled={!live}
-          tabIndex={tabStop(!live)}
-          onClick={() => send('KEYCODE_BACK')}
-        />
-        <ToolButton name="home" label="Home" disabled={!live} tabIndex={tabStop(!live)} onClick={() => send('KEYCODE_HOME')} />
-        <ToolButton name="recents" label="Recents" disabled={!live} tabIndex={tabStop(!live)} onClick={() => send('KEYCODE_APP_SWITCH')} />
-      </ToolGroup>
-      <span className="tool-rail-rule" aria-hidden="true" />
+      {live && (
+        <ToolGroup>
+          <ToolButton
+            name="back"
+            label="Back"
+            shortcut="Alt+ArrowLeft"
+            tabIndex={tabStop()}
+            onClick={() => send('KEYCODE_BACK')}
+          />
+          <ToolButton name="home" label="Home" tabIndex={tabStop()} onClick={() => send('KEYCODE_HOME')} />
+          <ToolButton name="recents" label="Recents" tabIndex={tabStop()} onClick={() => send('KEYCODE_APP_SWITCH')} />
+        </ToolGroup>
+      )}
+      {live && <span className="tool-rail-rule" aria-hidden="true" />}
       <ToolGroup>
         <ToolButton name="rotate" label="Rotate" tabIndex={tabStop()} onClick={onRotate} />
-        <ToolButton name="screenshot" label="Screenshot" disabled={!live} tabIndex={tabStop(!live)} onClick={saveScreenshot} />
+        {live && <ToolButton name="screenshot" label="Screenshot" tabIndex={tabStop()} onClick={saveScreenshot} />}
         <ToolButton
           name={theater ? 'fullscreen-exit' : 'fullscreen'}
           label={theater ? 'Exit fullscreen' : 'Fullscreen'}
@@ -100,12 +105,14 @@ export function ToolRail({ live, theater, theaterButtonRef, onToggleTheater, onR
           onClick={onToggleTheater}
         />
       </ToolGroup>
-      <span className="tool-rail-spacer" />
-      <ToolGroup>
-        <ToolButton name="volume-down" label="Volume down" disabled={!live} tabIndex={tabStop(!live)} onClick={() => send('KEYCODE_VOLUME_DOWN')} />
-        <ToolButton name="volume-up" label="Volume up" disabled={!live} tabIndex={tabStop(!live)} onClick={() => send('KEYCODE_VOLUME_UP')} />
-        <ToolButton name="power" label="Power" disabled={!live} tabIndex={tabStop(!live)} onClick={() => send('KEYCODE_POWER')} />
-      </ToolGroup>
+      {live && <span className="tool-rail-spacer" />}
+      {live && (
+        <ToolGroup>
+          <ToolButton name="volume-down" label="Volume down" tabIndex={tabStop()} onClick={() => send('KEYCODE_VOLUME_DOWN')} />
+          <ToolButton name="volume-up" label="Volume up" tabIndex={tabStop()} onClick={() => send('KEYCODE_VOLUME_UP')} />
+          <ToolButton name="power" label="Power" tabIndex={tabStop()} onClick={() => send('KEYCODE_POWER')} />
+        </ToolGroup>
+      )}
     </aside>
   );
 }

@@ -70,6 +70,9 @@ const PAIRS = [
   ['--ok', '--surface'],
   ['--warn', '--surface'],
   ['--danger', '--surface'],
+  ['--faint', '--nav-track'],
+  ['--text', '--chrome'],
+  ['--muted', '--chrome'],
 ];
 
 for (const [name, theme] of [

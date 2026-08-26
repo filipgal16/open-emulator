@@ -13,6 +13,7 @@ import { ToolRail } from './components/ToolRail';
 import type { AccountState } from '../shared/account-types';
 import { INITIAL_DEVICE_STATE, type DeviceState } from '../shared/device-types';
 import type { SetupStepStatus } from '../shared/ipc-types';
+import { useDisplayScale } from './hooks/useDisplayScale';
 import { isTypingTarget, WORKSPACE_SHORTCUTS } from './keyboard';
 import { applyDocumentTheme } from './theme';
 
@@ -28,6 +29,7 @@ export function App() {
   const [device, setDevice] = useState<DeviceState>(INITIAL_DEVICE_STATE);
   const accountBtnRef = useRef<HTMLButtonElement>(null);
   const theaterBtnRef = useRef<HTMLButtonElement>(null);
+  const viewportRef = useRef<HTMLDivElement>(null);
 
   const updateAccount = useCallback((next: AccountState) => setAccount(next), []);
 
@@ -78,6 +80,7 @@ export function App() {
         const workspace = WORKSPACE_SHORTCUTS.find((entry) => event.key === entry.digit);
         if (workspace) {
           setShowAccount(false);
+          if (workspace.id !== 'screen' && theater) setTheater(false);
           setTab(workspace.id);
           event.preventDefault();
         }
@@ -86,6 +89,12 @@ export function App() {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [theater, showAccount, closeAccount, exitTheater]);
+
+  // Before the early return below, or the hook count changes when setup finishes.
+  useDisplayScale(viewportRef, {
+    active: device.phase === 'running' && tab === 'screen',
+    rotation,
+  });
 
   if (!ready) {
     return (
@@ -100,6 +109,7 @@ export function App() {
 
   function selectWorkspace(id: WorkspaceId) {
     setShowAccount(false);
+    if (id !== 'screen' && theater) setTheater(false);
     setTab(id);
   }
 
@@ -107,28 +117,33 @@ export function App() {
     <>
       <IconSprite />
       <div className={theater ? 'app app-theater' : 'app'}>
-        <header className="titlebar">
-          <span className="titlebar-brand">
-            <span className="titlebar-logo" aria-hidden="true" />
-            open-emulator
-          </span>
-          <span className="titlebar-spacer" />
-          <AccountChip
-            ref={accountBtnRef}
-            state={account}
-            open={showAccount}
-            onOpen={() => setShowAccount(true)}
-          />
-        </header>
-
         <div className="workspace">
-          <NavRail active={tab} onSelect={selectWorkspace} />
+          <DeviceBar
+            onState={setDevice}
+            leading={
+              <>
+                <span className="titlebar-brand">
+                  <span className="titlebar-logo" aria-hidden="true" />
+                  <span className="titlebar-word">open-emulator</span>
+                </span>
+                <NavRail active={tab} onSelect={selectWorkspace} />
+              </>
+            }
+            trailing={
+              <AccountChip
+                ref={accountBtnRef}
+                state={account}
+                open={showAccount}
+                onOpen={() => setShowAccount(true)}
+              />
+            }
+          />
 
           <main className="stage">
             {showAccount && account ? (
               <SignInDialog state={account} onChange={updateAccount} onClose={closeAccount} />
             ) : tab === 'screen' ? (
-              <div className={rotation ? `viewport is-rot-${rotation}` : 'viewport'}>
+              <div ref={viewportRef} className={rotation ? `viewport is-rot-${rotation}` : 'viewport'}>
                 <AndroidScreen device={device} onFirstFrame={() => setBooted(true)} />
               </div>
             ) : tab === 'apps' ? (
@@ -139,17 +154,16 @@ export function App() {
               <SettingsView />
             )}
           </main>
-
-          <ToolRail
-            live={live}
-            theater={theater}
-            theaterButtonRef={theaterBtnRef}
-            onToggleTheater={() => (theater ? exitTheater() : setTheater(true))}
-            onRotate={() => setRotation((deg) => (deg + 90) % 360)}
-          />
         </div>
 
-        <DeviceBar onState={setDevice} />
+        <ToolRail
+          live={live}
+          visible={tab === 'screen' || theater}
+          theater={theater}
+          theaterButtonRef={theaterBtnRef}
+          onToggleTheater={() => (theater ? exitTheater() : setTheater(true))}
+          onRotate={() => setRotation((deg) => (deg + 90) % 360)}
+        />
       </div>
     </>
   );

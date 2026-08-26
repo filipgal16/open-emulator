@@ -27,7 +27,7 @@ function shortcutFor(id: WorkspaceId): string | undefined {
   return WORKSPACE_SHORTCUTS.find((entry) => entry.id === id)?.digit;
 }
 
-/** Left rail: the device is the workspace; Apps, Store, and Settings are places you visit. */
+/** Titlebar tabs: Device, Apps, and Store share a track; Settings is a place you visit. */
 export function NavRail({ active, onSelect }: Props) {
   const itemRefs = useRef<Array<HTMLButtonElement | null>>([]);
 
@@ -41,20 +41,21 @@ export function NavRail({ active, onSelect }: Props) {
 
   return (
     <nav className="nav-rail" aria-label="Workspace">
-      {ITEMS.map((item, index) => (
-        <RailItem
-          key={item.id}
-          refFn={(node) => {
-            itemRefs.current[index] = node;
-          }}
-          item={item}
-          active={active}
-          shortcut={shortcutFor(item.id)}
-          onSelect={onSelect}
-          onMove={move}
-        />
-      ))}
-      <span className="nav-rail-spacer" aria-hidden="true" />
+      <div className="nav-track">
+        {ITEMS.map((item, index) => (
+          <RailItem
+            key={item.id}
+            refFn={(node) => {
+              itemRefs.current[index] = node;
+            }}
+            item={item}
+            active={active}
+            shortcut={shortcutFor(item.id)}
+            onSelect={onSelect}
+            onMove={move}
+          />
+        ))}
+      </div>
       <RailItem
         refFn={(node) => {
           itemRefs.current[ITEMS.length] = node;
@@ -64,6 +65,7 @@ export function NavRail({ active, onSelect }: Props) {
         shortcut={shortcutFor(SETTINGS.id)}
         onSelect={onSelect}
         onMove={move}
+        utility
       />
     </nav>
   );
@@ -76,6 +78,7 @@ function RailItem({
   onSelect,
   onMove,
   refFn,
+  utility,
 }: {
   item: { id: WorkspaceId; label: string; icon: IconName };
   active: WorkspaceId;
@@ -83,14 +86,22 @@ function RailItem({
   onSelect: (id: WorkspaceId) => void;
   onMove: (from: WorkspaceId, key: string) => void;
   refFn: (node: HTMLButtonElement | null) => void;
+  utility?: boolean;
 }) {
   const current = active === item.id;
   const hint = shortcut ? `${item.label} (Alt+${shortcut})` : item.label;
+  const className = [
+    'nav-rail-item',
+    current ? 'on' : '',
+    utility ? 'is-utility' : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
   return (
     <button
       ref={refFn}
       type="button"
-      className={current ? 'nav-rail-item on' : 'nav-rail-item'}
+      className={className}
       aria-current={current ? 'page' : undefined}
       aria-keyshortcuts={shortcut ? `Alt+${shortcut}` : undefined}
       title={hint}
@@ -103,8 +114,8 @@ function RailItem({
         }
       }}
     >
-      <Icon name={item.icon} size={20} />
-      <span>{item.label}</span>
+      <Icon name={item.icon} size={utility ? 18 : 16} />
+      <span className="nav-rail-label">{item.label}</span>
     </button>
   );
 }
