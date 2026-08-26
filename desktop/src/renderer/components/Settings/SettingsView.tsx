@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import type { DefenderState } from '../../../shared/ipc-types';
 import { DEVICES, DEVICE_IDS, type DeviceId, type Settings, type SettingsState, type ThemeChoice } from '../../../shared/settings-types';
 import { formatBytes } from '../../../shared/store-types';
 import { SHORTCUT_HELP } from '../../keyboard';
@@ -277,6 +278,8 @@ export function SettingsView() {
                 : "More memory makes the guest slower to resume. Warm start is dominated by restoring the snapshot's memory image, which grows with the setting."}
             </p>
           </div>
+
+          <DefenderField />
         </section>
 
         <section className="settings-block">
@@ -376,6 +379,93 @@ export function SettingsView() {
         <p className="settings-engine">{engineLabel(engine)}</p>
       </div>
     </section>
+  );
+}
+
+/**
+ * Opt-in Windows Defender exclusion. Only flips on an explicit click — the OS then shows a UAC
+ * prompt — and never pretends the folder is unprotected when the status cannot be read.
+ */
+function DefenderField() {
+  const [state, setState] = useState<DefenderState | null>(null);
+  const [pending, setPending] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    let live = true;
+    void window.openEmu.defenderState().then(
+      (next) => {
+        if (live) setState(next);
+      },
+      () => {
+        if (live) setState('unknown');
+      },
+    );
+    return () => {
+      live = false;
+    };
+  }, []);
+
+  const known = state === 'excluded' || state === 'not-excluded';
+  const on = state === 'excluded';
+  const unavailable = state === 'unknown' || state === null;
+
+  async function toggle() {
+    if (pending || !known) return;
+    const next = !on;
+    const previous = state;
+    setPending(true);
+    setMessage(null);
+    setState(next ? 'excluded' : 'not-excluded');
+    try {
+      const result = await window.openEmu.defenderSetExcluded(next);
+      setState(result.state);
+      if (result.error) setMessage('Change cancelled');
+    } catch {
+      setState(previous);
+      setMessage('Change cancelled');
+    } finally {
+      setPending(false);
+    }
+  }
+
+  return (
+    <div className="settings-field">
+      <div className="settings-toggle-row">
+        <p className="settings-field-label" id="settings-defender-label">
+          Speed up Android
+        </p>
+        <div className="settings-toggle-control">
+          {pending && <Icon name="loader" size={14} />}
+          <button
+            type="button"
+            role={unavailable ? undefined : 'switch'}
+            className={
+              [
+                'settings-toggle',
+                on ? 'on' : '',
+                unavailable ? 'is-unknown' : '',
+              ].filter(Boolean).join(' ')
+            }
+            aria-checked={unavailable ? undefined : on}
+            aria-labelledby="settings-defender-label"
+            aria-busy={pending}
+            disabled={pending || unavailable}
+            onClick={() => void toggle()}
+          />
+        </div>
+      </div>
+      <p className="settings-hint">
+        {state === 'unknown'
+          ? "Antivirus status couldn't be read."
+          : "Skips antivirus scanning of this app's folder so Android boots faster — Windows will ask for administrator permission, and you can turn this off here anytime."}
+      </p>
+      {message && state !== 'unknown' && (
+        <p className="settings-hint" role="status" aria-live="polite">
+          {message}
+        </p>
+      )}
+    </div>
   );
 }
 

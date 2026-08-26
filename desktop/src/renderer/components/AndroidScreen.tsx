@@ -81,6 +81,9 @@ function DevicePlaceholder({ device }: { device: DeviceState }) {
 
 type IdleKind = 'checking' | 'idle' | 'starting' | 'booting' | 'waiting' | 'stopping';
 
+const FIRST_RUN_COPY =
+  'First-time setup takes about a minute. You can browse Apps and the Store while this finishes — the device will be ready when you come back.';
+
 function placeholderKind(device: DeviceState): IdleKind {
   if (device.phase === 'stopping') return 'stopping';
   if (device.phase === 'starting' || (device.busy && device.phase !== 'running')) return 'starting';
@@ -96,9 +99,9 @@ function titleFor(kind: IdleKind, device: DeviceState): string {
     case 'idle':
       return device.error ? 'Couldn’t start' : 'Your Android device';
     case 'starting':
-      return 'Starting Android';
+      return device.provisioned ? 'Starting Android' : 'Preparing your device';
     case 'booting':
-      return 'Booting Android';
+      return device.provisioned ? 'Booting Android' : 'Preparing your device';
     case 'waiting':
       return 'Android is running';
     case 'stopping':
@@ -115,11 +118,14 @@ function copyFor(kind: IdleKind, device: DeviceState): string {
         ? 'A real Android phone, on this PC. Start it to install apps and use them here.'
         : 'A real Android phone, on this PC. The first start prepares the device and can take a few minutes; later ones come back from a snapshot.';
     case 'starting':
+      if (!device.provisioned) return FIRST_RUN_COPY;
       return device.snapshot
         ? 'Coming back from a snapshot — this is usually quick.'
         : 'The first boot can take up to a minute. Later starts resume from a snapshot.';
     case 'booting':
-      return 'Android is up. Waiting for it to finish booting — this can take a minute the first time.';
+      return device.provisioned
+        ? 'Android is up. Waiting for it to finish booting — this can take a minute the first time.'
+        : FIRST_RUN_COPY;
     case 'waiting':
       return 'Waiting for the first frame.';
     case 'stopping':
