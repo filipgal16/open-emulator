@@ -127,7 +127,7 @@ export class Adb {
    * The property alone is not enough: it flips before `pm` is ready, so an install fired the
    * moment it goes high fails with a package manager that is not up yet.
    */
-  async waitForBoot(serial: string, timeoutMs: number, pollMs = 2_000): Promise<boolean> {
+  async waitForBoot(serial: string, timeoutMs: number, pollMs = 500): Promise<boolean> {
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
       const booted = await this.getprop(serial, 'sys.boot_completed');

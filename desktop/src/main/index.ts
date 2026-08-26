@@ -20,12 +20,13 @@ import type { SettingsState, ThemeChoice } from '../shared/settings-types';
 import { cleanup } from './engine/sdk/dependencies';
 import { tuneForHost } from './engine/sdk/host';
 import { detectAcceleration } from './engine/acceleration';
+import { addDefenderExclusion, defenderExclusionState, removeDefenderExclusion } from './engine/defender';
 import { createAccount } from './account';
 import { AppLibrary } from './guest/app-library';
 import { createStore, registerStoreSchemes } from './store';
 import type { DeviceState, EmuPhase, ProfileId } from '../shared/device-types';
 import { INITIAL_DEVICE_STATE, isProfileId } from '../shared/device-types';
-import type { CommandResult, InstalledApp, SetupStepStatus } from '../shared/ipc-types';
+import type { CommandResult, DefenderResult, DefenderState, InstalledApp, SetupStepStatus } from '../shared/ipc-types';
 
 // Config: hardcoded defaults, overridable via env vars until a first-run UI for choosing/renaming
 // the distro exists. `target` is mutated in place by the setup wizard's `distro` step when it
@@ -201,7 +202,7 @@ ipcMain.handle('setup:run-checks', async (event): Promise<SetupStepStatus[]> => 
 
 /** First-run path: check everything and repair whatever can repair itself, unattended. */
 ipcMain.handle('setup:run-auto', async (event): Promise<SetupStepStatus[]> => {
-  return setupRunner.runAuto(
+  const results = await setupRunner.runAuto(
     (status) => {
       // Also to the console. When someone reports "setup won't finish", this transcript is the
       // difference between a diagnosis and a guess — the in-app log only carries command output,
@@ -211,6 +212,14 @@ ipcMain.handle('setup:run-auto', async (event): Promise<SetupStepStatus[]> => {
     },
     (stream, line) => event.sender.send('bridge:log', { stream, line }),
   );
+
+  // The wizard has now handed the user into the app — provisioning was deferred out of the run
+  // above. Start it in the background, but only once the blocking steps have actually passed:
+  // provisioning a half-downloaded SDK would just fail loudly.
+  const blockingOk = results.filter((r) => r.blocking).every((r) => r.status === 'pass');
+  if (blockingOk) void startBackgroundProvisioning();
+
+  return results;
 });
 
 ipcMain.handle('setup:run-fix', async (event, id: string): Promise<SetupStepStatus> => {
@@ -446,6 +455,37 @@ ipcMain.handle('device:prepare', (): Promise<DeviceState> =>
   runDeviceAction('starting', (onLog) => setupRunner.runFix('provisioned', onLog, () => undefined)),
 );
 
+/**
+ * The one cold boot, moved off the critical path.
+ *
+ * Setup hands the user into the app as soon as the download is banked; this then runs the first
+ * boot and snapshot save in the background, reporting through the same `device:state` channel the
+ * panel already renders as "Starting". So nobody watches a cold boot — by the time the Device tab
+ * is opened the guest is live, and if it is never opened the snapshot still lands and the first
+ * explicit Start is warm.
+ *
+ * Fire-and-forget, and guarded so it runs at most once per session and never while another device
+ * action is in flight.
+ */
+let provisioningStarted = false;
+async function startBackgroundProvisioning(): Promise<void> {
+  if (provisioningStarted || busyPhase) return;
+
+  // Nothing to do if it is already provisioned — otherwise every launch would cold-boot again.
+  const status = await openEmu.status(() => undefined).catch(() => null);
+  if (status?.stdout.some((line) => line.startsWith('provisioned_at='))) return;
+
+  // Without a hypervisor the boot hangs for an hour and fails. The provisioned step's fix skips in
+  // that case too, but not starting keeps the panel out of a "starting" state that never resolves.
+  const acceleration = await detectAcceleration().catch(() => null);
+  if (!acceleration?.available) return;
+
+  provisioningStarted = true;
+  console.log('[provision] starting in the background — the user is already in the app');
+  // Deliberately not awaited: the setup handler must return so the wizard can hand over.
+  void runDeviceAction('starting', (onLog) => setupRunner.runFix('provisioned', onLog, () => undefined));
+}
+
 ipcMain.handle('device:set-profile', async (_event, id: unknown): Promise<DeviceState> => {
   if (!isProfileId(id)) return currentDeviceState();
 
@@ -559,6 +599,21 @@ app.whenReady().then(() => {
     const freed = cleanup(layout);
     console.log(`[settings] freed ${freed.bytesFreed} bytes across ${freed.removed.length} paths`);
     return settingsState();
+  });
+
+  ipcMain.handle('defender:state', (): Promise<DefenderState> => defenderExclusionState(layout.root));
+
+  // Only reached from an explicit toggle in Settings. The change is a UAC prompt; a decline comes
+  // back as an error the UI shows, not a thrown handler, and the reported state is re-read from
+  // Defender afterwards rather than assumed.
+  ipcMain.handle('defender:set-excluded', async (_event, enabled: unknown): Promise<DefenderResult> => {
+    try {
+      if (enabled === true) await addDefenderExclusion(layout.root);
+      else await removeDefenderExclusion(layout.root);
+    } catch (err) {
+      return { state: await defenderExclusionState(layout.root), error: (err as Error).message };
+    }
+    return { state: await defenderExclusionState(layout.root) };
   });
 
   // An explicit environment override still wins — it is how a developer pins a guest for a run.

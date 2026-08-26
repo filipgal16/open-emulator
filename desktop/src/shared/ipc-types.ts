@@ -145,4 +145,21 @@ export interface OpenEmuApi {
   settingsChooseDownloadFolder(): Promise<SettingsState>;
   /** Relaunches the app, so a changed download location takes effect. */
   settingsRestartApp(): Promise<void>;
+
+  // ── Antivirus exclusion (opt-in, speeds Android's disk I/O) ──────────────────────────────────
+  /** Whether Defender already excludes the emulator folder: 'excluded' | 'not-excluded' | 'unknown'. */
+  defenderState(): Promise<DefenderState>;
+  /**
+   * Adds or removes the exclusion, via a UAC prompt. Only ever called from an explicit user action.
+   * Returns the state after the change, or the reason it did not happen (declined, no Defender).
+   */
+  defenderSetExcluded(enabled: boolean): Promise<DefenderResult>;
+}
+
+export type DefenderState = 'excluded' | 'not-excluded' | 'unknown';
+
+export interface DefenderResult {
+  state: DefenderState;
+  /** Present when the change did not go through — e.g. the UAC prompt was declined. */
+  error?: string;
 }

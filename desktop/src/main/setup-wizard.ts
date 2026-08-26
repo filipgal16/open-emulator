@@ -108,6 +108,14 @@ export interface Step {
   working?: string;
   check: () => Promise<CheckResult>;
   fix?: (onLog: LogHandler) => Promise<void>;
+  /**
+   * Do not run this step's `fix` as part of `runAuto`, even when its check fails.
+   *
+   * For work that must not gate the wizard — provisioning's one-time cold boot — the auto-run only
+   * *checks* it, so the wizard hands the user into the app in seconds, and the caller starts the
+   * fix in the background afterwards. `runFix` still runs it on demand.
+   */
+  deferFix?: boolean;
 }
 
 /**
@@ -433,7 +441,7 @@ export class SetupRunner {
 
       let status = await this.runCheck(step);
 
-      if (status.status === 'fail' && step.fix) {
+      if (status.status === 'fail' && step.fix && !step.deferFix) {
         emit({ ...base, status: 'running', detail: step.working ?? 'Working…' });
         try {
           await step.fix(onLog);

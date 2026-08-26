@@ -94,6 +94,8 @@ const api: OpenEmuApi = {
   settingsFreeSpace: () => ipcRenderer.invoke('settings:free-space'),
   settingsChooseDownloadFolder: () => ipcRenderer.invoke('settings:choose-download-folder'),
   settingsRestartApp: () => ipcRenderer.invoke('settings:restart-app'),
+  defenderState: () => ipcRenderer.invoke('defender:state'),
+  defenderSetExcluded: (enabled: boolean) => ipcRenderer.invoke('defender:set-excluded', enabled),
 };
 
 contextBridge.exposeInMainWorld('openEmu', api);

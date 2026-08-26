@@ -129,6 +129,10 @@ export function buildNativeSteps(context: NativeSetupContext): Step[] {
       // means a restart is something the user does when convenient rather than a gate they hit
       // before anything useful has happened.
       blocking: false,
+      // Deferred out of the auto-run entirely: the wizard hands the user into the app the moment
+      // the download is banked, and the main process starts this one-time cold boot in the
+      // background. Nobody watches it — see the background provisioning in index.ts.
+      deferFix: true,
       working: 'Starting Android for the first time and saving a snapshot, so later launches are quick.',
       check: async (): Promise<CheckResult> => {
         const result = await openEmu.status(() => undefined);
