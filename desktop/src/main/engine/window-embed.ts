@@ -53,6 +53,9 @@ const CreateToolhelp32Snapshot = kernel32.func('void* CreateToolhelp32Snapshot(u
 const Process32First = kernel32.func('bool Process32First(void* hSnapshot, _Inout_ PROCESSENTRY32* lppe)');
 const Process32Next = kernel32.func('bool Process32Next(void* hSnapshot, _Inout_ PROCESSENTRY32* lppe)');
 const CloseHandle = kernel32.func('bool CloseHandle(void* hObject)');
+// Needed because several of these APIs signal success with a zero return value — see `embedWindow`.
+const GetLastError = kernel32.func('uint32 GetLastError()');
+const SetLastError = kernel32.func('void SetLastError(uint32 dwErrCode)');
 
 /** Every pid descended from `rootPid`, including it. */
 export function descendantPids(rootPid: number): Set<number> {
@@ -99,7 +102,11 @@ const GetWindowThreadProcessId = user32.func('uint32 GetWindowThreadProcessId(vo
 const EnumWindows = user32.func('bool EnumWindows(EnumWindowsProc* lpEnumFunc, void* lParam)');
 const IsWindowVisible = user32.func('bool IsWindowVisible(void* hWnd)');
 const GetWindow = user32.func('void* GetWindow(void* hWnd, uint32 uCmd)');
-const SetParent = user32.func('void* SetParent(void* hWndChild, void* hWndNewParent)');
+// Declared with the parent as a plain `uintptr` rather than `void*`, because the parent does not
+// arrive as a pointer — Electron hands the HWND over as a *buffer containing* the handle value.
+// Passing that buffer as `void*` sends the address of the buffer instead of the handle inside it,
+// which Windows rejects with ERROR_INVALID_WINDOW_HANDLE. See `readHandle`.
+const SetParent = user32.func('SetParent', 'uintptr', ['void*', 'uintptr']);
 const SetWindowLongPtrW = user32.func('intptr SetWindowLongPtrW(void* hWnd, int32 nIndex, intptr dwNewLong)');
 const GetWindowLongPtrW = user32.func('intptr GetWindowLongPtrW(void* hWnd, int32 nIndex)');
 const SetWindowPos = user32.func(
@@ -123,6 +130,8 @@ const WS_EX_TOOLWINDOW = 0x0000_0080;
 const SW_HIDE = 0;
 const SW_SHOW = 5;
 
+const SWP_NOSIZE = 0x0001;
+const SWP_NOMOVE = 0x0002;
 const SWP_NOZORDER = 0x0004;
 const SWP_NOACTIVATE = 0x0010;
 const SWP_FRAMECHANGED = 0x0020;
@@ -215,11 +224,22 @@ export function embedWindow(child: unknown, parent: Buffer, bounds: Rect): boole
   const exStyle = Number(GetWindowLongPtrW(child, GWL_EXSTYLE));
   SetWindowLongPtrW(child, GWL_EXSTYLE, BigInt((exStyle & ~WS_EX_APPWINDOW) >>> 0) as unknown as number);
 
-  // Electron hands the HWND over as a little-endian buffer.
-  const parentHandle = koffi.as(parent, 'void*');
-  if (!SetParent(child, parentHandle)) return false;
+  const parentHandle = readHandle(parent);
+  if (parentHandle === 0n) throw new Error('the host window has no native handle yet');
 
-  return moveWindow(child, bounds);
+  // `SetParent` returns the window's *previous* parent, and a top-level window has none — so it
+  // returns NULL on success. Treating that as a failure is why embedding reported "refused" while
+  // very likely having worked. The documented way to tell the two apart is to clear the last error
+  // first and read it back: NULL with no error is success.
+  SetLastError(0);
+  const previousParent = SetParent(child, parentHandle);
+  if (!previousParent) {
+    const code = GetLastError();
+    if (code !== 0) throw new Error(`SetParent failed (Win32 error ${code})`);
+  }
+
+  if (!moveWindow(child, bounds)) throw new Error(`SetWindowPos failed (Win32 error ${GetLastError()})`);
+  return true;
 }
 
 /** Repositions the embedded window. Called whenever the pane it lives in resizes. */
@@ -236,6 +256,50 @@ export function moveWindow(child: unknown, bounds: Rect): boolean {
     // into, which makes the search box unusable while the device is visible.
     SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED | SWP_SHOWWINDOW,
   );
+}
+
+/** A window's styles, captured before embedding so they can be put back. */
+export interface WindowStyles {
+  style: number;
+  exStyle: number;
+}
+
+/** Reads the styles `embedWindow` is about to overwrite. */
+export function captureWindowStyles(child: unknown): WindowStyles | null {
+  if (!IsWindow(child)) return null;
+  return {
+    style: Number(GetWindowLongPtrW(child, GWL_STYLE)),
+    exStyle: Number(GetWindowLongPtrW(child, GWL_EXSTYLE)),
+  };
+}
+
+/**
+ * Gives the window back to the desktop.
+ *
+ * **This is not optional cleanup.** Windows destroys child windows along with their parent, so an
+ * embedded guest window that is still a child when our window closes is destroyed with it — while
+ * the emulator process carries on running, now with no screen. Observed exactly that way: after the
+ * app was killed mid-embed, the emulator kept running and rendering, and the only window it had
+ * left was its 54x508 floating toolbar. Every later start then found no window to embed.
+ *
+ * So this must run before our window goes away — on quit as well as on a normal stop.
+ */
+export function releaseWindow(child: unknown, styles: WindowStyles | null): boolean {
+  if (!IsWindow(child)) return false;
+
+  // Parent first: the window has to stop being a child before WS_CHILD is cleared, or Windows is
+  // briefly asked to treat a parented window as top-level.
+  SetLastError(0);
+  SetParent(child, 0n);
+  if (GetLastError() !== 0) return false;
+
+  if (styles) {
+    SetWindowLongPtrW(child, GWL_STYLE, BigInt(styles.style >>> 0) as unknown as number);
+    SetWindowLongPtrW(child, GWL_EXSTYLE, BigInt(styles.exStyle >>> 0) as unknown as number);
+  }
+
+  // FRAMECHANGED so the restored caption and resize frame are actually recalculated and drawn.
+  return SetWindowPos(child, null, 0, 0, 0, 0, SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOMOVE | SWP_NOSIZE | SWP_FRAMECHANGED);
 }
 
 /**
@@ -257,6 +321,21 @@ export function setWindowVisible(child: unknown, visible: boolean): boolean {
 /** Whether the handle still refers to a live window — the emulator may have exited. */
 export function isLiveWindow(child: unknown): boolean {
   return Boolean(child) && Boolean(IsWindow(child));
+}
+
+/**
+ * The `HWND` value out of the buffer Electron returns from `getNativeWindowHandle()`.
+ *
+ * The buffer *contains* the handle; it is not a pointer to the window. Handing the buffer itself
+ * to a `void*` parameter passes the buffer's own address, which Windows rejects with
+ * ERROR_INVALID_WINDOW_HANDLE (1400) — observed against a real emulator window before this existed.
+ *
+ * Eight bytes on x64, four on x86, little-endian in both cases.
+ */
+function readHandle(buffer: Buffer): bigint {
+  if (buffer.length >= 8) return buffer.readBigUInt64LE(0);
+  if (buffer.length >= 4) return BigInt(buffer.readUInt32LE(0));
+  return 0n;
 }
 
 /** The window's own client size, for sizing the pane to the guest's aspect ratio. */

@@ -61,8 +61,15 @@ the step list and the full log. Nothing already downloaded is fetched twice.
 
 ### Screen
 
-The Android display, mirrored. Click to tap, drag to swipe. **Start** and **Stop** are in the
-toolbar above it, next to a status light and the Android version.
+The Android display. On the native Windows runtime this is the emulator's own GPU-rendered window,
+embedded directly in the app — so it runs at the emulator's frame rate, and mouse and keyboard
+reach Android without a round trip. Resizing the window resizes Android's display with it, rather
+than stretching a fixed-size image.
+
+Where no such window exists — the WSL runtime, which runs Android headless inside the distro — the
+screen is mirrored frame by frame instead, and clicking taps and dragging swipes.
+
+**Start** and **Stop** are in the toolbar above it, next to a status light and the Android version.
 
 ### Apps
 
@@ -224,9 +231,10 @@ because it has been proven on one machine rather than many.
 
 ## Status
 
-**Working** — guest boot and snapshot restore, screen mirroring with touch input, Android
-navigation, the store across all three sources, the device-wide account, settings, and a Windows
-installer.
+**Working** — guest boot and snapshot restore, the guest's own GPU-rendered window embedded in the
+app on the native runtime (frame-by-frame mirroring where there is no such window), a display that
+resizes with the window rather than stretching, Android navigation, the store across all three
+sources, the device-wide account, settings, and a Windows installer.
 
 **In progress** — the native Windows runtime (above), and a licence-clean runtime that replaces
 Google's SDK with stock QEMU and an Android-x86 image so the product can be shipped commercially.

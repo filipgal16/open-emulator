@@ -29,6 +29,14 @@ function fakeEmbed(over = {}) {
       return true;
     },
     isLiveWindow: (child) => child === 'HWND',
+    captureWindowStyles: () => {
+      calls.push('capture');
+      return { style: 0x1234, exStyle: 0x5678 };
+    },
+    releaseWindow: (child, styles) => {
+      calls.push(`release:${styles ? `${styles.style}/${styles.exStyle}` : 'null'}`);
+      return true;
+    },
     ...over,
   };
 }
@@ -43,7 +51,7 @@ test('a found window is embedded and becomes the attached one', async () => {
 
   assert.equal(await guest.attach(1234, PARENT, RECT), true);
   assert.equal(guest.isAttached(), true);
-  assert.deepEqual(embed.calls, ['wait:1234', 'embed:800x600']);
+  assert.deepEqual(embed.calls, ['wait:1234', 'capture', 'embed:800x600']);
 });
 
 test('concurrent attaches share one attempt, not one poll each', async () => {
@@ -150,9 +158,10 @@ test('hiding and showing is deduplicated', async () => {
 
 // ── Teardown ───────────────────────────────────────────────────────────────────────────────────
 
-test('detaching forgets the window without touching it', async () => {
-  // The emulator owns that window and is being asked to exit; un-parenting it mid-shutdown risks a
-  // crash for no benefit.
+test('detaching gives the window back to the desktop, with its original styles', async () => {
+  // Windows destroys child windows with their parent. A guest window still parented to ours when
+  // the app closes is destroyed with it while the emulator keeps running — which is exactly how a
+  // live emulator ended up with no screen and every later start found nothing to embed.
   const embed = fakeEmbed();
   const guest = windowFor(embed);
   await guest.attach(1234, PARENT, RECT);
@@ -160,8 +169,56 @@ test('detaching forgets the window without touching it', async () => {
 
   guest.detach();
 
+  assert.deepEqual(embed.calls, ['release:4660/22136'], 'released with the styles captured at embed');
   assert.equal(guest.isAttached(), false);
-  assert.deepEqual(embed.calls, [], 'nothing was destroyed or re-parented');
+});
+
+test('styles are captured before embedding overwrites them', async () => {
+  const embed = fakeEmbed();
+  const guest = windowFor(embed);
+
+  await guest.attach(1234, PARENT, RECT);
+
+  assert.ok(embed.calls.indexOf('capture') < embed.calls.indexOf('embed:800x600'));
+});
+
+test('detaching twice releases once', async () => {
+  const embed = fakeEmbed();
+  const guest = windowFor(embed);
+  await guest.attach(1234, PARENT, RECT);
+  embed.calls.length = 0;
+
+  guest.detach();
+  guest.detach();
+
+  assert.equal(embed.calls.filter((c) => c.startsWith('release')).length, 1);
+});
+
+test('a release that throws still forgets the window', async () => {
+  // Quitting must not be blocked by a window that has already gone.
+  const embed = fakeEmbed({
+    releaseWindow: () => {
+      throw new Error('window already destroyed');
+    },
+  });
+  const guest = windowFor(embed);
+  await guest.attach(1234, PARENT, RECT);
+
+  guest.detach();
+
+  assert.equal(guest.isAttached(), false);
+});
+
+test('detaching a window that already died does not try to release it', async () => {
+  const embed = fakeEmbed();
+  const guest = windowFor(embed);
+  await guest.attach(1234, PARENT, RECT);
+  embed.calls.length = 0;
+  embed.isLiveWindow = () => false;
+
+  guest.detach();
+
+  assert.deepEqual(embed.calls, []);
 });
 
 test('a window that died underneath us reads as detached', async () => {

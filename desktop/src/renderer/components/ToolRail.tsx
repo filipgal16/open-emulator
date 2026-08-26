@@ -20,9 +20,9 @@ function send(code: string) {
 /**
  * Captures from the guest rather than reusing the last mirrored frame.
  *
- * The old version read `peekGuestFrame()`, which is empty whenever the guest's own window is
- * embedded — there are no mirrored frames then. Asking for a fresh capture works on both paths and
- * saves the guest's full resolution instead of whatever the mirror last managed.
+ * The old version saved whatever frame the mirror had last produced, of which there are none once
+ * the guest's own window is embedded. Capturing on demand works on both paths, and saves the
+ * guest's full resolution rather than whatever the mirror last managed.
  */
 async function saveScreenshot() {
   const png = await window.openEmu.screenshot().catch(() => null);

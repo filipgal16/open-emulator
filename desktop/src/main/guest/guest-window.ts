@@ -1,4 +1,4 @@
-import type { Rect } from '../engine/window-embed';
+import type { Rect, WindowStyles } from '../engine/window-embed';
 
 /**
  * The Win32 calls this controller needs, injected so it can be tested without a real window —
@@ -10,6 +10,8 @@ export interface EmbedApi {
   moveWindow(child: unknown, bounds: Rect): boolean;
   setWindowVisible(child: unknown, visible: boolean): boolean;
   isLiveWindow(child: unknown): boolean;
+  captureWindowStyles(child: unknown): WindowStyles | null;
+  releaseWindow(child: unknown, styles: WindowStyles | null): boolean;
 }
 
 export interface GuestWindowDeps {
@@ -35,6 +37,8 @@ export interface GuestWindowDeps {
  */
 export class GuestWindow {
   private child: unknown = null;
+  /** Captured before embedding, so `detach` can put the window back as it found it. */
+  private styles: WindowStyles | null = null;
   private bounds: Rect | null = null;
   private visible = false;
   private attaching: Promise<boolean> | null = null;
@@ -82,6 +86,8 @@ export class GuestWindow {
 
     let embedded = false;
     try {
+      // Captured before embedWindow overwrites them, or detach has nothing to restore.
+      this.styles = this.deps.embed.captureWindowStyles(hwnd);
       embedded = this.deps.embed.embedWindow(hwnd, parent, bounds);
     } catch (err) {
       this.deps.log?.(`embedding failed: ${(err as Error).message}`);
@@ -135,14 +141,23 @@ export class GuestWindow {
   }
 
   /**
-   * Forgets the window. Called when the guest stops.
+   * Gives the window back to the desktop and forgets it.
    *
-   * Deliberately does not destroy or un-parent it: the emulator owns that window and is being
-   * asked to exit, so tearing its window out from under it during shutdown risks a crash for no
-   * benefit. Dropping the reference is enough.
+   * Merely dropping the reference is not enough, and getting this wrong is expensive: Windows
+   * destroys child windows along with their parent, so a guest window left parented to ours when
+   * the app closes is destroyed with it — while the emulator keeps running, now with no screen.
+   * Observed exactly that way, and it poisons every later start, which finds no window to embed.
    */
   detach(): void {
+    if (this.child && this.deps.embed.isLiveWindow(this.child)) {
+      try {
+        this.deps.embed.releaseWindow(this.child, this.styles);
+      } catch (err) {
+        this.deps.log?.(`could not release the guest window: ${(err as Error).message}`);
+      }
+    }
     this.child = null;
+    this.styles = null;
     this.bounds = null;
     this.visible = false;
   }

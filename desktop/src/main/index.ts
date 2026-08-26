@@ -581,7 +581,20 @@ app.whenReady().then(() => {
   createWindow();
 });
 
+/**
+ * Hand the guest's window back before ours goes away.
+ *
+ * `before-quit` rather than `window-all-closed`, because by the time the last window has closed the
+ * parent HWND is already gone — and a child window is destroyed with its parent. Leaving it
+ * attached means quitting the app destroys the running emulator's screen: the process keeps going,
+ * rendering into nothing, and every later start finds no window to embed.
+ */
+app.on('before-quit', () => {
+  embeddedGuest?.detach();
+});
+
 app.on('window-all-closed', () => {
+  embeddedGuest?.detach();
   mirror.stop();
   store?.dispose();
   if (process.platform !== 'darwin') app.quit();
