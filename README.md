@@ -43,6 +43,11 @@ The installer asks where to install — it defaults to your user folder and neve
 administrator prompt. Everything after that happens by itself: the app works out what this PC
 already has, downloads Android, and prepares a device.
 
+**You are not made to wait on the first boot.** Once the download is banked, the app opens straight
+away and Android's one-time preparation — the single cold boot it ever does — runs in the background
+while you browse Apps and the Store. The Device tab shows "Starting Android" until it is ready; by
+the time you look, it is live. Every start after that resumes from a snapshot in about five seconds.
+
 **Where Android is downloaded is up to you.** It is by far the largest thing here, so if your system
 drive is small, point it at another one — Settings → Storage → *Change folder*. Moving it later
 relocates what has already been downloaded rather than fetching it again.

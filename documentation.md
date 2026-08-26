@@ -642,14 +642,30 @@ Also worth knowing:
 
 | | |
 |---|---|
-| Cold boot | 37s |
+| Cold boot | ~37s |
 | Warm start from the snapshot | **4.9s** |
 | First-time provision | 49s, once |
 | Download | 1.1 GB in ~65s |
+| **First-run wait before the app is usable** | **~0.2s** |
 
 The warm figure depends on Quick Boot being left to manage its own `default_boot` snapshot.
 Naming a snapshot and passing it back as `-snapshot <name>` is silently ignored by the
 emulator, which cold-boots instead — that mistake cost 32s on every start until it was found.
+
+**The user never waits on the cold boot.** A true from-scratch cold boot of this image is inherently
+~30–37s and nothing safe brings that under ~15s — so instead it is moved off the critical path. The
+one-time provision (cold boot + snapshot) is deferred out of the setup wizard's blocking run: the
+wizard hands the user into the app the moment the download is banked — **measured at ~0.2s to the
+main UI** — and provisioning then runs in the background, shown as "Starting Android" in the Device
+panel while the user is free to browse Apps and the Store. When it finishes, the guest is already
+live and embedded; if the Device tab is never opened, the snapshot still lands and the first explicit
+Start is the 4.9s warm path. So the raw cold-boot number is unchanged; the *experienced* first-run
+wait drops from ~49s to a fraction of a second.
+
+An opt-in **Windows Defender exclusion** for `%LOCALAPPDATA%\open-emulator` is offered in Settings —
+Defender's real-time scanning of the guest's disk writes is the likely reason native measures ~37s
+where KVM measured ~24s. It changes a security setting, so it is applied only on an explicit toggle,
+via one UAC prompt, and reverts exactly.
 
 > **The native Windows runtime is not the default yet.** `OPEN_EMULATOR_ENGINE=sdk` runs
 > `emulator.exe` and `adb.exe` as ordinary Windows processes with no WSL involved, downloading the
