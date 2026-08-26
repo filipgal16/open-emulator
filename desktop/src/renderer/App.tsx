@@ -13,7 +13,7 @@ import { ToolRail } from './components/ToolRail';
 import type { AccountState } from '../shared/account-types';
 import { INITIAL_DEVICE_STATE, type DeviceState } from '../shared/device-types';
 import type { SetupStepStatus } from '../shared/ipc-types';
-import { useDisplayScale } from './hooks/useDisplayScale';
+import { useGuestViewport } from './hooks/useGuestViewport';
 import { isTypingTarget, WORKSPACE_SHORTCUTS } from './keyboard';
 import { applyDocumentTheme } from './theme';
 
@@ -25,7 +25,6 @@ export function App() {
   const [booted, setBooted] = useState(false);
   const [showAccount, setShowAccount] = useState(false);
   const [theater, setTheater] = useState(false);
-  const [rotation, setRotation] = useState(0);
   const [device, setDevice] = useState<DeviceState>(INITIAL_DEVICE_STATE);
   const accountBtnRef = useRef<HTMLButtonElement>(null);
   const theaterBtnRef = useRef<HTMLButtonElement>(null);
@@ -91,10 +90,19 @@ export function App() {
   }, [theater, showAccount, closeAccount, exitTheater]);
 
   // Before the early return below, or the hook count changes when setup finishes.
-  useDisplayScale(viewportRef, {
-    active: device.phase === 'running' && tab === 'screen',
-    rotation,
+  //
+  // The airspace rule: an embedded guest window paints over the page, so it must be hidden for
+  // anything that would overlap it. The account dialog is the case that exists today.
+  const embedded = useGuestViewport(viewportRef, {
+    active: device.phase === 'running',
+    visible: tab === 'screen' && !showAccount,
   });
+
+  // An embedded guest produces no mirrored frames, so `onFirstFrame` never fires and everything
+  // waiting on first paint would wait forever. The window being embedded *is* the guest painting.
+  useEffect(() => {
+    if (embedded) setBooted(true);
+  }, [embedded]);
 
   if (!ready) {
     return (
@@ -143,8 +151,8 @@ export function App() {
             {showAccount && account ? (
               <SignInDialog state={account} onChange={updateAccount} onClose={closeAccount} />
             ) : tab === 'screen' ? (
-              <div ref={viewportRef} className={rotation ? `viewport is-rot-${rotation}` : 'viewport'}>
-                <AndroidScreen device={device} onFirstFrame={() => setBooted(true)} />
+              <div ref={viewportRef} className="viewport">
+                <AndroidScreen device={device} embedded={embedded} onFirstFrame={() => setBooted(true)} />
               </div>
             ) : tab === 'apps' ? (
               <AppLibrary onOpenStore={() => selectWorkspace('store')} />
@@ -162,7 +170,7 @@ export function App() {
           theater={theater}
           theaterButtonRef={theaterBtnRef}
           onToggleTheater={() => (theater ? exitTheater() : setTheater(true))}
-          onRotate={() => setRotation((deg) => (deg + 90) % 360)}
+          onRotate={() => void window.openEmu.rotateDevice()}
         />
       </div>
     </>

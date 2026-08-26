@@ -11,6 +11,13 @@ interface Props {
   alt?: string;
   /** Replaces the default waiting copy. Must not float — it sits where the frame will. */
   placeholder?: ReactNode;
+  /**
+   * The guest's own window is painting over this pane, so there is nothing to mirror or draw.
+   *
+   * The pane still has to occupy its space in the layout — the embedded window is positioned to
+   * match it — so this renders an empty box rather than nothing at all.
+   */
+  embedded?: boolean;
 }
 
 /** Below this much movement, a drag was someone tapping with an unsteady hand. */
@@ -41,8 +48,9 @@ export function GuestSurface({
   waitingLabel = 'Waiting for first frame…',
   alt = 'Live view of the Android device',
   placeholder,
+  embedded = false,
 }: Props) {
-  const frameUrl = useGuestScreen();
+  const frameUrl = useGuestScreen(!embedded);
   const imgRef = useRef<HTMLImageElement | null>(null);
   const downRef = useRef<{ x: number; y: number; at: number } | null>(null);
   const firedFirstFrame = useRef(false);
@@ -110,6 +118,11 @@ export function GuestSurface({
     const duration = Math.min(1500, Math.max(60, Date.now() - down.at));
     window.openEmu.swipe(start.x, start.y, end.x, end.y, duration);
   }
+
+  // The guest's window is over this pane. Anything drawn here would be hidden behind it, and the
+  // pointer handlers below would never see an event — the child window takes its own input, which
+  // is exactly why embedding removes the per-gesture adb round trip.
+  if (embedded) return <div className={className ?? 'android-screen'} aria-label={alt} role="img" />;
 
   return (
     <div className={className ?? 'android-screen'}>

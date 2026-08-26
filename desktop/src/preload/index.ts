@@ -33,7 +33,10 @@ const api: OpenEmuApi = {
   onFrame: (callback) => {
     ipcRenderer.on('mirror:frame', (_event, data: Uint8Array) => callback(data));
   },
-  resizeDisplay: (width: number, height: number) => ipcRenderer.send('display:resize', width, height),
+  reportViewport: (rect: { x: number; y: number; width: number; height: number }, visible: boolean) =>
+    ipcRenderer.invoke('display:viewport', rect, visible),
+  screenshot: () => ipcRenderer.invoke('device:screenshot'),
+  rotateDevice: () => ipcRenderer.invoke('device:rotate'),
   tap: (x: number, y: number) => ipcRenderer.send('input:tap', x, y),
   swipe: (x1: number, y1: number, x2: number, y2: number, durationMs: number) =>
     ipcRenderer.send('input:swipe', x1, y1, x2, y2, durationMs),

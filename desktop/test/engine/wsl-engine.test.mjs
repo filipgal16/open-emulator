@@ -87,5 +87,5 @@ test('a cold start is asked for explicitly, and is not the default', async () =>
 });
 
 test('the WSL engine has no window to embed, so it reports none', async () => {
-  assert.equal(await new WslEngine(fakeBridge(), { profile: null }).displayHandle(), null);
+  assert.equal(await new WslEngine(fakeBridge(), { profile: null }).displayPid(), null);
 });

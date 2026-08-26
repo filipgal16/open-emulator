@@ -3,6 +3,8 @@ import os from 'os';
 import path from 'path';
 import { DevicePrefsStore, parseStatus } from './guest/device-status';
 import { DisplayScaler } from './guest/display-scaler';
+import { GuestWindow, type EmbedApi } from './guest/guest-window';
+import type { Rect } from './engine/window-embed';
 import { LogHandler, WslBridge, WslTarget } from './wsl/bridge';
 import { createEngine, resolveEngineId } from './engine/factory';
 import { OpenEmuClient } from './engine/client';
@@ -76,6 +78,34 @@ const displayScaler = new DisplayScaler({
   shell: (command) => openEmu.shell(command, () => undefined),
   log: (message) => console.log(`[display] ${message}`),
 });
+
+/**
+ * The guest's real window, reparented into ours — the difference between the emulator's own frame
+ * rate and the ~2.8fps a screencap poll can manage.
+ *
+ * Built on first use rather than at import, and behind a try/catch, because `window-embed` loads
+ * `user32.dll` through koffi at module scope. A machine where that fails must still start the app
+ * and mirror, rather than dying before it opens a window.
+ */
+let embeddedGuest: GuestWindow | null = null;
+let embedUnavailable = false;
+
+function guestWindow(): GuestWindow | null {
+  if (embeddedGuest) return embeddedGuest;
+  if (embedUnavailable) return null;
+
+  try {
+    // Required lazily on purpose — see above.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const embed = require('./engine/window-embed') as EmbedApi;
+    embeddedGuest = new GuestWindow({ embed, log: (message) => console.log(`[guest-window] ${message}`) });
+    return embeddedGuest;
+  } catch (err) {
+    console.log(`[guest-window] embedding unavailable, mirroring instead: ${(err as Error).message}`);
+    embedUnavailable = true;
+    return null;
+  }
+}
 
 /**
  * The setup steps and the mirror both follow the engine, and have to.
@@ -201,16 +231,85 @@ ipcMain.on('mirror:start', (event) => {
 ipcMain.on('mirror:stop', () => mirror.stop());
 
 /**
- * The viewport changed size, in real device pixels.
+ * One screenshot of the guest, captured on demand.
  *
- * Fires continuously while a window edge is dragged; `DisplayScaler` debounces, so this stays a
- * cheap `send` rather than an `invoke` the renderer would have to await on every frame.
+ * The button used to save whatever frame the mirror had last produced, which stops working the
+ * moment the guest's own window is embedded — there are no mirrored frames then. Capturing here
+ * also means the file is at the guest's full resolution rather than whatever the mirror managed.
+ *
+ * Null when the engine cannot capture (nothing running, or a runtime with no `screencap`).
  */
-ipcMain.on('display:resize', (_event, width: unknown, height: unknown) => {
-  if (typeof width !== 'number' || typeof height !== 'number') return;
-  if (!Number.isFinite(width) || !Number.isFinite(height)) return;
-  displayScaler.request({ width, height });
+/**
+ * Rotates the guest a quarter turn.
+ *
+ * Rotates *Android*, not a picture of it. The old Rotate button applied a CSS transform to the
+ * mirrored image, which does nothing at all once the guest's own window is embedded — and even on
+ * the mirror it only turned the image, so the guest still laid out for the old orientation.
+ *
+ * `accelerometer_rotation` has to be cleared first or the guest's own sensor immediately overrides
+ * `user_rotation` and the turn silently reverts.
+ */
+ipcMain.handle('device:rotate', async (): Promise<number | null> => {
+  const current = await openEmu.shell('settings get system user_rotation', () => undefined).catch(() => null);
+  const parsed = Number.parseInt((current?.stdout.join('') ?? '').trim(), 10);
+  const next = (Number.isFinite(parsed) ? parsed + 1 : 1) % 4;
+
+  const applied = await openEmu
+    .shell(`settings put system accelerometer_rotation 0 && settings put system user_rotation ${next}`, () => undefined)
+    .catch(() => null);
+
+  return applied?.code === 0 ? next : null;
 });
+
+ipcMain.handle('device:screenshot', async (): Promise<Uint8Array | null> => {
+  if (!engine.screencap) return null;
+  const png = await engine.screencap().catch(() => null);
+  return png ? new Uint8Array(png) : null;
+});
+
+/**
+ * Where the device is on screen, in real device pixels, and whether it should be showing.
+ *
+ * One channel drives both halves of the display, because they must not disagree: `wm size` sets
+ * how large Android believes its screen is, and `moveWindow` sets how large the window showing it
+ * is. Split across two channels they would drift apart during a drag and the guest would render at
+ * one size into a pane sized for another.
+ *
+ * Returns whether the guest's own window is embedded. False means the renderer has to fall back to
+ * mirroring frames — on the WSL runtime, which has no window at all, or when embedding was refused.
+ */
+ipcMain.handle('display:viewport', async (_event, rect: unknown, visible: unknown): Promise<boolean> => {
+  if (!isRect(rect) || typeof visible !== 'boolean') return false;
+
+  displayScaler.request({ width: rect.width, height: rect.height });
+
+  const guest = guestWindow();
+  if (!guest) return false;
+
+  // Hiding is the airspace escape hatch and must work even mid-attach, so it is answered before
+  // anything that could wait on the emulator.
+  if (!visible) {
+    guest.setVisible(false);
+    return guest.isAttached();
+  }
+
+  if (guest.isAttached()) {
+    guest.setBounds(rect);
+    guest.setVisible(true);
+    return true;
+  }
+
+  const pid = await openEmu.displayPid().catch(() => null);
+  if (!pid || !mainWindow) return false;
+
+  return guest.attach(pid, mainWindow.getNativeWindowHandle(), rect);
+});
+
+function isRect(value: unknown): value is Rect {
+  if (typeof value !== 'object' || value === null) return false;
+  const r = value as Record<string, unknown>;
+  return ['x', 'y', 'width', 'height'].every((k) => typeof r[k] === 'number' && Number.isFinite(r[k] as number));
+}
 
 ipcMain.on('input:tap', (_event, x: number, y: number) => {
   openEmu.tap(x, y, () => undefined).catch(() => undefined);
@@ -320,6 +419,7 @@ ipcMain.handle('device:start', (): Promise<DeviceState> =>
     // A different profile boots a different panel, so anything cached from the last guest would
     // compute densities against a device that no longer exists.
     displayScaler.forget();
+    embeddedGuest?.detach();
     await openEmu.start(onLog);
     // A guest resumed from a snapshot comes back with its display asleep, so the mirror shows a
     // black rectangle and the app looks broken. Waking it is what every other emulator does on
@@ -334,6 +434,9 @@ ipcMain.handle('device:stop', (): Promise<DeviceState> =>
     // the override that persists into the snapshot is harmless — the panel is still reported as
     // physical, and the first resize after the next start re-applies from it.
     displayScaler.forget();
+    // Before the stop, not after: the window belongs to a process that is about to exit, and a
+    // stale handle that still answers IsWindow would have the next start think it was attached.
+    embeddedGuest?.detach();
     await openEmu.stop(onLog);
   }),
 );

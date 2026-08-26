@@ -89,7 +89,7 @@ export class WslEngine implements AndroidEngine {
   }
 
   /** Headless inside the distro — there is no window to embed, so the screen is mirrored instead. */
-  displayHandle(): Promise<number | null> {
+  displayPid(): Promise<number | null> {
     return Promise.resolve(null);
   }
 }

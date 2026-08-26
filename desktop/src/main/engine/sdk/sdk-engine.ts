@@ -419,14 +419,18 @@ export class SdkEngine implements AndroidEngine {
   }
 
   /**
-   * Null until the window-embedding work lands.
+   * The emulator process, whose window is the guest's real GPU-rendered screen.
    *
-   * The emulator does have a real window natively — finding its `HWND` by process id and
-   * reparenting it is the next phase. Until then the screen is mirrored frame by frame, exactly as
-   * it is today, which is why this returning null is a working answer rather than a placeholder.
+   * Read from the pid file rather than from `this.emulator`, so it still answers for a guest that
+   * was already running when the app started — the same reason `runningPid` exists.
+   *
+   * Null when launched headless: there is no window to show, so the caller mirrors instead. Note
+   * that the pid returned is the *launcher*; `emulator.exe` spawns the process that actually
+   * paints, which is why the window has to be found by walking the tree rather than by pid alone.
    */
-  displayHandle(): Promise<number | null> {
-    return Promise.resolve(null);
+  displayPid(): Promise<number | null> {
+    if (this.options.windowed === false) return Promise.resolve(null);
+    return Promise.resolve(this.runningPid(this.profile().avdName));
   }
 
   /** Exposed so the mirror can pull frames without going through the serialized command queue. */

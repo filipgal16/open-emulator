@@ -88,13 +88,18 @@ export interface AndroidEngine {
 
   // ── Presentation ─────────────────────────────────────────────────────────────────────────────
   /**
-   * The guest's own top-level window, as a Win32 `HWND`, or null when this engine has no window to
-   * embed and the screen has to be mirrored frame by frame instead.
+   * The process whose window shows the guest, or null when this engine has no window and the
+   * screen has to be mirrored frame by frame instead.
    *
-   * Null for the WSL engine, which runs the emulator headless inside the distro. A native engine
-   * returns a real handle once its process has painted.
+   * A **pid** rather than an `HWND` for two reasons. An `HWND` from koffi is an opaque pointer that
+   * does not survive being typed as a number; and finding the window is presentation work that
+   * belongs in the main process next to the `BrowserWindow`, not in a runtime. The engine knows
+   * which process it started — turning that into a window is `GuestWindow`'s job.
+   *
+   * Null for the WSL engine, which runs the emulator headless inside the distro. That null is what
+   * selects the mirror fallback, so it is a supported answer rather than a failure.
    */
-  displayHandle(): Promise<number | null>;
+  displayPid(): Promise<number | null>;
 
   /**
    * One PNG of the guest's screen, or undefined when this engine cannot capture cheaply.

@@ -48,12 +48,33 @@ export interface OpenEmuApi {
   stopMirror(): void;
   onFrame(callback: (data: Uint8Array) => void): void;
   /**
-   * The viewport's size in **real device pixels** — CSS pixels times `devicePixelRatio`.
+   * Where the device pane is, in **real device pixels** — CSS pixels times `devicePixelRatio` —
+   * and whether it should be showing.
    *
-   * Resizes Android's logical display to match, rather than scaling a fixed-size picture of it.
-   * Safe to call on every resize event: main debounces until the drag settles.
+   * Drives both halves of the display at once: Android's logical display size, and the position of
+   * the guest's own window embedded in ours. Safe to call on every resize; main debounces the
+   * expensive half.
+   *
+   * **Resolves true when the guest's real window is embedded**, which means it is painting at the
+   * emulator's own frame rate and the caller must not also mirror frames. False means fall back to
+   * mirroring — the WSL runtime has no window, and embedding can be refused.
    */
-  resizeDisplay(width: number, height: number): void;
+  reportViewport(rect: { x: number; y: number; width: number; height: number }, visible: boolean): Promise<boolean>;
+  /**
+   * One PNG of the guest, captured now. Null when nothing is running or the runtime cannot capture.
+   *
+   * Captured on demand rather than read from the mirror, because an embedded guest produces no
+   * mirrored frames — and because this way the file is at the guest's real resolution.
+   */
+  screenshot(): Promise<Uint8Array | null>;
+  /**
+   * Turns the guest a quarter turn, returning its new rotation (0–3) or null if it refused.
+   *
+   * Rotates Android itself rather than transforming the picture, so apps re-lay out for the new
+   * orientation — and so it works at all with the guest's own window embedded, where there is no
+   * image to transform.
+   */
+  rotateDevice(): Promise<number | null>;
   tap(x: number, y: number): void;
   swipe(x1: number, y1: number, x2: number, y2: number, durationMs: number): void;
   /** Android keycode name (`KEYCODE_BACK`) or a numeric code. Anything else is dropped in main. */

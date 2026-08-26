@@ -43,8 +43,8 @@ export class OpenEmuClient {
   }
 
   /** The guest's own window, as an HWND, or null when the screen has to be mirrored instead. */
-  displayHandle(): Promise<number | null> {
-    return this.engine.displayHandle();
+  displayPid(): Promise<number | null> {
+    return this.engine.displayPid();
   }
 
   tap(x: number, y: number, onLog: EngineLogHandler): Promise<CommandResult> {

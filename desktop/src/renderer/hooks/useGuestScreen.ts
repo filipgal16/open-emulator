@@ -36,11 +36,19 @@ export function peekGuestFrame(): string | null {
   return currentUrl;
 }
 
-/** The latest mirrored frame as an object URL, or null before the guest has painted. */
-export function useGuestScreen(): string | null {
-  const [url, setUrl] = useState<string | null>(currentUrl);
+/**
+ * The latest mirrored frame as an object URL, or null before the guest has painted.
+ *
+ * `enabled` exists for the embedded-window path. When the guest's own window is reparented into
+ * the viewport it paints there at the emulator's own frame rate, and mirroring the same guest
+ * behind it would spend a ~400ms `screencap` per frame producing images nothing can see.
+ */
+export function useGuestScreen(enabled = true): string | null {
+  const [url, setUrl] = useState<string | null>(enabled ? currentUrl : null);
 
   useEffect(() => {
+    if (!enabled) return;
+
     wire();
     listeners.add(setUrl);
     refCount += 1;
@@ -51,7 +59,7 @@ export function useGuestScreen(): string | null {
       refCount -= 1;
       if (refCount === 0) window.openEmu.stopMirror();
     };
-  }, []);
+  }, [enabled]);
 
-  return url;
+  return enabled ? url : null;
 }

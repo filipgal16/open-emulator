@@ -1,6 +1,5 @@
 import { useEffect, useRef, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type Ref } from 'react';
 import { Icon, type IconName } from './Icon';
-import { peekGuestFrame } from '../hooks/useGuestScreen';
 import { isTypingTarget, rovingIndex } from '../keyboard';
 
 interface Props {
@@ -18,14 +17,29 @@ function send(code: string) {
   window.openEmu.key(code);
 }
 
-function saveScreenshot() {
-  const url = peekGuestFrame();
-  if (!url) return;
-  const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = `open-emulator-${stamp}.png`;
-  link.click();
+/**
+ * Captures from the guest rather than reusing the last mirrored frame.
+ *
+ * The old version read `peekGuestFrame()`, which is empty whenever the guest's own window is
+ * embedded — there are no mirrored frames then. Asking for a fresh capture works on both paths and
+ * saves the guest's full resolution instead of whatever the mirror last managed.
+ */
+async function saveScreenshot() {
+  const png = await window.openEmu.screenshot().catch(() => null);
+  if (!png) return;
+
+  const url = URL.createObjectURL(new Blob([png as BlobPart], { type: 'image/png' }));
+  try {
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `open-emulator-${stamp}.png`;
+    link.click();
+  } finally {
+    // Revoked on a turn of the event loop, not immediately: the click is handled asynchronously
+    // and a revoked URL would leave the download with nothing to save.
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  }
 }
 
 /**
@@ -94,7 +108,7 @@ export function ToolRail({ live, visible, theater, theaterButtonRef, onToggleThe
       {live && <span className="tool-rail-rule" aria-hidden="true" />}
       <ToolGroup>
         <ToolButton name="rotate" label="Rotate" tabIndex={tabStop()} onClick={onRotate} />
-        {live && <ToolButton name="screenshot" label="Screenshot" tabIndex={tabStop()} onClick={saveScreenshot} />}
+        {live && <ToolButton name="screenshot" label="Screenshot" tabIndex={tabStop()} onClick={() => void saveScreenshot()} />}
         <ToolButton
           name={theater ? 'fullscreen-exit' : 'fullscreen'}
           label={theater ? 'Exit fullscreen' : 'Fullscreen'}

@@ -7,7 +7,7 @@ const { EngineMirror } = loadDist('engine/engine-mirror.js');
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
 function fakeEngine({ frames = [], delay = 0, fails = false } = {}) {
-  const engine = { id: 'sdk', calls: 0, setProfile() {}, async displayHandle() { return null; } };
+  const engine = { id: 'sdk', calls: 0, setProfile() {}, async displayPid() { return null; } };
   engine.screencap = async () => {
     engine.calls += 1;
     if (delay) await wait(delay);
@@ -87,7 +87,7 @@ test('stop halts capturing', async () => {
 });
 
 test('an engine that cannot capture says so instead of silently showing nothing', async () => {
-  const engine = { id: 'wsl', setProfile() {}, async displayHandle() { return null; } };
+  const engine = { id: 'wsl', setProfile() {}, async displayPid() { return null; } };
   const logs = [];
 
   new EngineMirror(engine, 10).start(() => {}, (_s, line) => logs.push(line));

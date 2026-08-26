@@ -6,6 +6,8 @@ interface Props {
   device: DeviceState;
   /** Fires once, when the guest first paints — the signal that the boot wait is over. */
   onFirstFrame?: () => void;
+  /** The guest's own window is showing here, so there is no frame to mirror. */
+  embedded?: boolean;
 }
 
 /**
@@ -15,10 +17,11 @@ interface Props {
  * just opened the app — it is a panel that says what this is and offers the one action that
  * matters. Starting is its own state: a wait of up to a minute, not a blank viewport.
  */
-export function AndroidScreen({ device, onFirstFrame }: Props) {
+export function AndroidScreen({ device, onFirstFrame, embedded }: Props) {
   return (
     <GuestSurface
       onFirstFrame={onFirstFrame}
+      embedded={embedded}
       placeholder={<DevicePlaceholder device={device} />}
     />
   );
