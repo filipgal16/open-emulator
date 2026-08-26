@@ -2,6 +2,7 @@ import { app, BrowserWindow, dialog, ipcMain, Menu, nativeTheme } from 'electron
 import os from 'os';
 import path from 'path';
 import { DevicePrefsStore, parseStatus } from './guest/device-status';
+import { DisplayScaler } from './guest/display-scaler';
 import { LogHandler, WslBridge, WslTarget } from './wsl/bridge';
 import { createEngine, resolveEngineId } from './engine/factory';
 import { OpenEmuClient } from './engine/client';
@@ -62,6 +63,19 @@ const { engine, layout } = createEngine({
 });
 console.log(`[engine] using the ${engineId} runtime`);
 const openEmu = new OpenEmuClient(engine);
+
+/**
+ * Keeps the guest's logical display matched to the viewport, so resizing the window resizes
+ * Android rather than stretching a fixed-size picture of it.
+ *
+ * Sits on `shell` rather than on the engine interface because `wm size` is a guest-side command:
+ * it reads and behaves identically whichever runtime is underneath, so neither engine needs to
+ * know this feature exists.
+ */
+const displayScaler = new DisplayScaler({
+  shell: (command) => openEmu.shell(command, () => undefined),
+  log: (message) => console.log(`[display] ${message}`),
+});
 
 /**
  * The setup steps and the mirror both follow the engine, and have to.
@@ -186,6 +200,18 @@ ipcMain.on('mirror:start', (event) => {
 
 ipcMain.on('mirror:stop', () => mirror.stop());
 
+/**
+ * The viewport changed size, in real device pixels.
+ *
+ * Fires continuously while a window edge is dragged; `DisplayScaler` debounces, so this stays a
+ * cheap `send` rather than an `invoke` the renderer would have to await on every frame.
+ */
+ipcMain.on('display:resize', (_event, width: unknown, height: unknown) => {
+  if (typeof width !== 'number' || typeof height !== 'number') return;
+  if (!Number.isFinite(width) || !Number.isFinite(height)) return;
+  displayScaler.request({ width, height });
+});
+
 ipcMain.on('input:tap', (_event, x: number, y: number) => {
   openEmu.tap(x, y, () => undefined).catch(() => undefined);
 });
@@ -291,6 +317,9 @@ ipcMain.handle('device:state', (): Promise<DeviceState> => refreshDeviceState())
 
 ipcMain.handle('device:start', (): Promise<DeviceState> =>
   runDeviceAction('starting', async (onLog) => {
+    // A different profile boots a different panel, so anything cached from the last guest would
+    // compute densities against a device that no longer exists.
+    displayScaler.forget();
     await openEmu.start(onLog);
     // A guest resumed from a snapshot comes back with its display asleep, so the mirror shows a
     // black rectangle and the app looks broken. Waking it is what every other emulator does on
@@ -300,7 +329,13 @@ ipcMain.handle('device:start', (): Promise<DeviceState> =>
 );
 
 ipcMain.handle('device:stop', (): Promise<DeviceState> =>
-  runDeviceAction('stopping', (onLog) => openEmu.stop(onLog)),
+  runDeviceAction('stopping', async (onLog) => {
+    // Dropped rather than reset: `wm size reset` on a guest that is about to die buys nothing, and
+    // the override that persists into the snapshot is harmless — the panel is still reported as
+    // physical, and the first resize after the next start re-applies from it.
+    displayScaler.forget();
+    await openEmu.stop(onLog);
+  }),
 );
 
 /** Same work the setup wizard's last step does, reachable later from the device panel. */

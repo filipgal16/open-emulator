@@ -47,6 +47,13 @@ export interface OpenEmuApi {
   startMirror(): void;
   stopMirror(): void;
   onFrame(callback: (data: Uint8Array) => void): void;
+  /**
+   * The viewport's size in **real device pixels** — CSS pixels times `devicePixelRatio`.
+   *
+   * Resizes Android's logical display to match, rather than scaling a fixed-size picture of it.
+   * Safe to call on every resize event: main debounces until the drag settles.
+   */
+  resizeDisplay(width: number, height: number): void;
   tap(x: number, y: number): void;
   swipe(x1: number, y1: number, x2: number, y2: number, durationMs: number): void;
   /** Android keycode name (`KEYCODE_BACK`) or a numeric code. Anything else is dropped in main. */
