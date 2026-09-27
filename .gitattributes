@@ -14,3 +14,9 @@ Makefile       text eol=lf
 
 # Guest assembly is assembled by a Linux toolchain.
 *.S           text eol=lf
+
+# Byte-exact ROM test fixtures: a disk image, and build.prop files lifted from the stock system
+# image. A line-ending conversion would make the tests compare against something Android never
+# shipped.
+*.img.gz                            binary
+desktop/test/fixtures/rom/build.prop.* -text

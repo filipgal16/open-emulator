@@ -33,6 +33,8 @@ printf 'ro.build.display.id=fixture-1\nro.product.system.brand=Android\nro.produ
 dd if=/dev/zero bs=4096 count=3 2>/dev/null | tr '\0' 'B' > "$SRC/system/app/Bloat/Bloat.apk"
 dd if=/dev/zero bs=4096 count=1 2>/dev/null | tr '\0' 'O' > "$SRC/system/app/Bloat/oat/x86_64/Bloat.odex"
 dd if=/dev/zero bs=4096 count=2 2>/dev/null | tr '\0' 'K' > "$SRC/system/app/Keep/Keep.apk"
+# Retargeted below onto Bloat.apk's first two blocks, so the two files really share them.
+dd if=/dev/zero bs=4096 count=2 2>/dev/null | tr '\0' 'S' > "$SRC/system/app/Keep/Shared.apk"
 dd if=/dev/zero bs=4096 count=1 2>/dev/null | tr '\0' 'P' > "$SRC/system/priv-app/Other/Other.apk"
 # Spans more than one extent-worth of blocks for the reader.
 dd if=/dev/zero bs=4096 count=40 2>/dev/null | tr '\0' 'L' > "$SRC/system/etc/large.bin"
@@ -73,6 +75,18 @@ debugfs -w -f "$WORK/cmds" "$IMG" >/dev/null 2>&1
 # etc/many becomes a real dir_index directory. Exit status 1 means "fixed something", which here
 # is the point.
 E2FSPROGS_FAKE_TIME=1230768000 e2fsck -fyD "$IMG" >/dev/null 2>&1 || [ $? -eq 1 ]
+
+# A block genuinely shared by two files, the way e2fsdroid deduplicates. Shared.apk's single
+# extent is pointed at Bloat.apk's first block (i_block word 5 is the extent's ee_start_lo; its
+# length of 2 stays), and its own two blocks are returned to the free pool.
+first_block() { debugfs -R "blocks $1" "$IMG" 2>/dev/null | awk '{print $1}'; }
+BLOAT="$(first_block /system/app/Bloat/Bloat.apk)"
+SHARED="$(first_block /system/app/Keep/Shared.apk)"
+debugfs -w -R "set_inode_field /system/app/Keep/Shared.apk block[5] $BLOAT" "$IMG" >/dev/null 2>&1
+debugfs -w -R "freeb $SHARED 2" "$IMG" >/dev/null 2>&1
+# freeb clears the bitmap bits but leaves the free counts; let e2fsck bring the summaries in line.
+# With shared_blocks set it accepts the shared block itself as it does on Android's images.
+E2FSPROGS_FAKE_TIME=1230768000 e2fsck -fy "$IMG" >/dev/null 2>&1 || [ $? -eq 1 ]
 
 e2fsck -fn "$IMG"
 

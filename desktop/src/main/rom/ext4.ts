@@ -334,6 +334,12 @@ export class Ext4Volume {
       throw new Error(`volume claims ${this.blocksCount * this.blockSize} bytes but only ${disk.size} are available`);
     }
     if (this.inodeSize < 128 || this.inodeSize > this.blockSize) throw new Error(`bad inode size ${this.inodeSize}`);
+    // Only meaningful with 64bit, which is refused above; anything but "unset" or 32 means the
+    // descriptor layout is not the one this editor reads.
+    const descSize = this.sb.readUInt16LE(0xfe);
+    if (descSize !== 0 && descSize !== 32) throw new Error(`unsupported group descriptor size ${descSize}`);
+    // A volume with orphans was not cleanly finished; editing it would build on a half-deleted file.
+    if (this.sb.readUInt32LE(0xe8) !== 0) throw new Error('volume has a non-empty orphan list (s_last_orphan)');
 
     this.groupCount = Math.ceil((this.blocksCount - this.firstDataBlock) / this.blocksPerGroup);
     if (this.groupCount * this.inodesPerGroup !== this.inodesCount) {
@@ -504,6 +510,11 @@ export class Ext4Volume {
     this.disk.write(this.inodeOffset(inode.ino), inode.raw);
   }
 
+  /** A copy of the inode's on-disk bytes, for diagnostics and byte-level tests. */
+  rawInode(ino: number): Buffer {
+    return this.readInode(ino).raw;
+  }
+
   stat(ino: number): Stat {
     const { raw } = this.readInode(ino);
     const mode = raw.readUInt16LE(0x00);
@@ -606,7 +617,13 @@ export class Ext4Volume {
     }
   }
 
-  /** Every physical block an inode owns: data, then extent tree blocks. */
+  /**
+   * Every physical block an inode owns: extent tree blocks, then data.
+   *
+   * A block appearing twice within one inode is refused rather than counted twice. Sharing
+   * *between* files is what `shared_blocks` means; sharing within one file is a damaged extent
+   * tree, and counting it twice would free the block while the file still uses it.
+   */
   private ownedBlocks(inode: Inode): number[] {
     const { extents, treeBlocks } = this.extentsOf(inode);
     const out = [...treeBlocks];
@@ -616,6 +633,7 @@ export class Ext4Volume {
         out.push(e.start + i);
       }
     }
+    if (new Set(out).size !== out.length) throw new Error(`inode ${inode.ino}: extents overlap`);
     return out;
   }
 
@@ -739,7 +757,13 @@ export class Ext4Volume {
         }
         continue;
       }
-      for (const b of this.ownedBlocks(this.readInode(ino))) counts[b] += 1;
+      const inode = this.readInode(ino);
+      // An external xattr block can itself be shared between inodes (it carries its own refcount).
+      // None exist on these volumes; refusing keeps the count here the whole truth.
+      if (inode.raw.readUInt32LE(0x68) !== 0 || inode.raw.readUInt16LE(0x76) !== 0) {
+        throw new Error(`inode ${ino} keeps xattrs in a separate block; not supported`);
+      }
+      for (const b of this.ownedBlocks(inode)) counts[b] += 1;
     }
     this.refcount = counts;
     return counts;
@@ -1105,18 +1129,48 @@ export class Ext4Volume {
   /**
    * Replaces a regular file's content, keeping its inode — and so its mode, owner and label.
    *
-   * The new bytes go into new blocks and the old ones are released through the reference count,
-   * never overwritten: on a deduplicated volume, "this file's block" may also be someone else's.
+   * In place when every block the file owns is referenced by it alone and the new content fits:
+   * the vendor volume has one free inode and fifty free blocks, and rewriting its `build.prop`
+   * must not depend on either. Otherwise the new bytes go into new blocks and the old ones are
+   * released through the reference count — on a deduplicated volume "this file's block" may also
+   * be someone else's, and that block is never written.
    */
   replaceFile(path: string, data: Buffer): void {
     this.requireWritable();
-    this.refs();
+    const refs = this.refs();
     const ino = this.require(path);
     const inode = this.readInode(ino);
     if ((inode.raw.readUInt16LE(0x00) & S_IFMT) !== S_IFREG) throw new Error(`${path} is not a regular file`);
+    const { extents, treeBlocks } = this.extentsOf(inode);
     const old = this.ownedBlocks(inode);
-    const runs = this.writeData(data, this.groupOfInode(ino));
-    this.releaseBlocks(old);
+    const needed = Math.ceil(data.length / this.blockSize);
+
+    // The data blocks in file order, if the file is a plain run of them from logical block 0.
+    let expectLogical = 0;
+    const dataBlocks: number[] = [];
+    let plain = treeBlocks.length === 0;
+    for (const e of extents) {
+      if (e.uninit || e.logical !== expectLogical) plain = false;
+      for (let i = 0; i < e.length; i += 1) dataBlocks.push(e.start + i);
+      expectLogical = e.logical + e.length;
+    }
+    const keep = dataBlocks.slice(0, needed);
+    const keepRuns = blocksToRuns(keep);
+    const inPlace = plain && old.every((b) => refs[b] === 1) && dataBlocks.length >= needed && keepRuns.length <= 4;
+
+    let runs: Array<{ start: number; length: number }>;
+    if (inPlace) {
+      keep.forEach((b, i) => {
+        const block = Buffer.alloc(this.blockSize);
+        data.copy(block, 0, i * this.blockSize, Math.min((i + 1) * this.blockSize, data.length));
+        this.writeBlock(b, block);
+      });
+      this.releaseBlocks(dataBlocks.slice(needed));
+      runs = keepRuns;
+    } else {
+      runs = this.writeData(data, this.groupOfInode(ino));
+      this.releaseBlocks(old);
+    }
     setInodeSize(inode.raw, data.length);
     writeExtentRoot(inode.raw, runsToExtents(runs));
     const flags = inode.raw.readUInt32LE(0x20) & ~INODE_FLAG_HUGE_FILE;
@@ -1178,13 +1232,22 @@ export class Ext4Volume {
 
   // ── Persisting ─────────────────────────────────────────────────────────────────────────────
 
-  /** Writes bitmaps, group descriptors (with fresh checksums) and the superblock. */
+  /**
+   * Writes bitmaps, group descriptors (with fresh checksums) and the superblock — and the backup
+   * copies of the last two in every group that carries one, as `ext2fs_flush` does.
+   *
+   * The kernel reads only the primaries, so stale backups would boot fine. They matter to repair:
+   * `e2fsck -b` or a damaged primary would bring back the stock allocation state over files that
+   * no longer match it, and quietly undo the ROM.
+   */
   flush(): void {
     if (!this.writable) return;
     for (const g of this.dirtyBlockBitmaps) this.writeBlock(this.groups[g].blockBitmap, Buffer.from(this.blockBitmap(g)));
     for (const g of this.dirtyInodeBitmaps) this.writeBlock(this.groups[g].inodeBitmap, Buffer.from(this.inodeBitmap(g)));
     this.dirtyBlockBitmaps.clear();
     this.dirtyInodeBitmaps.clear();
+
+    const writeBackups = this.dirtyGroups.size > 0 || this.superDirty;
 
     if (this.dirtyGroups.size > 0) {
       const gdt = this.readBlocks(this.firstDataBlock + 1, this.gdtBlocks);
@@ -1210,6 +1273,24 @@ export class Ext4Volume {
       this.disk.write(SUPERBLOCK_OFFSET, this.sb);
       this.superDirty = false;
     }
+
+    if (writeBackups) {
+      const gdt = this.readBlocks(this.firstDataBlock + 1, this.gdtBlocks);
+      for (let g = 1; g < this.groupCount; g += 1) {
+        if (!this.hasSuperBackup(g)) continue;
+        const start = this.groupStart(g);
+        // A backup superblock sits at the very start of its group's first block, and records
+        // which group it is in.
+        const copy = Buffer.from(this.sb);
+        copy.writeUInt16LE(g, 0x5a);
+        const block = this.readBlocks(start);
+        copy.copy(block, 0);
+        this.writeBlock(start, block);
+        for (let i = 0; i < this.gdtBlocks; i += 1) {
+          this.writeBlock(start + 1 + i, Buffer.from(gdt.subarray(i * this.blockSize, (i + 1) * this.blockSize)));
+        }
+      }
+    }
   }
 
   // ── Verification ───────────────────────────────────────────────────────────────────────────
@@ -1232,6 +1313,7 @@ export class Ext4Volume {
       const raw = this.groups[g].raw;
       if (raw.readUInt16LE(0x1e) !== this.groupChecksum(g, raw)) problem(`group ${g}: checksum mismatch`);
     }
+    if (this.sb.readUInt32LE(0xe8) !== 0) problem('superblock: orphan list is not empty');
 
     // Expected use of every block: metadata, then everything reachable from in-use inodes.
     const expected = new Uint8Array(this.blocksCount);
@@ -1243,11 +1325,19 @@ export class Ext4Volume {
     for (const ino of inUse) {
       if (ino !== ROOT_INO && ino < this.firstIno) continue;
       let blocks: number[];
+      const inode = this.readInode(ino);
       try {
-        blocks = this.ownedBlocks(this.readInode(ino));
+        blocks = this.ownedBlocks(inode);
       } catch (err) {
         problem((err as Error).message);
         continue;
+      }
+      // i_blocks counts 512-byte sectors, or filesystem blocks under the inode's HUGE_FILE flag.
+      const flags = inode.raw.readUInt32LE(0x20);
+      const recorded = inode.raw.readUInt32LE(0x1c) + inode.raw.readUInt16LE(0x74) * 0x1_0000_0000;
+      const sectors = recorded * (flags & INODE_FLAG_HUGE_FILE ? this.blockSize / 512 : 1);
+      if (sectors !== blocks.length * (this.blockSize / 512)) {
+        problem(`inode ${ino}: i_blocks says ${sectors} sectors, extents own ${blocks.length} blocks`);
       }
       for (const b of blocks) {
         if (expected[b] === 1 && !owner.has(b)) problem(`inode ${ino} owns metadata block ${b}`);
@@ -1400,6 +1490,17 @@ function addInodeBlocks(raw: Buffer, sectors: number): void {
   const next = current + sectors;
   raw.writeUInt32LE(next % 0x1_0000_0000, 0x1c);
   raw.writeUInt16LE(Math.floor(next / 0x1_0000_0000), 0x74);
+}
+
+/** Physical blocks, in file order, as maximal contiguous runs. */
+function blocksToRuns(blocks: number[]): Array<{ start: number; length: number }> {
+  const runs: Array<{ start: number; length: number }> = [];
+  for (const b of blocks) {
+    const last = runs[runs.length - 1];
+    if (last && last.start + last.length === b && last.length < 32768) last.length += 1;
+    else runs.push({ start: b, length: 1 });
+  }
+  return runs;
 }
 
 function runsToExtents(runs: Array<{ start: number; length: number }>): Extent[] {
