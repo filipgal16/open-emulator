@@ -76,13 +76,13 @@ const SETTINGS: Array<{ why: string; commands: string[] }> = [
 const DEXOPT_PACKAGES = ['com.android.settings', 'com.android.systemui'];
 
 /**
- * Extra userdata settings for the custom image. The debloat and the brand live in the image;
- * these are the things Android keeps in userdata and the snapshot then preserves — they would be
- * pointless in build.prop.
+ * Extra userdata settings for our own ROM. The debloat and the brand live in the image; these are
+ * the things Android keeps in userdata and the snapshot then preserves — they would be pointless
+ * in build.prop.
  *
- * Animations at 0 rather than 0.5: on a host-GPU window there is nothing to ease, and the stock
- * 0.5 still costs a frame of compositor work per transition. Bluetooth off because the image
- * unlinked the stack and a leftover toggle that cannot turn on is worse than none.
+ * Animations off rather than halved: a desktop emulator is driven with a mouse, and transitions
+ * read as lag there — the choice LDPlayer and BlueStacks make too. Bluetooth off by default:
+ * nothing on a PC pairs with the guest's virtual radio. Both stay changeable in Settings.
  */
 const OPENEMU_SETTINGS = [
   'settings put global window_animation_scale 0',

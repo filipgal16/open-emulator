@@ -6,7 +6,8 @@ import { detectAcceleration, enableWhpx } from '../acceleration';
 import { isRebootPending } from '../elevation';
 import { formatBytes, acquireDependencies, cleanup, resolveDependencies } from './dependencies';
 import type { GuestProfile } from '../env-file';
-import { buildImage } from './image-builder';
+import { buildRom, romKeyDir, romState } from '../../rom/builder';
+import { OPENEMU_RECIPE } from '../../rom/recipe';
 import { systemImagePath, type SdkLayout } from './layout';
 import { isExtractorAvailable } from './unzip';
 
@@ -94,9 +95,17 @@ export function buildNativeSteps(context: NativeSetupContext): Step[] {
         const haveEmulator = existsSync(layout.emulator) && existsSync(layout.adb);
         const haveImage = existsSync(systemImagePath(layout, current.imageTag));
 
-        if (haveEmulator && haveImage) return { pass: true, detail: current.baseImageTag ? 'Built' : 'Downloaded' };
+        if (haveEmulator && haveImage && current.baseImageTag) {
+          // Any build passes. An outdated one is rebuilt by the engine at the next start, the one
+          // moment Android is known to be stopped; failing setup over it would lock the user out
+          // of an app whose guest may be running right now.
+          const state = romState(layout.sdkRoot);
+          const version = state.manifest ? `${OPENEMU_RECIPE.displayName} ${state.manifest.recipeVersion}` : 'Built';
+          return { pass: true, detail: state.upToDate ? version : `${version} — an update is ready and applies at the next start` };
+        }
+        if (haveEmulator && haveImage) return { pass: true, detail: 'Downloaded' };
         if (haveEmulator && current.baseImageTag && existsSync(systemImagePath(layout, current.baseImageTag))) {
-          return { pass: false, detail: `The ${current.name} image has not been built yet` };
+          return { pass: false, detail: `${OPENEMU_RECIPE.displayName} has not been built yet` };
         }
         return {
           pass: false,
@@ -129,10 +138,14 @@ export function buildNativeSteps(context: NativeSetupContext): Step[] {
           }
         }
 
-        // A derived image is built from the stock one just fetched. See design/custom-image.md.
+        // Our own ROM is built from the stock image just fetched. See design/openemu-rom.md.
         if (current.baseImageTag) {
-          onLog('stdout', `building the ${current.name} image from ${current.baseImageTag}`);
-          await buildImage({ layout, onLog });
+          onLog('stdout', `building ${OPENEMU_RECIPE.displayName} from the ${current.baseImageTag} image`);
+          await buildRom({
+            sdkRoot: layout.sdkRoot,
+            keyDir: romKeyDir(layout),
+            onLog: (line) => onLog('stdout', line),
+          });
         }
       },
     },

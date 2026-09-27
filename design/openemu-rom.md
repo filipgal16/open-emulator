@@ -221,9 +221,11 @@ default shows on fresh AVDs.
 | `ro.build.display.id` | `open-emulator Android 11 (openemu 1)` |
 | `ro.build.description` | `openemu_x86_64-userdebug 11 RSR1.210722.013.A2 10067904 test-keys` |
 | `ro.build.product` | `openemu` |
+| `ro.build.flavor` | `openemu_x86_64-userdebug` |
 
 `ro.build.fingerprint` is in none of the files; init derives it from the rebranded
-`ro.product.*`. Build id, type and tags are kept — the image is still a userdebug test-keys build,
+`ro.product.*`. API 30's init lets a later definition of a key override an earlier one (it logs
+"Overriding previous 'ro.' property"); rewriting every occurrence in place makes the order moot. Build id, type and tags are kept — the image is still a userdebug test-keys build,
 and saying so is honest. `ro.setupwizard.mode=DISABLED` is already in `system_ext`.
 
 **Our props**, upserted into `/system/build.prop`: `ro.openemu.rom=1`,

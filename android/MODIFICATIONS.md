@@ -1,7 +1,27 @@
 # Necessary modifications
 
-Stock Google **Android 11 (API 30)** `google_apis;x86_64` system image — no AOSP
-rebuild. Adaptations are AVD/runtime only, aimed at **speed + real workloads**:
+Two kinds, and they are different in kind:
+
+- **Our own ROM** (`openemu`, the default on the native runtime) changes the image itself: the
+  AOSP `default` Android 11 image, rebuilt on the user's machine by the desktop app — debloated,
+  rebranded, carrying its own files, and re-signed so `/system` boots without dm-verity putting
+  Google's bytes back. The full account, with the measurements behind each choice, is
+  [`design/openemu-rom.md`](../design/openemu-rom.md); the recipe itself is
+  `desktop/src/main/rom/recipe.ts`.
+- **Everything below** is AVD/runtime configuration that applies to every profile, the stock
+  Google images included. No AOSP rebuild is involved in either.
+
+## Our own ROM, in one table
+
+| | Stock `default` | `openemu` |
+|---|---|---|
+| Identity | `Android SDK built for x86_64`, `generic`, `sdk_phone_x86_64` | `OpenEmulator One` by `open-emulator`, build `open-emulator Android 11 (openemu 1)` |
+| `/system` verity | dm-verity + FEC — edits are repaired back at boot | `HASHTREE_DISABLED` in a vbmeta re-signed with our key; boot state stays locked-looking (no `orange`) |
+| Bundled apps | 28 phone apps and services an emulator has no use for | removed from all four partitions, ~84 MB reclaimed; every provider and telephony service kept |
+| Default wallpaper | AOSP's | ours, shipped in `/system/media/openemu/` |
+| Signing | Google's key | a per-machine RSA-4096 key; the guest trusts any key for the top-level vbmeta, what binds is the digest on the kernel command line |
+
+The rest of this file is the runtime configuration every profile shares.
 
 ## Hardware profile (`config/avd_config.ini`)
 
@@ -14,7 +34,8 @@ rebuild. Adaptations are AVD/runtime only, aimed at **speed + real workloads**:
 
 ## Guest profiles (`profiles/`)
 
-- `openemu` — our own image, derived from AOSP `default`. Debloated, branded OpenEmulator One, the default on the native runtime. See `design/custom-image.md`.
+- `openemu` — our own ROM, built from AOSP `default` on the user's machine. The default on the
+  native runtime. See the table above and `design/openemu-rom.md`.
 - `fast` — stock AOSP, no GMS. Untouched Google image.
 - `full` — `google_apis`. GMS, but no Play Store app.
 - `play` — `google_apis_playstore`. Google's own Play-enabled image; the only one that ships

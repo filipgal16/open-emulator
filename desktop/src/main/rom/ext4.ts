@@ -532,26 +532,26 @@ export class Ext4Volume {
     };
   }
 
-  /** In-inode extended attributes. The images keep SELinux labels here, never in a separate block. */
+  /**
+   * Extended attributes: in the inode, where the images keep SELinux labels, and in the external
+   * block an inode with more of them uses (a file with `security.capability` beside its label).
+   */
   xattrs(ino: number): Map<string, Buffer> {
     const { raw } = this.readInode(ino);
     const out = new Map<string, Buffer>();
-    if (raw.readUInt32LE(0x68) !== 0) throw new Error(`inode ${ino} keeps xattrs in a block; not supported`);
-    if (this.inodeSize <= 128) return out;
-    const extra = raw.readUInt16LE(0x80);
-    const base = 0x80 + extra;
-    if (base + 4 > this.inodeSize || raw.readUInt32LE(base) !== XATTR_MAGIC) return out;
-    const first = base + 4;
-    let at = first;
-    while (at + 4 <= this.inodeSize && raw.readUInt32LE(at) !== 0) {
-      const nameLen = raw[at];
-      const index = raw[at + 1];
-      const valueOffs = raw.readUInt16LE(at + 2);
-      const valueSize = raw.readUInt32LE(at + 8);
-      const name = raw.subarray(at + 16, at + 16 + nameLen).toString('latin1');
-      const prefix = index === XATTR_INDEX_SECURITY ? 'security.' : index === 1 ? 'user.' : index === 4 ? 'trusted.' : `#${index}.`;
-      out.set(prefix + name, Buffer.from(raw.subarray(first + valueOffs, first + valueOffs + valueSize)));
-      at += (16 + nameLen + 3) & ~3;
+    if (this.inodeSize > 128) {
+      const base = 0x80 + raw.readUInt16LE(0x80);
+      if (base + 4 <= this.inodeSize && raw.readUInt32LE(base) === XATTR_MAGIC) {
+        // In-inode values are offset from the first entry.
+        readXattrEntries(raw, base + 4, base + 4, this.inodeSize, out);
+      }
+    }
+    const acl = xattrBlockOf(raw);
+    if (acl !== 0) {
+      const block = this.readBlocks(acl);
+      if (block.readUInt32LE(0) !== XATTR_MAGIC) throw new Error(`inode ${ino}: block ${acl} is not an xattr block`);
+      // Block values are offset from the start of the block; entries follow a 32-byte header.
+      readXattrEntries(block, 32, 0, this.blockSize, out);
     }
     return out;
   }
@@ -583,6 +583,11 @@ export class Ext4Volume {
     const treeBlocks: number[] = [];
     this.walkExtentNode(inode.raw.subarray(0x28, 0x28 + 60), 0, extents, treeBlocks, inode.ino);
     extents.sort((a, b) => a.logical - b.logical);
+    for (let i = 1; i < extents.length; i += 1) {
+      if (extents[i].logical < extents[i - 1].logical + extents[i - 1].length) {
+        throw new Error(`inode ${inode.ino}: two extents map logical block ${extents[i].logical}`);
+      }
+    }
     return { extents, treeBlocks };
   }
 
@@ -618,11 +623,14 @@ export class Ext4Volume {
   }
 
   /**
-   * Every physical block an inode owns: extent tree blocks, then data.
+   * Every physical block an inode references: extent tree blocks, then data — one entry per
+   * reference, so a block can appear more than once.
    *
-   * A block appearing twice within one inode is refused rather than counted twice. Sharing
-   * *between* files is what `shared_blocks` means; sharing within one file is a damaged extent
-   * tree, and counting it twice would free the block while the file still uses it.
+   * It does on Google's images. e2fsdroid deduplicates identical blocks *within* a file as well as
+   * between files, so one file can map the same physical block at two logical offsets. Each
+   * mapping is a reference and is counted as one, which is what makes removing that file free the
+   * block exactly once, when its last reference goes. What would be damage is two extents claiming
+   * the same *logical* range, and `extentsOf` refuses that.
    */
   private ownedBlocks(inode: Inode): number[] {
     const { extents, treeBlocks } = this.extentsOf(inode);
@@ -633,7 +641,6 @@ export class Ext4Volume {
         out.push(e.start + i);
       }
     }
-    if (new Set(out).size !== out.length) throw new Error(`inode ${inode.ino}: extents overlap`);
     return out;
   }
 
@@ -758,15 +765,40 @@ export class Ext4Volume {
         continue;
       }
       const inode = this.readInode(ino);
-      // An external xattr block can itself be shared between inodes (it carries its own refcount).
-      // None exist on these volumes; refusing keeps the count here the whole truth.
-      if (inode.raw.readUInt32LE(0x68) !== 0 || inode.raw.readUInt16LE(0x76) !== 0) {
-        throw new Error(`inode ${ino} keeps xattrs in a separate block; not supported`);
-      }
       for (const b of this.ownedBlocks(inode)) counts[b] += 1;
+      // An external xattr block — `/system/bin/run-as` has one, for `security.capability` beside
+      // its label — is a reference like any other, and ext4 lets several inodes share one.
+      const acl = xattrBlockOf(inode.raw);
+      if (acl !== 0) {
+        this.checkDataBlock(acl, ino);
+        counts[acl] += 1;
+      }
     }
     this.refcount = counts;
     return counts;
+  }
+
+  /**
+   * Drops one inode's reference to its external xattr block.
+   *
+   * The block keeps its own count of the inodes using it (`h_refcount`), and e2fsck holds it to the
+   * real number. So the header is rewritten to match whenever a reference goes, and the block is
+   * freed with the last one. Writing a shared xattr block's header is not the hazard writing a
+   * shared data block is: that count is the one field every sharer agrees on.
+   */
+  private releaseXattrBlock(block: number): void {
+    const refs = this.refs();
+    const data = this.readBlocks(block);
+    if (data.readUInt32LE(0) !== XATTR_MAGIC || data.readUInt32LE(8) !== 1) {
+      throw new Error(`block ${block} is not a single-block xattr block`);
+    }
+    if (refs[block] <= 1) {
+      this.releaseBlocks([block]);
+      return;
+    }
+    refs[block] -= 1;
+    data.writeUInt32LE(refs[block], 4);
+    this.writeBlock(block, data);
   }
 
   // ── Allocation ─────────────────────────────────────────────────────────────────────────────
@@ -1057,6 +1089,8 @@ export class Ext4Volume {
       const released = this.releaseBlocks(this.ownedBlocks(inode));
       report.blocksFreed += released.freed;
       report.blocksStillShared += released.stillShared;
+      const acl = xattrBlockOf(inode.raw);
+      if (acl !== 0) this.releaseXattrBlock(acl);
       this.freeInode(ino, isDir);
       report.inodesFreed += 1;
     }
@@ -1177,7 +1211,9 @@ export class Ext4Volume {
     inode.raw.writeUInt32LE(flags | INODE_FLAG_EXTENTS, 0x20);
     inode.raw.writeUInt32LE(0, 0x1c);
     inode.raw.writeUInt16LE(0, 0x74);
-    addInodeBlocks(inode.raw, (runs.reduce((n, r) => n + r.length, 0) * this.blockSize) / 512);
+    // i_blocks counts the external xattr block too; the inode keeps it, so the count must.
+    const dataBlocksNow = runs.reduce((n, r) => n + r.length, 0) + (xattrBlockOf(inode.raw) !== 0 ? 1 : 0);
+    addInodeBlocks(inode.raw, (dataBlocksNow * this.blockSize) / 512);
     inode.raw.writeUInt32LE(this.epoch, 0x0c);
     inode.raw.writeUInt32LE(this.epoch, 0x10);
     this.writeInode(inode);
@@ -1322,6 +1358,7 @@ export class Ext4Volume {
     }
     const inUse = new Set(this.inUseInodes());
     const owner = new Map<number, number>();
+    const xattrUsers = new Map<number, number>();
     for (const ino of inUse) {
       if (ino !== ROOT_INO && ino < this.firstIno) continue;
       let blocks: number[];
@@ -1332,12 +1369,25 @@ export class Ext4Volume {
         problem((err as Error).message);
         continue;
       }
-      // i_blocks counts 512-byte sectors, or filesystem blocks under the inode's HUGE_FILE flag.
+      const acl = xattrBlockOf(inode.raw);
+      if (acl !== 0) {
+        if (acl >= this.blocksCount) {
+          problem(`inode ${ino}: xattr block ${acl} is outside the volume`);
+        } else {
+          xattrUsers.set(acl, (xattrUsers.get(acl) ?? 0) + 1);
+          if (expected[acl] === 1 && !owner.has(acl)) problem(`inode ${ino}: xattr block ${acl} is a metadata block`);
+          owner.set(acl, ino);
+          expected[acl] = 2;
+        }
+      }
+      // i_blocks counts 512-byte sectors, or filesystem blocks under the inode's HUGE_FILE flag,
+      // and includes the external xattr block.
       const flags = inode.raw.readUInt32LE(0x20);
       const recorded = inode.raw.readUInt32LE(0x1c) + inode.raw.readUInt16LE(0x74) * 0x1_0000_0000;
       const sectors = recorded * (flags & INODE_FLAG_HUGE_FILE ? this.blockSize / 512 : 1);
-      if (sectors !== blocks.length * (this.blockSize / 512)) {
-        problem(`inode ${ino}: i_blocks says ${sectors} sectors, extents own ${blocks.length} blocks`);
+      const owned = blocks.length + (acl !== 0 ? 1 : 0);
+      if (sectors !== owned * (this.blockSize / 512)) {
+        problem(`inode ${ino}: i_blocks says ${sectors} sectors, it owns ${owned} blocks`);
       }
       for (const b of blocks) {
         if (expected[b] === 1 && !owner.has(b)) problem(`inode ${ino} owns metadata block ${b}`);
@@ -1345,6 +1395,12 @@ export class Ext4Volume {
         owner.set(b, ino);
         expected[b] = 2;
       }
+    }
+
+    for (const [block, users] of xattrUsers) {
+      const data = this.readBlocks(block);
+      if (data.readUInt32LE(0) !== XATTR_MAGIC) problem(`block ${block}: referenced as xattrs but not an xattr block`);
+      else if (data.readUInt32LE(4) !== users) problem(`xattr block ${block}: h_refcount ${data.readUInt32LE(4)}, used by ${users} inodes`);
     }
 
     let freeBlocks = 0;
@@ -1444,6 +1500,25 @@ export class Ext4Volume {
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────────────────────
+
+/** `i_file_acl`: the inode's external xattr block, or 0. */
+function xattrBlockOf(raw: Buffer): number {
+  return raw.readUInt32LE(0x68) + raw.readUInt16LE(0x76) * 0x1_0000_0000;
+}
+
+function readXattrEntries(buf: Buffer, firstEntry: number, valueBase: number, end: number, out: Map<string, Buffer>): void {
+  let at = firstEntry;
+  while (at + 16 <= end && buf.readUInt32LE(at) !== 0) {
+    const nameLen = buf[at];
+    const index = buf[at + 1];
+    const valueOffs = buf.readUInt16LE(at + 2);
+    const valueSize = buf.readUInt32LE(at + 8);
+    const name = buf.subarray(at + 16, at + 16 + nameLen).toString('latin1');
+    const prefix = index === XATTR_INDEX_SECURITY ? 'security.' : index === 1 ? 'user.' : index === 4 ? 'trusted.' : `#${index}.`;
+    out.set(prefix + name, Buffer.from(buf.subarray(valueBase + valueOffs, valueBase + valueOffs + valueSize)));
+    at += (16 + nameLen + 3) & ~3;
+  }
+}
 
 function refuseUnsupported(kind: 'compat' | 'incompat' | 'roCompat', flags: number, supported: number): void {
   const extra = flags & ~supported;

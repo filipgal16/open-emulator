@@ -11,6 +11,8 @@ import { avdExists, createAvd } from './avd';
 import { findQemuPid } from './find-process';
 import { tuneForHost, type GuestTuning } from './host';
 import { avdDir, avdState, snapshotDir, systemImagePath, type SdkLayout } from './layout';
+import { buildRom, readManifest, romKeyDir, romPaths, romState } from '../../rom/builder';
+import { OPENEMU_RECIPE } from '../../rom/recipe';
 import type { CommandResult } from '../../../shared/ipc-types';
 
 /**
@@ -185,9 +187,72 @@ export class SdkEngine implements AndroidEngine {
     }
   }
 
-  /** Records the moment provisioning finished, which is what `status` reports as `provisioned_at`. */
+  /**
+   * Records the moment provisioning finished, which is what `status` reports as `provisioned_at` —
+   * and, for our own ROM, which build it finished against.
+   *
+   * The ROM id is written here and nowhere earlier. Written before the invalidation it guards, a
+   * crash in between would leave the new id beside the old snapshot, and the mismatch that should
+   * discard that snapshot would never be seen again.
+   */
   markProvisioned(avdName: string): void {
     writeFileSync(path.join(this.stateDir(avdName), 'provisioned_at'), new Date().toISOString(), 'utf8');
+    const profile = this.profile();
+    if (profile.baseImageTag && profile.avdName === avdName) {
+      const manifest = readManifest(romPaths(this.options.layout.sdkRoot).imageDir);
+      if (manifest) writeFileSync(path.join(this.stateDir(avdName), 'rom_id'), manifest.romId, 'utf8');
+    }
+  }
+
+  // ── Our own ROM ──────────────────────────────────────────────────────────────────────────────
+
+  /** Builds the ROM if it is missing or was made from another recipe, builder, or base. */
+  private async ensureRom(onLog: EngineLogHandler): Promise<void> {
+    const state = romState(this.options.layout.sdkRoot);
+    if (state.upToDate) return;
+    this.log(`building ${OPENEMU_RECIPE.displayName}: ${state.reason}`);
+    await buildRom({
+      sdkRoot: this.options.layout.sdkRoot,
+      keyDir: romKeyDir(this.options.layout),
+      isRunning: async () => (await this.runningPid(this.profile().avdName)) !== null,
+      onLog: (line) => onLog('stdout', line),
+    });
+  }
+
+  /**
+   * Discards what an AVD remembers of a *different* ROM build: its Quick Boot snapshot, and the
+   * qcow2 overlays over `system` and `vendor`.
+   *
+   * A snapshot is RAM captured against the old `/system`; restoring it onto the new one is
+   * undefined. The overlays would mask the new base wherever the old one was written to — the
+   * previous builder's `-writable-system` runs left a 70 MB one. Userdata is kept, as an OTA keeps
+   * it: `userdata-qemu.img.qcow2` and `encryptionkey.img.qcow2` are the user's apps and keys.
+   * Order matters: this runs before `syncAvdConfig`, which would otherwise point the AVD at a
+   * snapshot about to be deleted.
+   */
+  private forgetStaleRom(avdName: string): void {
+    const manifest = readManifest(romPaths(this.options.layout.sdkRoot).imageDir);
+    if (!manifest) return;
+
+    const dir = avdDir(this.options.layout, avdName);
+    const state = this.stateDir(avdName);
+    let recorded: string | null = null;
+    try {
+      recorded = readFileSync(path.join(state, 'rom_id'), 'utf8').trim();
+    } catch {
+      recorded = null;
+    }
+    if (recorded === manifest.romId) return;
+
+    // A brand-new AVD has nothing to forget; recording starts at its first provision.
+    const booted = ['userdata-qemu.img', 'snapshots', 'system.img.qcow2'].some((name) => existsSync(path.join(dir, name)));
+    if (!booted) return;
+
+    this.log(`ROM changed since ${avdName} was provisioned — discarding its snapshot and system overlays, keeping userdata`);
+    rmSync(path.join(dir, 'snapshots'), { recursive: true, force: true });
+    rmSync(path.join(dir, 'system.img.qcow2'), { force: true });
+    rmSync(path.join(dir, 'vendor.img.qcow2'), { force: true });
+    rmSync(path.join(state, 'provisioned_at'), { force: true });
   }
 
   /**
@@ -235,9 +300,6 @@ export class SdkEngine implements AndroidEngine {
     if (!existsSync(this.options.layout.emulator)) {
       return fail(`emulator not installed — expected ${this.options.layout.emulator}`);
     }
-    if (!existsSync(systemImagePath(this.options.layout, profile.imageTag))) {
-      return fail(`the ${profile.name} system image is not downloaded yet`);
-    }
 
     // Warm path: a guest that is already up is not rebooted. Reconnecting to it is the whole
     // reason `start` is safe to call from a button.
@@ -251,6 +313,21 @@ export class SdkEngine implements AndroidEngine {
       return ok([`adb_device=${existing}`]);
     }
 
+    // Our own ROM is built here as well as by setup: this is the one moment the guest is known to
+    // be stopped, so an app update that changed the recipe lands at the next start rather than
+    // needing Android closed at exactly the time setup happens to run.
+    if (profile.baseImageTag) {
+      try {
+        await this.ensureRom(onLog);
+      } catch (err) {
+        return fail(`could not build ${profile.name}: ${(err as Error).message}`);
+      }
+    }
+    if (!existsSync(systemImagePath(this.options.layout, profile.imageTag))) {
+      return fail(`the ${profile.name} system image is not downloaded yet`);
+    }
+    if (profile.baseImageTag) this.forgetStaleRom(profile.avdName);
+
     this.syncAvdConfig(profile, tuning);
 
     const useSnapshot = !options.cold && this.hasSnapshot(profile.avdName) && tuning.accel === 'on';
@@ -260,16 +337,9 @@ export class SdkEngine implements AndroidEngine {
       device: this.device(),
       useSnapshot: useSnapshot ? SNAPSHOT : null,
       headless: this.options.windowed === false,
-      // The custom image's /system is edited. Verity would FEC-repair those edits away, and
-      // patching vbmeta to disable it makes this ramdisk reject the image (PUBLIC_KEY_REJECTED).
-      // `-writable-system` is the emulator's own switch for that: stock vbmeta, verity off.
-      writableSystem: profile.imageTag === 'openemu',
     });
 
-    this.log(
-      `starting emulator (${useSnapshot ? 'snapshot' : 'cold'}, gpu=${tuning.gpuMode}, accel=${tuning.accel}` +
-        `${profile.imageTag === 'openemu' ? ', writable-system' : ''})`,
-    );
+    this.log(`starting emulator (${useSnapshot ? 'snapshot' : 'cold'}, gpu=${tuning.gpuMode}, accel=${tuning.accel})`);
 
     // The emulator registers with adb at spawn. If the server is not already listening on 5037,
     // it logs "Unable to connect to adb daemon" and the serial stays `offline` forever — which
@@ -389,6 +459,10 @@ export class SdkEngine implements AndroidEngine {
     }
 
     lines.push(`snapshot=${SNAPSHOT} present=${this.hasSnapshot(profile.avdName) ? 'yes' : 'no'}`);
+    if (profile.baseImageTag) {
+      const manifest = readManifest(romPaths(this.options.layout.sdkRoot).imageDir);
+      if (manifest) lines.push(`rom=${manifest.recipeId}/${manifest.recipeVersion} id=${manifest.romId.slice(0, 16)}`);
+    }
     const provisioned = this.provisionedAt(profile.avdName);
     if (provisioned) lines.push(`provisioned_at=${provisioned}`);
 

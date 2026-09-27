@@ -69,7 +69,7 @@ export interface GuestProfile {
    * The stock image this one is built from, or null when the image is downloaded as-is.
    *
    * A derived image is not in Google's repository: setup fetches the base and runs the image
-   * builder (`image-builder.ts`), and the result is installed under `imageTag`.
+   * ROM builder (`rom/builder.ts`), and the result is installed under `imageTag`.
    */
   baseImageTag: string | null;
   playStore: boolean;
