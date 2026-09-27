@@ -66,7 +66,7 @@ export class DevicePrefsStore {
 
   constructor(
     private readonly file: string,
-    fallback: ProfileId = 'fast',
+    fallback: ProfileId = 'openemu',
   ) {
     this.prefs = { profile: fallback };
     try {

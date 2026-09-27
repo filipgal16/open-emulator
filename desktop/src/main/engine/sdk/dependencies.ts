@@ -46,20 +46,23 @@ export interface ResolveOptions {
 export async function resolveDependencies(options: ResolveOptions): Promise<DependencyPlan> {
   const { profile, apiLevel = 30, fetchImpl = fetch, platform = process.platform } = options;
   const host = hostOsForPlatform(platform);
+  // A derived image (`openemu`) is built here, not downloaded; what the repository has to supply
+  // is the stock image it is built from.
+  const imageTag = profile.baseImageTag ?? profile.imageTag;
 
   const [mainXml, sysXml] = await Promise.all([
     fetchImpl(REPOSITORY_URL).then((r) => r.text()),
-    fetchImpl(sysImgManifestFor(profile.imageTag)).then((r) => r.text()),
+    fetchImpl(sysImgManifestFor(imageTag)).then((r) => r.text()),
   ]);
 
   const main = parseRepository(mainXml, host, REPOSITORY_URL);
-  const sys = parseRepository(sysXml, host, sysImgManifestFor(profile.imageTag));
+  const sys = parseRepository(sysXml, host, sysImgManifestFor(imageTag));
 
   const wanted: Array<[string, Map<string, SdkArchive>]> = [
     ['platform-tools', main.packages],
     ['emulator', main.packages],
     [`platforms;android-${apiLevel}`, main.packages],
-    [`system-images;android-${apiLevel};${profile.imageTag};x86_64`, sys.packages],
+    [`system-images;android-${apiLevel};${imageTag};x86_64`, sys.packages],
   ];
 
   const archives: SdkArchive[] = [];

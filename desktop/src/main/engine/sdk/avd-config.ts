@@ -100,6 +100,7 @@ export function avdConfigOverrides(input: AvdConfigInput): Record<string, string
 
 function displayNameForTag(imageTag: string): string {
   if (imageTag === 'default') return 'AOSP';
+  if (imageTag === 'openemu') return 'open-emulator Android';
   if (imageTag === 'google_apis_playstore') return 'Google Play';
   return 'Google APIs';
 }

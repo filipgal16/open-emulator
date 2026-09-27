@@ -108,6 +108,24 @@ export async function isVirtualizationEnabledInFirmware(): Promise<boolean> {
   return /true/i.test(out);
 }
 
+/**
+ * Whether the Hyper-V hypervisor is loaded right now.
+ *
+ * WHPX is an API over that hypervisor, so this is the fact that tells a freshly staged feature
+ * apart from a working one. It exists because "a reboot is pending" is a machine-wide flag: a
+ * Windows Update or an Edge update leaves it set for days, and reading it as "WHPX is not live yet"
+ * had a machine with six hours of uptime and a running hypervisor booting Android under TCG.
+ */
+export async function isHypervisorRunning(): Promise<boolean> {
+  const out = await runQuiet('powershell.exe', [
+    '-NoProfile',
+    '-NonInteractive',
+    '-Command',
+    '(Get-CimInstance Win32_ComputerSystem).HypervisorPresent',
+  ]);
+  return /true/i.test(out);
+}
+
 export interface AccelerationProbes {
   windows: boolean;
   aehdRunning: boolean;
@@ -120,6 +138,11 @@ export interface AccelerationProbes {
    * finishes, and stays that way — while doing nothing at all — until the machine restarts.
    */
   rebootPending: boolean;
+  /**
+   * The Hyper-V hypervisor is loaded. Decides whether `rebootPending` is about *this* feature or
+   * about something unrelated: a running hypervisor means WHPX has what it needs regardless.
+   */
+  hypervisorRunning: boolean;
 }
 
 /**
@@ -152,7 +175,10 @@ export function decideAcceleration(probes: AccelerationProbes): AccelerationStat
     // here would have the app pass `-accel whpx` to an emulator that then refuses to start, and
     // blame the emulator. This is the same trap `wsl --install` sets, and the reason
     // `isRebootPending` exists at all.
-    if (probes.rebootPending) {
+    //
+    // Unless the hypervisor is already running. The reboot flag is machine-wide — any Windows
+    // Update sets it — and with Hyper-V loaded the feature has nothing left to wait for.
+    if (probes.rebootPending && !probes.hypervisorRunning) {
       return {
         available: false,
         method: 'none',
@@ -193,6 +219,7 @@ export async function detectAcceleration(): Promise<AccelerationState> {
       whpxEnabled: false,
       firmwareVirtualization: false,
       rebootPending: false,
+      hypervisorRunning: false,
     });
   }
 
@@ -201,8 +228,17 @@ export async function detectAcceleration(): Promise<AccelerationState> {
   const firmwareVirtualization = aehdRunning || whpxEnabled ? true : await isVirtualizationEnabledInFirmware();
   // Only asked when it could change the answer — the check costs a reg.exe round trip.
   const rebootPending = whpxEnabled && !aehdRunning ? await isRebootPending() : false;
+  // Likewise: only a pending reboot makes this question matter.
+  const hypervisorRunning = rebootPending ? await isHypervisorRunning() : false;
 
-  return decideAcceleration({ windows: true, aehdRunning, whpxEnabled, firmwareVirtualization, rebootPending });
+  return decideAcceleration({
+    windows: true,
+    aehdRunning,
+    whpxEnabled,
+    firmwareVirtualization,
+    rebootPending,
+    hypervisorRunning,
+  });
 }
 
 /**

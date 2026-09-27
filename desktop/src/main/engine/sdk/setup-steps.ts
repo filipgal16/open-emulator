@@ -6,6 +6,7 @@ import { detectAcceleration, enableWhpx } from '../acceleration';
 import { isRebootPending } from '../elevation';
 import { formatBytes, acquireDependencies, cleanup, resolveDependencies } from './dependencies';
 import type { GuestProfile } from '../env-file';
+import { buildImage } from './image-builder';
 import { systemImagePath, type SdkLayout } from './layout';
 import { isExtractorAvailable } from './unzip';
 
@@ -93,7 +94,10 @@ export function buildNativeSteps(context: NativeSetupContext): Step[] {
         const haveEmulator = existsSync(layout.emulator) && existsSync(layout.adb);
         const haveImage = existsSync(systemImagePath(layout, current.imageTag));
 
-        if (haveEmulator && haveImage) return { pass: true, detail: 'Downloaded' };
+        if (haveEmulator && haveImage) return { pass: true, detail: current.baseImageTag ? 'Built' : 'Downloaded' };
+        if (haveEmulator && current.baseImageTag && existsSync(systemImagePath(layout, current.baseImageTag))) {
+          return { pass: false, detail: `The ${current.name} image has not been built yet` };
+        }
         return {
           pass: false,
           detail: haveEmulator
@@ -102,21 +106,33 @@ export function buildNativeSteps(context: NativeSetupContext): Step[] {
         };
       },
       fix: async (onLog: LogHandler) => {
-        const plan = await resolveDependencies({ profile: profile() });
-        onLog('stdout', `${plan.archives.length} packages, ${formatBytes(plan.totalBytes)} total`);
+        const current = profile();
+        const baseTag = current.baseImageTag ?? current.imageTag;
+        const haveBase = existsSync(layout.emulator) && existsSync(layout.adb) && existsSync(systemImagePath(layout, baseTag));
 
-        await acquireDependencies({
-          layout,
-          plan,
-          onLog,
-          onProgress: (progress) => context.onProgress?.(progress.bytesDone, progress.bytesTotal),
-        });
+        if (!haveBase) {
+          const plan = await resolveDependencies({ profile: current });
+          onLog('stdout', `${plan.archives.length} packages, ${formatBytes(plan.totalBytes)} total`);
 
-        // Only now, with every extraction done. Archives deleted earlier would make one failed
-        // extraction cost the whole download again.
-        const freed = cleanup(layout);
-        if (freed.bytesFreed > 0) {
-          onLog('stdout', `cleaned up ${formatBytes(freed.bytesFreed)} of installation files`);
+          await acquireDependencies({
+            layout,
+            plan,
+            onLog,
+            onProgress: (progress) => context.onProgress?.(progress.bytesDone, progress.bytesTotal),
+          });
+
+          // Only now, with every extraction done. Archives deleted earlier would make one failed
+          // extraction cost the whole download again.
+          const freed = cleanup(layout);
+          if (freed.bytesFreed > 0) {
+            onLog('stdout', `cleaned up ${formatBytes(freed.bytesFreed)} of installation files`);
+          }
+        }
+
+        // A derived image is built from the stock one just fetched. See design/custom-image.md.
+        if (current.baseImageTag) {
+          onLog('stdout', `building the ${current.name} image from ${current.baseImageTag}`);
+          await buildImage({ layout, onLog });
         }
       },
     },

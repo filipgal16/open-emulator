@@ -338,15 +338,18 @@ directory under `state/<AVD>/`.
 
 | Profile | System image | GMS | Play Store | Redistributable |
 |---|---|---|---|---|
-| **`fast`** (default) | `system-images;android-30;default;x86_64` | No | No | Apache-2.0 upstream — yes |
+| **`openemu`** (default) | `system-images;android-30;openemu;x86_64` | No | No | Derived from AOSP `default` — yes |
+| **`fast`** | `system-images;android-30;default;x86_64` | No | No | Apache-2.0 upstream — yes |
 | **`full`** | `google_apis` | Yes | No | **No** — Google proprietary |
 | **`play`** | `google_apis_playstore` | Yes | Yes | **No** — Google proprietary |
 
-`fast` drops GMS, which is the single biggest cold-boot saving available; most apps run fine without
-it. `play` is the only image shipping `com.android.vending`, and the only one the store's Play tab
-can wrap.
+`openemu` is our own image: the stock AOSP `default` system image, copied and reshaped (debloated,
+rebranded as OpenEmulator One). It is not an AOSP rebuild. `fast` is that same stock image
+untouched. Both drop GMS, which is the single biggest cold-boot saving available; most apps run
+fine without it. `play` is the only image shipping `com.android.vending`, and the only one the
+store's Play tab can wrap.
 
-Select with `ANDROID_PROFILE=fast|full|play`, or `OPEN_EMULATOR_ANDROID_PROFILE` for the shell.
+Select with `ANDROID_PROFILE=openemu|fast|full|play`, or `OPEN_EMULATOR_ANDROID_PROFILE` for the shell.
 
 ### Device identities
 
@@ -633,9 +636,9 @@ Also worth knowing:
 | Variable | Default | Effect |
 |---|---|---|
 | `OPEN_EMULATOR_WSL_DISTRO` | `OpenEmulator` | Which WSL distro to drive |
-| `OPEN_EMULATOR_ANDROID_PROFILE` | `fast` | Guest profile the shell starts |
+| `OPEN_EMULATOR_ANDROID_PROFILE` | `openemu` | Guest profile the shell starts |
 | `OPEN_EMULATOR_REMOTE_PATH` | — | Path to the backend checkout inside the distro |
-| `OPEN_EMULATOR_ENGINE` | `wsl` | Which runtime drives the guest — `wsl` or `sdk` (native Windows, in progress) |
+| `OPEN_EMULATOR_ENGINE` | `sdk` | Which runtime drives the guest — `sdk` (native Windows, the default) or `wsl` (headless, mirrored) |
 
 **Measured on a Ryzen 7 6800H with the Windows Hypervisor Platform enabled**, headless, the
 `fast` guest:
@@ -667,18 +670,25 @@ Defender's real-time scanning of the guest's disk writes is the likely reason na
 where KVM measured ~24s. It changes a security setting, so it is applied only on an explicit toggle,
 via one UAC prompt, and reverts exactly.
 
-> **The native Windows runtime is not the default yet.** `OPEN_EMULATOR_ENGINE=sdk` runs
-> `emulator.exe` and `adb.exe` as ordinary Windows processes with no WSL involved, downloading the
-> SDK to `%LOCALAPPDATA%\open-emulator` instead of into a distro. It has been verified as far as
-> starting the emulator and having adb see the guest; it has **not** yet booted Android to a usable
-> state, because that needs the Windows Hypervisor Platform enabled. Until it has, `wsl` remains the
-> default — shipping an untested runtime as the default would trade a slow product for a broken one.
+> **The native Windows runtime is the default.** It runs `emulator.exe` and `adb.exe` as ordinary
+> Windows processes with no WSL involved, downloading the SDK to `%LOCALAPPDATA%\open-emulator`
+> instead of into a distro, and embeds the emulator's own GPU-rendered window in the app. Measured
+> inside the guest while scrolling Settings: frames at the 60 Hz VSYNC period, 0 janky, 0 missed
+> VSYNC, 5 ms median frame time. `OPEN_EMULATOR_ENGINE=wsl` selects the headless, mirrored runtime.
+>
+> Three things had to be true for the embedded window to show at all, and each is load-bearing:
+> Chromium must composite in software (`--disable-gpu-compositing` — its DirectComposition child
+> window otherwise paints over every sibling HWND); the emulator's window keeps the panel's aspect
+> ratio and is centred rather than stretched (Qt corrects any other size, and when it does it
+> misplaces a child window by the parent's origin); and the window must be handed back in the
+> BrowserWindow's `close` event, because by `before-quit` the parent HWND is already destroyed and
+> the child with it.
 
 ### Android runtime
 
 | Variable | Effect |
 |---|---|
-| `ANDROID_PROFILE` | `fast` \| `full` \| `play` |
+| `ANDROID_PROFILE` | `openemu` \| `fast` \| `full` \| `play` |
 | `ANDROID_DEVICE` | `generic` \| `pixel_5` \| `redmi_note_11` |
 | `ANDROID_AVD_NAME` | Override the AVD name |
 | `ANDROID_AVD_HOME` | Override the AVD location |

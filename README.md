@@ -67,9 +67,9 @@ the step list and the full log. Nothing already downloaded is fetched twice.
 ### Screen
 
 The Android display. On the native Windows runtime this is the emulator's own GPU-rendered window,
-embedded directly in the app — so it runs at the emulator's frame rate, and mouse and keyboard
-reach Android without a round trip. Resizing the window resizes Android's display with it, rather
-than stretching a fixed-size image.
+embedded directly in the app — so it runs at the emulator's frame rate (measured at the guest's
+60 Hz VSYNC with zero dropped frames), and mouse and keyboard reach Android without a round trip.
+The device keeps its own aspect ratio and is centred in the pane, the way a phone sits on a desk.
 
 Where no such window exists — the WSL runtime, which runs Android headless inside the distro — the
 screen is mirrored frame by frame instead, and clicking taps and dragging swipes.
@@ -140,7 +140,7 @@ checkout.
 ./android/bin/open-emu doctor         # connectivity and readiness checks
 ```
 
-`ANDROID_PROFILE=fast|full|play` picks the guest; `ANDROID_DEVICE=pixel_5` makes it report as a
+`ANDROID_PROFILE=openemu|fast|full|play` picks the guest; `ANDROID_DEVICE=pixel_5` makes it report as a
 real handset. Make targets wrap the common sequences:
 
 ```bash
@@ -226,13 +226,12 @@ The shell drives Android through one narrow interface, so the runtime underneath
 
 | | |
 |---|---|
-| **WSL2** (default) | Google's SDK emulator inside a Linux distro. The original arrangement, and what ships today. Costs a ~4 GB distro install on top of Android itself. |
-| **Native Windows** | `emulator.exe` and `adb.exe` as ordinary Windows processes, no Linux involved. Set `OPEN_EMULATOR_ENGINE=sdk`. |
+| **Native Windows** (default) | `emulator.exe` and `adb.exe` as ordinary Windows processes, no Linux involved. The only runtime with a window to embed, and therefore the only one that shows the guest at full frame rate. |
+| **WSL2** | Google's SDK emulator inside a Linux distro, headless, mirrored at ~3 fps. The original arrangement. Set `OPEN_EMULATOR_ENGINE=wsl`. Costs a ~4 GB distro install on top of Android itself. |
 
 The native runtime is **verified working** — cold boot 37s, snapshot restore **4.9s**, on a Ryzen 7 6800H
 with the Windows Hypervisor Platform enabled — and downloads roughly **1.1 GB instead of 4.5–6.5 GB**
-because it needs no distro, no JDK, and no command-line tools. It is not yet the default only
-because it has been proven on one machine rather than many.
+because it needs no distro, no JDK, and no command-line tools.
 
 ## Status
 

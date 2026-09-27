@@ -115,6 +115,10 @@ const SetWindowPos = user32.func(
 const ShowWindow = user32.func('bool ShowWindow(void* hWnd, int32 nCmdShow)');
 const IsWindow = user32.func('bool IsWindow(void* hWnd)');
 const GetClientRect = user32.func('bool GetClientRect(void* hWnd, _Out_ RECT* lpRect)');
+const GetWindowRect = user32.func('bool GetWindowRect(void* hWnd, _Out_ RECT* lpRect)');
+const POINT = koffi.struct('POINT', { x: 'int32', y: 'int32' });
+// The parent is a `uintptr` for the same reason SetParent's is — see the note above it.
+const ScreenToClient = user32.func('bool ScreenToClient(uintptr hWnd, _Inout_ POINT* lpPoint)');
 
 const GWL_STYLE = -16;
 const GWL_EXSTYLE = -20;
@@ -192,8 +196,14 @@ function findMainWindowForPids(pids: Set<number>): unknown | null {
   return found;
 }
 
-/** Polls for the window, since a process exists well before it has painted anything. */
-export async function waitForWindow(pid: number, timeoutMs = 60_000, pollMs = 250): Promise<unknown | null> {
+/**
+ * Polls for the window, since a process exists well before it has painted anything.
+ *
+ * The poll is tight on purpose. Between the emulator showing its window and `SetParent` taking
+ * it, the window is a separate top-level one on the user's desktop; the poll interval is the
+ * ceiling on how long that flash lasts. Enumerating windows costs well under a millisecond.
+ */
+export async function waitForWindow(pid: number, timeoutMs = 60_000, pollMs = 40): Promise<unknown | null> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     const hwnd = findMainWindowForProcessTree(pid);
@@ -336,6 +346,58 @@ function readHandle(buffer: Buffer): bigint {
   if (buffer.length >= 8) return buffer.readBigUInt64LE(0);
   if (buffer.length >= 4) return BigInt(buffer.readUInt32LE(0));
   return 0n;
+}
+
+/**
+ * Where the embedded window actually is, in the parent's client coordinates.
+ *
+ * Exists because the emulator moves itself. When the guest's display geometry changes (`wm size`
+ * from `DisplayScaler`), the emulator's Qt window resizes to its own preferred size for the new
+ * display — after our `SetWindowPos`, and without asking. Comparing this against the rectangle we
+ * asked for is how `GuestWindow` notices and puts it back.
+ */
+export function childBounds(child: unknown, parent: Buffer): Rect | null {
+  if (!IsWindow(child)) return null;
+  const parentHandle = readHandle(parent);
+  if (parentHandle === 0n) return null;
+
+  const rect = { left: 0, top: 0, right: 0, bottom: 0 };
+  if (!GetWindowRect(child, rect)) return null;
+
+  const origin = { x: rect.left, y: rect.top };
+  if (!ScreenToClient(parentHandle, origin)) return null;
+
+  return { x: origin.x, y: origin.y, width: rect.right - rect.left, height: rect.bottom - rect.top };
+}
+
+/**
+ * Hides the top-level windows the embedded one owns — the emulator's floating toolbar.
+ *
+ * The emulator's Qt main window owns a separate frameless tool window (Back/Home/Volume/…) docked
+ * to its right edge. Owned windows are not children, so `SetParent` leaves it behind as a strip
+ * floating over whatever is under it. Every one of its functions is already on our bezel, and it
+ * reappears whenever the emulator repositions, so this is called on a timer rather than once.
+ */
+export function hideOwnedWindows(child: unknown): number {
+  if (!IsWindow(child)) return 0;
+  const owner = koffi.address(child as Parameters<typeof koffi.address>[0]);
+  let hidden = 0;
+
+  const callback = koffi.register((hwnd: unknown): boolean => {
+    const candidate = GetWindow(hwnd, GW_OWNER);
+    if (candidate && koffi.address(candidate as Parameters<typeof koffi.address>[0]) === owner && IsWindowVisible(hwnd)) {
+      ShowWindow(hwnd, SW_HIDE);
+      hidden += 1;
+    }
+    return true;
+  }, koffi.pointer(EnumWindowsProc));
+
+  try {
+    EnumWindows(callback, null);
+  } finally {
+    koffi.unregister(callback);
+  }
+  return hidden;
 }
 
 /** The window's own client size, for sizing the pane to the guest's aspect ratio. */

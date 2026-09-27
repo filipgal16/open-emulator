@@ -9,7 +9,7 @@ test('the guest profiles this build ships are discovered', () => {
 
   // These are what the shell and its docs refer to by name; the Store's Play tab is useless
   // without `play`, and the wizard uses this list to notice a distro synced by an older build.
-  for (const expected of ['fast', 'full', 'play']) {
+  for (const expected of ['openemu', 'fast', 'full', 'play']) {
     assert.ok(names.includes(expected), `missing profile "${expected}" (found: ${names.join(', ')})`);
   }
 });

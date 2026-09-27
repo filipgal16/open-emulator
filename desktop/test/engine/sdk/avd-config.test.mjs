@@ -148,6 +148,20 @@ test('a headless run drops the window and the audio subsystem that has no sink',
   assert.ok(!windowed.includes('-no-window'), 'a native run has a real window to embed');
 });
 
+test('a writable system is an explicit flag, not the default', () => {
+  const stock = emulatorArgs({ avdName: 'A', tuning: tuning(), device: device(), useSnapshot: null, headless: true });
+  const custom = emulatorArgs({
+    avdName: 'A',
+    tuning: tuning(),
+    device: device(),
+    useSnapshot: null,
+    headless: true,
+    writableSystem: true,
+  });
+  assert.ok(!stock.includes('-writable-system'));
+  assert.ok(custom.includes('-writable-system'));
+});
+
 test('device identity is passed as -prop pairs, and generic passes none', () => {
   assert.equal(
     emulatorArgs({ avdName: 'A', tuning: tuning(), device: device(), useSnapshot: null, headless: true }).includes('-prop'),

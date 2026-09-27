@@ -8,6 +8,7 @@ import type { AndroidEngine, EngineLogHandler, StartOptions } from '../types';
 import { Adb } from './adb';
 import { avdConfigOverrides, applyAvdConfig, emulatorArgs } from './avd-config';
 import { avdExists, createAvd } from './avd';
+import { findQemuPid } from './find-process';
 import { tuneForHost, type GuestTuning } from './host';
 import { avdDir, avdState, snapshotDir, systemImagePath, type SdkLayout } from './layout';
 import type { CommandResult } from '../../../shared/ipc-types';
@@ -82,7 +83,7 @@ export class SdkEngine implements AndroidEngine {
   // ── Configuration ────────────────────────────────────────────────────────────────────────────
 
   private profile(): GuestProfile {
-    return loadProfile(this.options.androidRoot, this.profileName ?? 'fast');
+    return loadProfile(this.options.androidRoot, this.profileName ?? 'openemu');
   }
 
   private device(): DeviceIdentity {
@@ -124,10 +125,33 @@ export class SdkEngine implements AndroidEngine {
    *
    * So the pid file is read back, and the process actually checked. `process.kill(pid, 0)` sends no
    * signal; it only asks whether the pid can be signalled, and works on Windows.
+   *
+   * And when the file is missing or stale, the process list is searched. The pid we spawn is the
+   * launcher's, and the launcher dies with this app's stdio pipes while QEMU keeps running the
+   * guest — so after an app restart the file named a dead process and a running guest read as
+   * stopped. See `find-process.ts`. A hit is written back so the next poll is a file read again.
    */
-  private runningPid(avdName: string): number | null {
+  private async runningPid(avdName: string): Promise<number | null> {
     if (this.emulator?.child.exitCode === null && this.emulator.pid) return this.emulator.pid;
 
+    const recorded = this.recordedPid(avdName);
+    if (recorded !== null) return recorded;
+
+    // Negative results are cached briefly: with no emulator running at all, a status poll every
+    // ten seconds would otherwise spawn PowerShell every ten seconds.
+    if (Date.now() < this.noQemuUntil) return null;
+    const found = await findQemuPid(avdName);
+    if (found === null) {
+      this.noQemuUntil = Date.now() + 5_000;
+      return null;
+    }
+    this.recordPid(avdName, found);
+    return found;
+  }
+
+  private noQemuUntil = 0;
+
+  private recordedPid(avdName: string): number | null {
     let pid: number;
     try {
       pid = Number.parseInt(readFileSync(this.pidFile(avdName), 'utf8').trim(), 10);
@@ -145,6 +169,11 @@ export class SdkEngine implements AndroidEngine {
       rmSync(this.pidFile(avdName), { force: true });
       return null;
     }
+  }
+
+  private recordPid(avdName: string, pid: number): void {
+    this.stateDir(avdName);
+    writeFileSync(this.pidFile(avdName), String(pid), 'utf8');
   }
 
   private provisionedAt(avdName: string): string | null {
@@ -216,7 +245,7 @@ export class SdkEngine implements AndroidEngine {
     // restart the handle is gone but the emulator is not, and starting a second one against the
     // same AVD corrupts the userdata both are writing.
     const existing = await this.adb.waitForDevice(2_000).catch(() => null);
-    if (existing && this.runningPid(profile.avdName) !== null) {
+    if (existing && (await this.runningPid(profile.avdName)) !== null) {
       this.serial = existing;
       this.log(`already running on ${existing} — warm path, no reboot`);
       return ok([`adb_device=${existing}`]);
@@ -231,9 +260,21 @@ export class SdkEngine implements AndroidEngine {
       device: this.device(),
       useSnapshot: useSnapshot ? SNAPSHOT : null,
       headless: this.options.windowed === false,
+      // The custom image's /system is edited. Verity would FEC-repair those edits away, and
+      // patching vbmeta to disable it makes this ramdisk reject the image (PUBLIC_KEY_REJECTED).
+      // `-writable-system` is the emulator's own switch for that: stock vbmeta, verity off.
+      writableSystem: profile.imageTag === 'openemu',
     });
 
-    this.log(`starting emulator (${useSnapshot ? 'snapshot' : 'cold'}, gpu=${tuning.gpuMode}, accel=${tuning.accel})`);
+    this.log(
+      `starting emulator (${useSnapshot ? 'snapshot' : 'cold'}, gpu=${tuning.gpuMode}, accel=${tuning.accel}` +
+        `${profile.imageTag === 'openemu' ? ', writable-system' : ''})`,
+    );
+
+    // The emulator registers with adb at spawn. If the server is not already listening on 5037,
+    // it logs "Unable to connect to adb daemon" and the serial stays `offline` forever — which
+    // is exactly what a first run after `adb kill-server` looks like.
+    await this.adb.startServer(onLog);
 
     const failures: string[] = [];
     this.emulator = spawnDetached(this.options.layout.emulator, args, {
@@ -249,14 +290,18 @@ export class SdkEngine implements AndroidEngine {
       },
     });
 
-    this.stateDir(profile.avdName);
-    writeFileSync(this.pidFile(profile.avdName), String(this.emulator.pid ?? ''), 'utf8');
+    if (this.emulator.pid) this.recordPid(profile.avdName, this.emulator.pid);
 
     const serial = await this.adb.waitForDevice(useSnapshot ? 120_000 : 300_000);
     if (!serial) {
       return fail('the emulator started but no adb device appeared');
     }
     this.serial = serial;
+
+    // Swap the launcher's pid for QEMU's. The launcher does not survive this app; QEMU does, and
+    // it is QEMU that the next app instance has to find, adopt, and embed.
+    const qemu = await findQemuPid(profile.avdName);
+    if (qemu !== null) this.recordPid(profile.avdName, qemu);
 
     // A failed restore is recoverable, so it retries cold — but it must NOT delete the snapshot.
     // Deleting it turns one bad restore into a mandatory 20-minute re-provision.
@@ -291,7 +336,7 @@ export class SdkEngine implements AndroidEngine {
     }
 
     // A guest this process did not start has no child handle, so fall back to the pid.
-    const orphan = this.runningPid(profile.avdName);
+    const orphan = await this.runningPid(profile.avdName);
     if (orphan !== null && !child) {
       try {
         process.kill(orphan);
@@ -325,7 +370,7 @@ export class SdkEngine implements AndroidEngine {
     const lines = [`avd=${profile.avdName}`];
     // From the pid file, not just the in-memory handle — otherwise a guest that outlived an app
     // restart is reported as stopped while it is plainly running.
-    const pid = this.runningPid(profile.avdName);
+    const pid = await this.runningPid(profile.avdName);
     lines.push(`emulator=${pid !== null ? 'running' : 'stopped'}`);
     if (pid !== null) lines.push(`pid=${pid}`);
 
@@ -430,7 +475,7 @@ export class SdkEngine implements AndroidEngine {
    */
   displayPid(): Promise<number | null> {
     if (this.options.windowed === false) return Promise.resolve(null);
-    return Promise.resolve(this.runningPid(this.profile().avdName));
+    return this.runningPid(this.profile().avdName);
   }
 
   /** Exposed so the mirror can pull frames without going through the serialized command queue. */

@@ -1,6 +1,6 @@
 // Shared between main, preload, and renderer. Type-only content plus plain data constants.
 
-export type ProfileId = 'fast' | 'full' | 'play';
+export type ProfileId = 'openemu' | 'fast' | 'full' | 'play';
 
 export interface ProfileSpec {
   id: ProfileId;
@@ -27,6 +27,15 @@ export interface ProfileSpec {
  * id straight through as `ANDROID_PROFILE`.
  */
 export const PROFILES: Record<ProfileId, ProfileSpec> = {
+  openemu: {
+    id: 'openemu',
+    label: 'open-emulator',
+    description: 'Our own build of Android: the stock image debloated, tuned and branded for this emulator. No Google Play.',
+    playStore: false,
+    // Built from the Fast image, so it costs nothing extra once that is downloaded.
+    downloadHint: 'built from Fast, no extra download',
+    proprietary: false,
+  },
   fast: {
     id: 'fast',
     label: 'Fast',
@@ -79,7 +88,7 @@ export interface DeviceState {
 }
 
 export const INITIAL_DEVICE_STATE: DeviceState = {
-  profile: 'fast',
+  profile: 'openemu',
   phase: 'unknown',
   avd: null,
   androidVersion: null,

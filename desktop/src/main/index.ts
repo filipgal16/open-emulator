@@ -28,6 +28,24 @@ import type { DeviceState, EmuPhase, ProfileId } from '../shared/device-types';
 import { INITIAL_DEVICE_STATE, isProfileId } from '../shared/device-types';
 import type { CommandResult, DefenderResult, DefenderState, InstalledApp, SetupStepStatus } from '../shared/ipc-types';
 
+/**
+ * Chromium must not composite on the GPU, or the embedded guest is invisible.
+ *
+ * With GPU compositing, Chromium presents the page through a DirectComposition child window
+ * (`Intermediate D3D Window`, `WS_EX_NOREDIRECTIONBITMAP`), and DWM draws that surface over every
+ * sibling child HWND regardless of z-order. The emulator's window was embedded, at the top of the
+ * z-order, rendering Android at 60fps — and the pane showed the page's background. Hiding
+ * Chromium's child by hand made the guest appear instantly, which is how this was found.
+ *
+ * With software compositing there is no such child: Chromium blits the page into the window's
+ * ordinary redirection surface, and child windows clip it the way Win32 has always worked. The GPU
+ * still rasterises the page; only the final composite moves to the CPU, for a page that is a
+ * toolbar and some panels. The guest is drawn by the emulator's own process and is untouched.
+ * `--disable-direct-composition` was tried first and is a no-op on this Chromium. Must run before
+ * `app` is ready.
+ */
+if (process.platform === 'win32') app.commandLine.appendSwitch('disable-gpu-compositing');
+
 // Config: hardcoded defaults, overridable via env vars until a first-run UI for choosing/renaming
 // the distro exists. `target` is mutated in place by the setup wizard's `distro` step when it
 // adopts an existing WSL2 distro under a different name — bridge/mirror read it live.
@@ -50,9 +68,9 @@ const bridge = new WslBridge(target);
 // engine is underneath — that is what makes swapping WSL for a native Windows process a local
 // change rather than a rewrite.
 //
-// `OPEN_EMULATOR_ENGINE=sdk` opts into the native Windows runtime. WSL stays the default until the
-// native engine has booted a guest on a real machine: shipping an untested runtime as the default
-// would trade a slow product for a broken one.
+// Native Windows by default: it is the runtime whose window can be embedded, and therefore the
+// only one that shows the guest at the emulator's own frame rate. `OPEN_EMULATOR_ENGINE=wsl` keeps
+// the headless, mirrored runtime reachable.
 const engineId = resolveEngineId(process.env.OPEN_EMULATOR_ENGINE);
 const { engine, layout } = createEngine({
   id: engineId,
@@ -122,7 +140,7 @@ const setupRunner = new SetupRunner(
     : buildNativeSteps({
         layout,
         openEmu,
-        profile: () => loadProfile(path.join(repoRootWinPath(), 'android'), target.profile ?? 'fast'),
+        profile: () => loadProfile(path.join(repoRootWinPath(), 'android'), target.profile ?? 'openemu'),
       }),
 );
 
@@ -176,6 +194,16 @@ function createWindow(): void {
     console.log(`[window] loadFile(${page}) rejected: ${(err as Error).message}`);
     // Show it anyway: a hidden window with a failed load looks like the app never started.
     mainWindow?.show();
+  });
+
+  // `close`, not `closed`, and not `before-quit` either. Closing the window with its ✕ runs
+  // 'close' → destroy → 'window-all-closed' → app.quit() → 'before-quit', so by the time either of
+  // the app-level hooks fires the HWND is gone — and Windows has already destroyed every child
+  // window with it, the embedded emulator screen included. The emulator process survives that with
+  // nothing but its floating toolbar left, and every later start finds no window to embed. 'close'
+  // is the last moment the parent still exists, so it is the only place the hand-back can work.
+  mainWindow.on('close', () => {
+    embeddedGuest?.detach();
   });
 
   mainWindow.on('closed', () => {
@@ -290,29 +318,73 @@ ipcMain.handle('device:screenshot', async (): Promise<Uint8Array | null> => {
 ipcMain.handle('display:viewport', async (_event, rect: unknown, visible: unknown): Promise<boolean> => {
   if (!isRect(rect) || typeof visible !== 'boolean') return false;
 
-  displayScaler.request({ width: rect.width, height: rect.height });
-
   const guest = guestWindow();
-  if (!guest) return false;
 
   // Hiding is the airspace escape hatch and must work even mid-attach, so it is answered before
   // anything that could wait on the emulator.
-  if (!visible) {
+  if (guest && !visible) {
     guest.setVisible(false);
     return guest.isAttached();
   }
 
-  if (guest.isAttached()) {
+  if (guest?.isAttached()) {
     guest.setBounds(rect);
     guest.setVisible(true);
     return true;
   }
 
-  const pid = await openEmu.displayPid().catch(() => null);
-  if (!pid || !mainWindow) return false;
+  if (guest && visible) {
+    const pid = await waitForDisplayPid();
+    if (pid && mainWindow && (await guest.attach(pid, mainWindow.getNativeWindowHandle(), rect))) {
+      // The display scaler is for the mirror, and is actively harmful here. The emulator's window
+      // keeps the panel's aspect ratio and letterboxes any other logical display inside it, so a
+      // `wm size` matching a landscape pane shows up as a thin strip inside a portrait window.
+      // Embedded, the guest keeps its own panel geometry and the window is fitted to the pane.
+      displayScaler.setEnabled(false);
+      void displayScaler.reset();
+      // A guest adopted from a previous app instance has usually let its screen time out, and an
+      // embedded window showing a sleeping display is a black rectangle with no explanation.
+      // Waking it is what `device:start` already does; a guest already awake ignores the key.
+      void openEmu.key('KEYCODE_WAKEUP', () => undefined).catch(() => false);
+      return true;
+    }
+  }
 
-  return guest.attach(pid, mainWindow.getNativeWindowHandle(), rect);
+  // Mirroring — the WSL runtime, or an embed that was refused. Here the logical display follows
+  // the pane, because a screencap of a display the pane's shape is the one that fills the pane.
+  displayScaler.setEnabled(true);
+  displayScaler.request({ width: rect.width, height: rect.height });
+  return false;
 });
+
+/**
+ * The emulator's pid, waiting for it while a start is in flight.
+ *
+ * The renderer reports its viewport when the device enters 'starting', which is before the
+ * emulator has been spawned — the AVD config is synced first. Answering "no pid" there would be
+ * final: the renderer only reports again on a resize, so the window would stay a separate one on
+ * the desktop until the user happened to drag something. Waiting here instead means the window is
+ * captured within a poll of appearing. One wait is shared, so a burst of viewport reports during a
+ * start does not become a burst of pollers.
+ */
+let pidWait: Promise<number | null> | null = null;
+
+function waitForDisplayPid(timeoutMs = 60_000): Promise<number | null> {
+  if (pidWait) return pidWait;
+  pidWait = (async () => {
+    const deadline = Date.now() + timeoutMs;
+    for (;;) {
+      const pid = await openEmu.displayPid().catch(() => null);
+      if (pid) return pid;
+      // Only worth waiting while something is actually starting.
+      if (busyPhase !== 'starting' || Date.now() >= deadline) return null;
+      await new Promise((resolve) => setTimeout(resolve, 200));
+    }
+  })().finally(() => {
+    pidWait = null;
+  });
+  return pidWait;
+}
 
 function isRect(value: unknown): value is Rect {
   if (typeof value !== 'object' || value === null) return false;
@@ -379,7 +451,7 @@ function currentDeviceState(): DeviceState {
     ...INITIAL_DEVICE_STATE,
     ...lastStatus,
     ...(busyPhase ? { phase: busyPhase } : {}),
-    profile: (target.profile as ProfileId | null) ?? devicePrefs?.get() ?? 'fast',
+    profile: (target.profile as ProfileId | null) ?? devicePrefs?.get() ?? 'openemu',
     busy: busyPhase !== null,
     error: deviceError,
   };
@@ -639,10 +711,9 @@ app.whenReady().then(() => {
 /**
  * Hand the guest's window back before ours goes away.
  *
- * `before-quit` rather than `window-all-closed`, because by the time the last window has closed the
- * parent HWND is already gone — and a child window is destroyed with its parent. Leaving it
- * attached means quitting the app destroys the running emulator's screen: the process keeps going,
- * rendering into nothing, and every later start finds no window to embed.
+ * The primary hand-back is the window's own 'close' handler (see `createWindow`); this covers a
+ * quit that arrives while the window is still open — `app.quit()` from code — where 'before-quit'
+ * fires first. Detaching twice is harmless.
  */
 app.on('before-quit', () => {
   embeddedGuest?.detach();

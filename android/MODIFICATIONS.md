@@ -14,7 +14,8 @@ rebuild. Adaptations are AVD/runtime only, aimed at **speed + real workloads**:
 
 ## Guest profiles (`profiles/`)
 
-- `fast` — AOSP, no GMS. Fastest boot, the default.
+- `openemu` — our own image, derived from AOSP `default`. Debloated, branded OpenEmulator One, the default on the native runtime. See `design/custom-image.md`.
+- `fast` — stock AOSP, no GMS. Untouched Google image.
 - `full` — `google_apis`. GMS, but no Play Store app.
 - `play` — `google_apis_playstore`. Google's own Play-enabled image; the only one that ships
   `com.android.vending`, and what the desktop Store's Play tab wraps. Not `adb root`-able, and

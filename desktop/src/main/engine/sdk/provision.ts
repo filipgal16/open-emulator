@@ -48,7 +48,9 @@ const SETTINGS: Array<{ why: string; commands: string[] }> = [
       'settings put global window_animation_scale 0.5',
       'settings put global transition_animation_scale 0.5',
       'settings put global animator_duration_scale 0.5',
-      'settings put system screen_off_timeout 600000',
+      // Never. A screen that times out inside an embedded window is a black rectangle with no
+      // explanation, and `stay_on_while_plugged_in` alone did not keep it awake.
+      'settings put system screen_off_timeout 2147483647',
       'settings put global stay_on_while_plugged_in 3',
     ],
   },
@@ -73,6 +75,23 @@ const SETTINGS: Array<{ why: string; commands: string[] }> = [
  */
 const DEXOPT_PACKAGES = ['com.android.settings', 'com.android.systemui'];
 
+/**
+ * Extra userdata settings for the custom image. The debloat and the brand live in the image;
+ * these are the things Android keeps in userdata and the snapshot then preserves — they would be
+ * pointless in build.prop.
+ *
+ * Animations at 0 rather than 0.5: on a host-GPU window there is nothing to ease, and the stock
+ * 0.5 still costs a frame of compositor work per transition. Bluetooth off because the image
+ * unlinked the stack and a leftover toggle that cannot turn on is worse than none.
+ */
+const OPENEMU_SETTINGS = [
+  'settings put global window_animation_scale 0',
+  'settings put global transition_animation_scale 0',
+  'settings put global animator_duration_scale 0',
+  'settings put global bluetooth_on 0',
+  'settings put secure screensaver_enabled 0',
+];
+
 export async function provisionGuest(input: ProvisionInput): Promise<CommandResult> {
   const { adb, serial, profile, accelerated, onLog, log, onProvisioned } = input;
 
@@ -85,9 +104,16 @@ export async function provisionGuest(input: ProvisionInput): Promise<CommandResu
     }
   }
 
+  if (profile.imageTag === 'openemu') {
+    log('provisioning: open-emulator image tunings');
+    for (const command of OPENEMU_SETTINGS) {
+      await adb.shell(serial, command, onLog, 30_000).catch(() => undefined);
+    }
+  }
+
   // Play and GMS exist only on the Google images. Running these against lean AOSP spends an adb
   // round trip each to be told the package does not exist.
-  if (profile.imageTag !== 'default') {
+  if (profile.imageTag.startsWith('google')) {
     log(`enabling Play and GMS (profile ${profile.name})`);
     for (const pkg of ['com.android.vending', 'com.google.android.gms']) {
       await adb.shell(serial, `pm enable ${pkg}`, onLog, 60_000).catch(() => undefined);

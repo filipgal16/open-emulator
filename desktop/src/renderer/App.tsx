@@ -93,8 +93,13 @@ export function App() {
   //
   // The airspace rule: an embedded guest window paints over the page, so it must be hidden for
   // anything that would overlap it. The account dialog is the case that exists today.
+  //
+  // Active from 'starting', not 'running': the emulator opens its window the moment it launches,
+  // and Android takes seconds to boot behind it. Embedding only once booted left that window
+  // standing on the desktop as a second, separate emulator for the whole boot. Reporting the
+  // viewport from the start lets main capture it as soon as it exists.
   const embedded = useGuestViewport(viewportRef, {
-    active: device.phase === 'running',
+    active: device.phase === 'running' || device.phase === 'starting',
     visible: tab === 'screen' && !showAccount,
   });
 

@@ -61,7 +61,7 @@ test('config names are matched, not trusted — they become a filesystem path', 
 });
 
 test('every shipped profile loads, and play is the only one with the Play Store', () => {
-  for (const name of ['fast', 'full', 'play']) {
+  for (const name of ['openemu', 'fast', 'full', 'play']) {
     const profile = loadProfile(ANDROID_ROOT, name);
     assert.ok(profile.systemImage.startsWith('system-images;android-30;'), name);
     assert.ok(profile.imageTag.length > 0, name);
@@ -71,10 +71,18 @@ test('every shipped profile loads, and play is the only one with the Play Store'
   assert.equal(loadProfile(ANDROID_ROOT, 'play').playStore, true);
   assert.equal(loadProfile(ANDROID_ROOT, 'fast').playStore, false);
   assert.equal(loadProfile(ANDROID_ROOT, 'full').playStore, false);
+  assert.equal(loadProfile(ANDROID_ROOT, 'openemu').playStore, false);
+});
+
+test('openemu is derived from the AOSP image, not downloaded from Google', () => {
+  const profile = loadProfile(ANDROID_ROOT, 'openemu');
+  assert.equal(profile.imageTag, 'openemu');
+  assert.equal(profile.baseImageTag, 'default');
+  assert.equal(loadProfile(ANDROID_ROOT, 'fast').baseImageTag, null);
 });
 
 test('each profile gets its own AVD, or one snapshot would load against another image', () => {
-  const names = ['fast', 'full', 'play'].map((n) => loadProfile(ANDROID_ROOT, n).avdName);
+  const names = ['openemu', 'fast', 'full', 'play'].map((n) => loadProfile(ANDROID_ROOT, n).avdName);
 
   assert.equal(new Set(names).size, names.length, `AVD names collide: ${names.join(', ')}`);
 });

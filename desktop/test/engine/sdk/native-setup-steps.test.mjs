@@ -61,6 +61,43 @@ test('the SDK check wants the profile image, not just the emulator binary', asyn
   });
 });
 
+test('a derived image with its base present still reports as not built', async () => {
+  await withTempDir(async (dir) => {
+    const layout = createSdkLayout(dir);
+    const derived = {
+      name: 'openemu',
+      description: '',
+      systemImage: 'system-images;android-30;openemu;x86_64',
+      imageTag: 'openemu',
+      baseImageTag: 'default',
+      playStore: false,
+      avdName: 'OpenEmulator_API30_openemu',
+    };
+    const sdk = buildNativeSteps({
+      layout,
+      openEmu: fakeClient(),
+      profile: () => derived,
+    }).find((s) => s.id === 'sdk');
+
+    for (const bin of [layout.emulator, layout.adb]) {
+      mkdirSync(path.dirname(bin), { recursive: true });
+      writeFileSync(bin, 'x');
+    }
+    const base = systemImagePath(layout, 'default');
+    mkdirSync(path.dirname(base), { recursive: true });
+    writeFileSync(base, 'x');
+
+    const pending = await sdk.check();
+    assert.equal(pending.pass, false);
+    assert.match(pending.detail, /not been built/);
+
+    const built = systemImagePath(layout, 'openemu');
+    mkdirSync(path.dirname(built), { recursive: true });
+    writeFileSync(built, 'x');
+    assert.equal((await sdk.check()).pass, true);
+  });
+});
+
 test('provisioning is judged by the marker the engine reports', async () => {
   await withTempDir(async (dir) => {
     const layout = createSdkLayout(dir);

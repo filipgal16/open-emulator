@@ -14,6 +14,7 @@
     "dev": "npm run build && electron .",
     "start": "electron .",
     "icon": "node scripts/make-icon.mjs",
+    "build:image": "npm run build:main && node scripts/build-image.mjs",
     "dist:win": "npm run build && npm run icon && electron-builder --win --publish never",
     "dist:dir": "npm run build && npm run icon && electron-builder --win --dir --publish never"
   },

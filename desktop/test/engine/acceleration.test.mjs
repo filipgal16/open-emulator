@@ -10,6 +10,7 @@ const probes = (over = {}) => ({
   whpxEnabled: false,
   firmwareVirtualization: true,
   rebootPending: false,
+  hypervisorRunning: false,
   ...over,
 });
 
@@ -81,6 +82,15 @@ test('a feature enabled but not yet live is NOT reported as available', () => {
 
 test('once restarted, the same feature reads as available', () => {
   const state = decideAcceleration(probes({ whpxEnabled: true, rebootPending: false }));
+
+  assert.equal(state.available, true);
+  assert.equal(state.method, 'whpx');
+});
+
+test('a pending reboot with the hypervisor already running is a working WHPX', () => {
+  // Windows Update leaves the reboot flag set for days. On a machine whose hypervisor is loaded,
+  // WHPX has nothing to wait for — reading the flag as "not live yet" put a working machine on TCG.
+  const state = decideAcceleration(probes({ whpxEnabled: true, rebootPending: true, hypervisorRunning: true }));
 
   assert.equal(state.available, true);
   assert.equal(state.method, 'whpx');

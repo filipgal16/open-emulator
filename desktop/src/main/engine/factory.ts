@@ -21,11 +21,12 @@ export function nativeRoot(override?: string | null): string {
   return path.join(base, 'open-emulator');
 }
 
-export function resolveEngineId(raw: string | undefined): EngineId {
+export function resolveEngineId(raw: string | undefined, platform: NodeJS.Platform = process.platform): EngineId {
   if (raw === 'sdk' || raw === 'qemu' || raw === 'wsl') return raw;
-  // WSL remains the default until the native engine has booted a guest on a real machine. Shipping
-  // an untested runtime as the default would trade a slow product for a broken one.
-  return 'wsl';
+  // Native on Windows. It is the only runtime with a window to embed — the WSL guest is headless
+  // and can only be photographed at ~3fps — and it downloads 1.1 GB instead of a 4 GB distro.
+  // WSL remains reachable with OPEN_EMULATOR_ENGINE=wsl, and is the only option off Windows.
+  return platform === 'win32' ? 'sdk' : 'wsl';
 }
 
 export interface EngineContext {

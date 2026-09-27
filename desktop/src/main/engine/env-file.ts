@@ -63,8 +63,15 @@ export interface GuestProfile {
   description: string;
   /** `system-images;android-30;google_apis_playstore;x86_64` */
   systemImage: string;
-  /** `default` | `google_apis` | `google_apis_playstore` */
+  /** `default` | `google_apis` | `google_apis_playstore` | `openemu` */
   imageTag: string;
+  /**
+   * The stock image this one is built from, or null when the image is downloaded as-is.
+   *
+   * A derived image is not in Google's repository: setup fetches the base and runs the image
+   * builder (`image-builder.ts`), and the result is installed under `imageTag`.
+   */
+  baseImageTag: string | null;
   playStore: boolean;
   avdName: string;
 }
@@ -109,6 +116,7 @@ export function loadProfile(androidRoot: string, name: string): GuestProfile {
     description: env.PROFILE_DESC ?? '',
     systemImage,
     imageTag,
+    baseImageTag: env.PROFILE_BASE_IMAGE_TAG && isSafeConfigName(env.PROFILE_BASE_IMAGE_TAG) ? env.PROFILE_BASE_IMAGE_TAG : null,
     playStore: env.PROFILE_PLAYSTORE === 'true',
     avdName: env.PROFILE_AVD_NAME || 'OpenEmulator_API30',
   };
