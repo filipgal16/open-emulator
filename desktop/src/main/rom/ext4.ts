@@ -311,6 +311,9 @@ export class Ext4Volume {
     refuseUnsupported('roCompat', roCompat, SUPPORTED.roCompat);
     if (!(incompat & INCOMPAT.EXTENTS)) throw new Error('volume does not use extents');
     if (!(incompat & INCOMPAT.FILETYPE)) throw new Error('volume does not store file types in directory entries');
+    // Without it the kernel ignores the security.selinux this editor writes on every new file, and
+    // Android would refuse the unlabeled result.
+    if (!(compat & COMPAT.EXT_ATTR)) throw new Error('volume has no ext_attr, so new files could not carry their SELinux label');
     if (!(roCompat & RO_COMPAT.GDT_CSUM)) throw new Error('volume has no uninit_bg; its group checksums are not the kind this editor writes');
 
     this.sharedBlocks = (roCompat & RO_COMPAT.SHARED_BLOCKS) !== 0;
@@ -1155,8 +1158,11 @@ export class Ext4Volume {
     this.addEntry(parentIno, name, ino, FT.DIR);
     const parent = this.readInode(parentIno);
     const links = parent.raw.readUInt16LE(0x1a);
-    parent.raw.writeUInt16LE(links + 1 >= DIR_NLINK_MAX ? 1 : links + 1, 0x1a);
-    this.writeInode(parent);
+    // 1 is dir_nlink's "too many to count" sentinel, and stays 1; it is not a tally to add to.
+    if (links !== 1) {
+      parent.raw.writeUInt16LE(links + 1 >= DIR_NLINK_MAX ? 1 : links + 1, 0x1a);
+      this.writeInode(parent);
+    }
     return ino;
   }
 

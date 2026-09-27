@@ -124,9 +124,18 @@ signed by themselves, and ship it.
 ### The ext4 editor
 
 Refuses any volume whose features are not a subset of the measured set, and requires `extent`,
-`filetype` and `uninit_bg` explicitly; refuses `s_desc_size` other than 32/0, a non-zero
-`s_last_orphan`, any in-use inode with `i_file_acl` (an xattr block it would have to refcount),
-block-mapped files, and an extent tree whose extents overlap.
+`filetype`, `uninit_bg` and `ext_attr` explicitly; refuses `s_desc_size` other than 32/0, a
+non-zero `s_last_orphan`, block-mapped files, and two extents mapping the same *logical* block.
+
+Two things only the real volumes showed, both now handled rather than refused:
+
+- **e2fsdroid deduplicates within a file too.** `/system/apex/com.android.adbd.apex` maps one
+  physical block at two logical offsets. Each mapping is one reference; freeing the file frees the
+  block exactly once, when its last reference goes.
+- **External xattr blocks exist.** `/system/bin/run-as` carries `security.capability` beside its
+  label, so its xattrs live in a separate block (`i_file_acl`). That block is counted like any
+  other reference, its own `h_refcount` is kept equal to the number of inodes using it, it is freed
+  with its last user, it stays in `i_blocks` across a replace, and `verify()` checks all of that.
 
 - **Read**: superblock, group descriptors (crc16 verified on open), inodes, extent trees of any
   depth, directories, files, in-inode xattrs via the inode's own `i_extra_isize`. Directories are
@@ -246,8 +255,10 @@ Kept on purpose: `BookmarkProvider` (Browser2 and QuickSearchBox query it), `Pri
 Telecom. `NfcNci` goes because the stock image declares no `android.hardware.nfc` feature
 (checked on a boot).
 
-**Files**: `/system/media/openemu/` (dir, 0755) and `wallpaper.png` (0644), both
-`u:object_r:system_file:s0`, root:root. `/system/media` is empty and linear on the stock volume.
+**Files**: `/system/media/` and `/system/media/openemu/` (dirs, 0755) and `wallpaper.png`
+(0644), all `u:object_r:system_file:s0`, root:root. This image keeps its media under
+`/product/media` and has no `/system/media` at all — an earlier revision of this plan said it was
+empty, which was a misread `debugfs` listing — so the ROM creates it, in the linear `/system`.
 
 ## Definition of done
 

@@ -6,7 +6,7 @@
  * icon labels sit, and the phone is centred so a portrait crop and a landscape crop both keep it.
  */
 
-import { constants, crc32, deflateSync } from 'zlib';
+import { crc32, deflateSync } from 'zlib';
 
 export const WALLPAPER_SIZE = 2048;
 
@@ -67,10 +67,21 @@ const SLOT_BOTTOM = SLOT_TOP + SLOT_H;
 
 type RGB = readonly [number, number, number];
 
-/** 4×4 Bayer thresholds. The tile repeats, so the grain is deterministic and deflate can reuse it. */
-const BAYER = new Uint8Array([
-  8, 136, 40, 168, 200, 72, 232, 104, 56, 184, 24, 152, 248, 120, 216, 88,
-]);
+/**
+ * Fixed-seed hash. Grain is a function of the pixel's 8×8 tile cell, not of `Math.random`
+ * or of call order, so the picture is the same on every machine and the tile repeats
+ * often enough for deflate to keep the file small.
+ */
+const SEED = 0x6d2b79f5;
+const GRAIN = new Uint8Array(64);
+for (let i = 0; i < 64; i++) {
+  let h = SEED ^ Math.imul((i & 7) + 1, 0x9e3779b1) ^ Math.imul((i >> 3) + 1, 0x85ebca6b);
+  h = Math.imul(h ^ (h >>> 16), 0x7feb352d);
+  h ^= h >>> 15;
+  h = Math.imul(h ^ (h >>> 16), 0x846ca68b);
+  h ^= h >>> 16;
+  GRAIN[i] = h >>> 24;
+}
 
 const SMOOTH = new Uint16Array(257);
 for (let u = 0; u <= 256; u++) {
@@ -95,15 +106,14 @@ function falloff(d2: number, lim: number): number {
 }
 
 /**
- * One LSB of fixed-pattern grain, from the Bayer tile rather than `Math.random`, so every
- * machine writes the same bytes and flat gradient steps don't show as rings.
+ * One LSB of grain from the fixed-seed tile, so gradient steps don't turn into rings.
  */
 function quant(v: number, x: number, y: number): number {
   if (v <= 0) return 0;
   if (v >= 65535) return 255;
   const base = v >> 8;
   const frac = v & 255;
-  const out = base + (frac > (BAYER[((y & 3) << 2) | (x & 3)] ?? 0) ? 1 : 0);
+  const out = base + (frac > (GRAIN[((y & 7) << 3) | (x & 7)] ?? 0) ? 1 : 0);
   return out > 255 ? 255 : out;
 }
 
@@ -149,7 +159,20 @@ function sdRound(ux: number, uy: number, cx: number, cy: number, hw: number, hh:
   return outside + inside - rad;
 }
 
+function bilerp(a: number, b: number, c: number, d: number, fx: number, fy: number): number {
+  const top = a * (8 - fx) + b * fx;
+  const bot = c * (8 - fx) + d * fx;
+  return Math.floor((top * (8 - fy) + bot * fy) / 64);
+}
+
+/**
+ * The field is a broad radial wash. Sampling it every 8px and interpolating is exact at the
+ * grid and well under a colour level in between, which keeps the full-resolution pass cheap.
+ */
 function paintField(rgb: Buffer): void {
+  const cell = 8;
+  const gw = SIZE / cell + 1;
+  const grid = new Int32Array(gw * gw * 3);
   const cornerR = CORNER[0] << 8;
   const cornerG = CORNER[1] << 8;
   const cornerB = CORNER[2] << 8;
@@ -157,31 +180,55 @@ function paintField(rgb: Buffer): void {
   const fieldG = FIELD[1] << 8;
   const fieldB = FIELD[2] << 8;
 
-  for (let y = 0; y < SIZE; y++) {
-    const dy = 2 * y + 1 - SIZE;
+  for (let gy = 0; gy < gw; gy++) {
+    const py = gy * cell;
+    const dy = 2 * py + 1 - SIZE;
     const dy2 = dy * dy;
-    const v = Math.floor((y * 256) / (SIZE - 1));
+    const v = Math.floor((py * 256) / (SIZE - 1));
     const bloomR = lerp88(BLOOM_TOP[0] << 8, BLOOM_BOT[0] << 8, v);
     const bloomG = lerp88(BLOOM_TOP[1] << 8, BLOOM_BOT[1] << 8, v);
     const bloomB = lerp88(BLOOM_TOP[2] << 8, BLOOM_BOT[2] << 8, v);
     const coreR = lerp88(CORE_TOP[0] << 8, CORE_BOT[0] << 8, v);
     const coreG = lerp88(CORE_TOP[1] << 8, CORE_BOT[1] << 8, v);
     const coreB = lerp88(CORE_TOP[2] << 8, CORE_BOT[2] << 8, v);
-    for (let x = 0; x < SIZE; x++) {
-      const dx = 2 * x + 1 - SIZE;
+    for (let gx = 0; gx < gw; gx++) {
+      const px = gx * cell;
+      const dx = 2 * px + 1 - SIZE;
       const d2 = dx * dx + dy2;
       const vig = falloff(d2, CORNER_LIM);
-      const b = falloff(d2, BLOOM_LIM);
-      const c = falloff(d2, CORE_LIM);
+      const bloom = falloff(d2, BLOOM_LIM);
+      const core = falloff(d2, CORE_LIM);
       let r = lerp88(cornerR, fieldR, vig);
       let g = lerp88(cornerG, fieldG, vig);
       let bl = lerp88(cornerB, fieldB, vig);
-      r = lerp88(r, bloomR, b);
-      g = lerp88(g, bloomG, b);
-      bl = lerp88(bl, bloomB, b);
-      r = lerp88(r, coreR, c);
-      g = lerp88(g, coreG, c);
-      bl = lerp88(bl, coreB, c);
+      r = lerp88(r, bloomR, bloom);
+      g = lerp88(g, bloomG, bloom);
+      bl = lerp88(bl, bloomB, bloom);
+      r = lerp88(r, coreR, core);
+      g = lerp88(g, coreG, core);
+      bl = lerp88(bl, coreB, core);
+      const o = (gy * gw + gx) * 3;
+      grid[o] = r;
+      grid[o + 1] = g;
+      grid[o + 2] = bl;
+    }
+  }
+
+  for (let y = 0; y < SIZE; y++) {
+    const gy = y >> 3;
+    const fy = y & 7;
+    const row0 = gy * gw;
+    const row1 = row0 + gw;
+    for (let x = 0; x < SIZE; x++) {
+      const gx = x >> 3;
+      const fx = x & 7;
+      const i00 = (row0 + gx) * 3;
+      const i10 = i00 + 3;
+      const i01 = (row1 + gx) * 3;
+      const i11 = i01 + 3;
+      const r = bilerp(grid[i00] ?? 0, grid[i10] ?? 0, grid[i01] ?? 0, grid[i11] ?? 0, fx, fy);
+      const g = bilerp(grid[i00 + 1] ?? 0, grid[i10 + 1] ?? 0, grid[i01 + 1] ?? 0, grid[i11 + 1] ?? 0, fx, fy);
+      const bl = bilerp(grid[i00 + 2] ?? 0, grid[i10 + 2] ?? 0, grid[i01 + 2] ?? 0, grid[i11 + 2] ?? 0, fx, fy);
       const i = (y * SIZE + x) * 3;
       rgb[i] = quant(r, x, y);
       rgb[i + 1] = quant(g, x, y);
@@ -337,7 +384,9 @@ function encodePng(rgb: Buffer): Buffer {
   ihdr[9] = 2;
 
   const signature = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
-  const idat = deflateSync(raw, { level: 9, strategy: constants.Z_FILTERED });
+  // Level 6, not 9: measured on this picture, 9 saves 40 KB (1.66 vs 1.70 MB) and costs nine
+  // seconds more, and the builder renders it on the user's machine.
+  const idat = deflateSync(raw, { level: 6 });
   return Buffer.concat([
     signature,
     chunk('IHDR', ihdr),

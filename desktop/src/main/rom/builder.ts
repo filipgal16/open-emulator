@@ -219,9 +219,17 @@ export interface RomState {
   manifest: RomManifest | null;
 }
 
+/**
+ * Rendered once per process. The wallpaper is drawn, not stored, and deterministic, so its bytes
+ * cannot change within a run — while `romState` is asked on every launch and every cold start.
+ */
+let wallpaper: Buffer | null = null;
+
 function contentsFor(recipe: RomRecipe): Record<string, Buffer> {
   const needsWallpaper = recipe.files.some((f) => f.source === 'wallpaper');
-  return needsWallpaper ? { wallpaper: renderWallpaper() } : {};
+  if (!needsWallpaper) return {};
+  wallpaper ??= renderWallpaper();
+  return { wallpaper };
 }
 
 /**

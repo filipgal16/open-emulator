@@ -230,29 +230,45 @@ export class SdkEngine implements AndroidEngine {
    * Order matters: this runs before `syncAvdConfig`, which would otherwise point the AVD at a
    * snapshot about to be deleted.
    */
-  private forgetStaleRom(avdName: string): void {
-    const manifest = readManifest(romPaths(this.options.layout.sdkRoot).imageDir);
-    if (!manifest) return;
+  private forgetStaleRom(avdName: string): boolean {
+    const current = this.currentRomId();
+    if (!current) return false;
+    if (this.recordedRomId(avdName) === current) return false;
 
     const dir = avdDir(this.options.layout, avdName);
-    const state = this.stateDir(avdName);
-    let recorded: string | null = null;
-    try {
-      recorded = readFileSync(path.join(state, 'rom_id'), 'utf8').trim();
-    } catch {
-      recorded = null;
-    }
-    if (recorded === manifest.romId) return;
-
     // A brand-new AVD has nothing to forget; recording starts at its first provision.
     const booted = ['userdata-qemu.img', 'snapshots', 'system.img.qcow2'].some((name) => existsSync(path.join(dir, name)));
-    if (!booted) return;
+    if (!booted) return false;
 
     this.log(`ROM changed since ${avdName} was provisioned — discarding its snapshot and system overlays, keeping userdata`);
     rmSync(path.join(dir, 'snapshots'), { recursive: true, force: true });
     rmSync(path.join(dir, 'system.img.qcow2'), { force: true });
     rmSync(path.join(dir, 'vendor.img.qcow2'), { force: true });
-    rmSync(path.join(state, 'provisioned_at'), { force: true });
+    rmSync(path.join(this.stateDir(avdName), 'provisioned_at'), { force: true });
+    return true;
+  }
+
+  private currentRomId(): string | null {
+    return readManifest(romPaths(this.options.layout.sdkRoot).imageDir)?.romId ?? null;
+  }
+
+  private recordedRomId(avdName: string): string | null {
+    try {
+      return readFileSync(path.join(avdState(this.options.layout, avdName), 'rom_id'), 'utf8').trim() || null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Whether the AVD's provisioning still stands. For our own ROM it has to have been done against
+   * *this* build: a marker left from an earlier ROM would have the app skip the one provision that
+   * brings back a fast start.
+   */
+  private isProvisioned(profile: GuestProfile): string | null {
+    const at = this.provisionedAt(profile.avdName);
+    if (!at || !profile.baseImageTag) return at;
+    return this.recordedRomId(profile.avdName) === this.currentRomId() ? at : null;
   }
 
   /**
@@ -326,7 +342,9 @@ export class SdkEngine implements AndroidEngine {
     if (!existsSync(systemImagePath(this.options.layout, profile.imageTag))) {
       return fail(`the ${profile.name} system image is not downloaded yet`);
     }
-    if (profile.baseImageTag) this.forgetStaleRom(profile.avdName);
+    // A start that just threw away a stale ROM's snapshot provisions again once booted, so the
+    // update costs one slow start rather than turning every later one into a cold boot.
+    const reprovision = profile.baseImageTag ? this.forgetStaleRom(profile.avdName) && !this.provisioning : false;
 
     this.syncAvdConfig(profile, tuning);
 
@@ -385,6 +403,13 @@ export class SdkEngine implements AndroidEngine {
     if (!booted) return fail('Android did not finish booting');
 
     this.log(`booted on ${serial}`);
+    if (reprovision) {
+      this.log('provisioning again, against the new ROM');
+      const provisioned = await this.provision(onLog);
+      // The guest is up either way; a failed re-provision only costs the fast start, and the next
+      // launch's background provisioning tries again because the ROM id was not recorded.
+      if (provisioned.code !== 0) this.log(`re-provisioning failed: ${provisioned.stderr.join(' ')}`);
+    }
     return ok([`adb_device=${serial}`, 'boot_completed=1']);
   }
 
@@ -463,7 +488,7 @@ export class SdkEngine implements AndroidEngine {
       const manifest = readManifest(romPaths(this.options.layout.sdkRoot).imageDir);
       if (manifest) lines.push(`rom=${manifest.recipeId}/${manifest.recipeVersion} id=${manifest.romId.slice(0, 16)}`);
     }
-    const provisioned = this.provisionedAt(profile.avdName);
+    const provisioned = this.isProvisioned(profile);
     if (provisioned) lines.push(`provisioned_at=${provisioned}`);
 
     return ok(lines);
@@ -484,22 +509,31 @@ export class SdkEngine implements AndroidEngine {
     const { provisionGuest } = await import('./provision');
     const profile = this.profile();
 
-    if (!this.serial) {
-      const started = await this.start(onLog, { cold: true });
-      if (started.code !== 0) return started;
-    }
-    if (!this.serial) return fail('no guest to provision');
+    // Marks the start below as part of a provision, so a ROM change it detects does not make it
+    // provision a second time on its own.
+    this.provisioning = true;
+    try {
+      if (!this.serial) {
+        const started = await this.start(onLog, { cold: true });
+        if (started.code !== 0) return started;
+      }
+      if (!this.serial) return fail('no guest to provision');
 
-    return provisionGuest({
-      adb: this.adb,
-      serial: this.serial,
-      profile,
-      accelerated: this.options.accelerated(),
-      onLog,
-      log: this.log,
-      onProvisioned: () => this.markProvisioned(profile.avdName),
-    });
+      return await provisionGuest({
+        adb: this.adb,
+        serial: this.serial,
+        profile,
+        accelerated: this.options.accelerated(),
+        onLog,
+        log: this.log,
+        onProvisioned: () => this.markProvisioned(profile.avdName),
+      });
+    } finally {
+      this.provisioning = false;
+    }
   }
+
+  private provisioning = false;
 
   // ── Guest access ─────────────────────────────────────────────────────────────────────────────
 
