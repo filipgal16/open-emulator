@@ -151,8 +151,8 @@ function checkRom() {
     const chainedRegion = read(systemOffset + footer.vbmetaOffset, footer.vbmetaSize);
     const chained = chainedRegion.subarray(0, parseVbmetaHeader(chainedRegion).totalSize);
     const digest = vbmetaDigest([top, chained]);
-    if (digest === manifest.romId) pass(`vbmeta digest matches the manifest (${digest.slice(0, 16)}…)`);
-    else fail(`vbmeta digest ${digest} is not the manifest's ${manifest.romId}`);
+    if (digest === manifest.vbmetaDigest) pass(`vbmeta digest matches the manifest (${digest.slice(0, 16)}…)`);
+    else fail(`vbmeta digest ${digest} is not the manifest's ${manifest.vbmetaDigest}`);
 
     const params = readFileSync(path.join(imageDir, 'VerifiedBootParams.textproto'), 'utf8');
     if (params.includes(`androidboot.vbmeta.digest=${digest}"`)) pass('VerifiedBootParams carries that digest');

@@ -35,6 +35,7 @@ buildRom({
   .then(({ manifest, imageDir, skipped }) => {
     console.log(`\n${skipped ? 'already up to date' : 'built'} in ${((Date.now() - started) / 1000).toFixed(1)}s — ${imageDir}`);
     console.log(`  ROM id ${manifest.romId}`);
+    console.log(`  vbmeta digest ${manifest.vbmetaDigest}`);
     for (const [name, v] of Object.entries(manifest.volumes)) {
       console.log(
         `  ${name.padEnd(10)} removed ${String(v.removed.length).padStart(2)}  freed ${String(v.blocksFreed).padStart(6)} blocks` +

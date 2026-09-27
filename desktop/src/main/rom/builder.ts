@@ -1,3 +1,4 @@
+import { createHash } from 'crypto';
 import { closeSync, cpSync, existsSync, mkdirSync, openSync, readFileSync, readSync, renameSync, rmSync, writeFileSync, writeSync } from 'fs';
 import path from 'path';
 import {
@@ -76,6 +77,16 @@ export interface RomManifest {
   /** SHA-256 over the stock top-level and chained `system` vbmeta: identifies the base image. */
   baseDigest: string;
   /** The same digest over ours. It is what the guest reports as `ro.boot.vbmeta.digest`. */
+  vbmetaDigest: string;
+  /**
+   * Identifies this build of the ROM: what an AVD records when it is provisioned, and what a later
+   * start compares against to decide whether its snapshot still belongs to the image.
+   *
+   * Not the vbmeta digest alone, though it looks like one. With the hashtree disabled nothing in
+   * the vbmeta depends on what `/system` holds, so two builds with different content would share
+   * a digest — and an old snapshot would be restored onto a changed system. The id folds in the
+   * recipe, the builder revision and the base, which are what the content is made from.
+   */
   romId: string;
   volumes: Record<VolumeName, VolumeReport>;
   /** Informational. Not part of the image, so it does not affect reproducibility. */
@@ -297,7 +308,7 @@ export async function buildRom(options: BuildOptions): Promise<BuildResult> {
   rmSync(path.join(paths.stagingDir, MANIFEST), { force: true });
 
   const volumes = {} as Record<VolumeName, VolumeReport>;
-  let romId: string;
+  let digest: string;
 
   const systemImg = path.join(paths.stagingDir, 'system.img');
   const fd = openSync(systemImg, 'r+');
@@ -318,7 +329,7 @@ export async function buildRom(options: BuildOptions): Promise<BuildResult> {
     const key = loadOrCreateSigningKey(options.keyDir);
     const signed = resignVbmeta(before.top, key, AVB_FLAG_HASHTREE_DISABLED);
     writeAll(fd, signed, layout.vbmeta.offset);
-    romId = vbmetaDigest([signed, before.chained]);
+    digest = vbmetaDigest([signed, before.chained]);
 
     const params = path.join(paths.stagingDir, 'VerifiedBootParams.textproto');
     writeFileSync(
@@ -328,7 +339,7 @@ export async function buildRom(options: BuildOptions): Promise<BuildResult> {
         {
           'androidboot.vbmeta.size': String(signed.length + before.chained.length),
           'androidboot.vbmeta.hash_alg': 'sha256',
-          'androidboot.vbmeta.digest': romId,
+          'androidboot.vbmeta.digest': digest,
         },
         // Neither is needed with a validly signed vbmeta, and orange would tell every app the
         // bootloader is unlocked.
@@ -336,7 +347,7 @@ export async function buildRom(options: BuildOptions): Promise<BuildResult> {
       ),
       'utf8',
     );
-    log(`signed vbmeta with HASHTREE_DISABLED; ROM id ${romId.slice(0, 16)}`);
+    log(`signed vbmeta with HASHTREE_DISABLED; digest ${digest.slice(0, 16)}`);
   } finally {
     closeSync(fd);
   }
@@ -364,7 +375,8 @@ export async function buildRom(options: BuildOptions): Promise<BuildResult> {
     recipeVersion: recipe.version,
     recipeHash: hash,
     baseDigest: base,
-    romId,
+    vbmetaDigest: digest,
+    romId: createHash('sha256').update([BUILDER_REVISION, hash, base, digest].join('\n')).digest('hex'),
     volumes,
     builtAt: new Date().toISOString(),
   };

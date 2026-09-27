@@ -55,7 +55,8 @@ export interface RomRecipe {
  * It is hashed with the recipe, because "up to date" is decided by the hash: without it, an image
  * built by a broken builder would count as current forever after the fix shipped.
  */
-export const BUILDER_REVISION = 1;
+// 2: the ROM id became a build id over recipe, base and vbmeta, not the vbmeta digest alone.
+export const BUILDER_REVISION = 2;
 
 // ── Recipe v1 ─────────────────────────────────────────────────────────────────────────────────
 
