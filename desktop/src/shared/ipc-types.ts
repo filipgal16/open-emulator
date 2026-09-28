@@ -5,6 +5,7 @@ import type { AccountState, FillField, FillResult } from './account-types';
 import type { DeviceState, ProfileId } from './device-types';
 import type { Settings, SettingsState } from './settings-types';
 import type { AppDetail, InstallJob, SourceId, StoreApp, StoreState } from './store-types';
+import type { UpdateState } from './update-types';
 
 export interface InstalledApp {
   packageName: string;
@@ -117,4 +118,14 @@ export interface OpenEmuApi {
   settingsChooseDownloadFolder(): Promise<SettingsState>;
   /** Relaunches the app, so a changed download location takes effect. */
   settingsRestartApp(): Promise<void>;
+
+  // ── Updates ──────────────────────────────────────────────────────────────────────────────────
+  updateState(): Promise<UpdateState>;
+  /** Looks for a newer version. Never downloads one. */
+  updateCheck(): Promise<UpdateState>;
+  /** Downloads the version a check found; ignored unless one is on offer. */
+  updateDownload(): Promise<UpdateState>;
+  /** Quits, installs the downloaded version, and reopens. False unless a download has finished. */
+  updateInstall(): Promise<boolean>;
+  onUpdateState(callback: (state: UpdateState) => void): void;
 }

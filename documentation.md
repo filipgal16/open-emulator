@@ -99,7 +99,7 @@ talk to one shell script's command surface, so replacing Google's SDK emulator w
 
 ### The installer
 
-`open-emulator-Setup-0.0.1.exe`, about 75 MB, built by electron-builder's NSIS target.
+`open-emulator-Setup-<version>.exe`, about 80 MB, built by electron-builder's NSIS target.
 
 - **One click, per user, no UAC prompt**, launches when it finishes — the flow LDPlayer and
   BlueStacks use.
@@ -541,26 +541,56 @@ automatically.
 
 ### Publishing a release
 
-`desktop/release/` is gitignored, so the installer is **not** in the repository — a ~75 MB binary
-does not belong in git history. Attach it to a GitHub Release instead, which is what the README's
-download link points at:
+`desktop/release/` is gitignored, so the installer is **not** in the repository — a ~80 MB binary
+does not belong in git history. Releases are built and published by CI
+(`.github/workflows/release.yml`), on Windows, after the test suite passes:
 
 ```bash
-gh release create v0.0.1 \
-  "desktop/release/open-emulator-Setup-0.0.1.exe" \
-  --title "open-emulator 0.0.1" \
-  --notes "First packaged build."
+cd desktop && npm version 0.2.0 --no-git-tag-version   # bump package.json + lockfile
+git commit -am "Release 0.2.0" && git push
+git tag v0.2.0 && git push origin v0.2.0               # builds, tests, publishes
 ```
 
-Without the `gh` CLI, do the same from **Releases → Draft a new release** on GitHub and drag the
-`.exe` into the assets box.
+The tag must match `package.json`'s version; the workflow refuses to publish otherwise. It uploads
+three files to the release, and all three matter:
 
-The README's direct link resolves through `releases/latest/download/<asset-name>`, so it keeps
-working as long as each release keeps the same asset filename.
+| File | Why |
+|---|---|
+| `open-emulator-Setup-<version>.exe` | The installer, for new users and for updates |
+| `latest.yml` | Version, file name and sha512 — what installed copies read to decide whether to update, and what the download is verified against |
+| `…exe.blockmap` | Lets a later update download only the blocks that changed |
+
+Running the workflow by hand (**Actions → Release → Run workflow**) builds without publishing and
+keeps the installer as an artifact for a week.
+
+The README links to `releases/latest` rather than to a file, because the file name carries the
+version and changes every release.
 
 > **While the repository is private, release assets are private too** — a download link only works
-> for people with repo access. To hand the installer to someone outside, either add them as a
-> collaborator, make the repository public, or share the file another way.
+> for people with repo access, and **installed copies cannot see new releases**: GitHub answers
+> 404 to them, and Settings → Updates says so. Updating starts working for everyone the moment the
+> repository is public. No token is built into the app to get around this: it would be readable
+> by anyone who has the installer.
+
+### How the app updates itself
+
+`electron-updater`, reading the GitHub releases named by the `publish` block in
+`desktop/package.json` (electron-builder writes it into the installed app as `app-update.yml`).
+The logic is in `src/main/update/update-service.ts`, which enforces:
+
+- **Checks are automatic; downloads are not.** The first check runs 30 s after start, then every
+  6 hours, and only ever reports. Downloading and installing are each a button in Settings →
+  Updates. A dot on Settings says when there is something to do.
+- **Never backwards.** `allowDowngrade` is off and no update channel is set (setting one silently
+  turns downgrades back on).
+- **Verified — to a point.** The download is checked against `latest.yml`'s sha512 before it can
+  install. The installer isn't code-signed yet (see [Code signing](#code-signing)), so that proves
+  it is the file published on this repository's releases and nothing more: whoever controls the
+  repository controls what installs. Signing the installer is what closes that gap.
+- **Installs silently, per user.** "Restart to update" quits, runs the installer without its pages
+  (it already knows where the app lives), and reopens the app. Closing the app after a download
+  installs it too.
+- **Development runs don't update.** Only an installed build has `app-update.yml`.
 
 ### Known packaging snag
 

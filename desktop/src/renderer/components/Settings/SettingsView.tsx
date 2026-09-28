@@ -4,6 +4,7 @@ import { formatBytes } from '../../../shared/store-types';
 import { SHORTCUT_HELP } from '../../keyboard';
 import { applyDocumentTheme } from '../../theme';
 import { Icon } from '../Icon';
+import { UpdatesBlock } from './UpdatesBlock';
 
 const THEMES: Array<{ id: ThemeChoice; label: string }> = [
   { id: 'system', label: 'System' },
@@ -357,6 +358,8 @@ export function SettingsView() {
             </div>
           )}
         </section>
+
+        <UpdatesBlock />
 
         <section className="settings-block">
           <h3 className="settings-label">Keyboard</h3>

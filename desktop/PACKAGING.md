@@ -53,10 +53,16 @@ environment; electron-builder picks them up with no config change.
 the recipe instead of an opaque binary. `npm run icon` regenerates it; `dist:win` does so
 automatically.
 
-## Version
+## Version and releases
 
-The installer takes its version from `package.json`. Bump it before a release, or every build will
-overwrite the previous artifact name.
+The installer takes its version from `package.json`. Bump it before a release: installed copies
+only update to a version higher than their own.
+
+Releases are published by `.github/workflows/release.yml` when a `v<version>` tag is pushed. It
+tests, builds on Windows, and uploads the installer, its `.blockmap` and `latest.yml` — the file
+installed copies read to find updates. `npm run release:win` is the same build with publishing on;
+it needs `GH_TOKEN`. The full procedure, and how the in-app updater behaves, is in
+[documentation.md](../documentation.md#publishing-a-release).
 
 ## Known local snag
 
