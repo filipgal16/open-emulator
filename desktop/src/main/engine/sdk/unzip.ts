@@ -57,11 +57,18 @@ export async function extractZip(zipPath: string, destination: string): Promise<
   }
 }
 
-/** Whether the extractor this platform needs is actually present, for a setup preflight. */
+/**
+ * Whether the extractor this platform needs is actually present, for a setup preflight.
+ *
+ * The probe flag differs per tool. Info-ZIP `unzip` has no `--version`: it prints its banner and
+ * exits 10, which made this report "missing" on every Linux machine that had it. `-v` is its
+ * version flag and exits 0.
+ */
 export async function isExtractorAvailable(): Promise<boolean> {
-  const file = process.platform === 'win32' ? windowsTar() : 'unzip';
+  const windows = process.platform === 'win32';
+  const file = windows ? windowsTar() : 'unzip';
   try {
-    const result = await runner.run(file, { args: ['--version'], timeoutMs: 15_000 });
+    const result = await runner.run(file, { args: [windows ? '--version' : '-v'], timeoutMs: 15_000 });
     return result.code === 0;
   } catch {
     return false;
