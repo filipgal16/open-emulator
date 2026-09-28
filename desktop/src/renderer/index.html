@@ -634,6 +634,7 @@
         border-right: 1px solid var(--border);
       }
       .nav-rail-item {
+        position: relative;
         display: flex; flex-direction: column; align-items: center; gap: var(--space-1);
         padding: var(--space-2) var(--space-1);
         background: none; border: none; color: var(--faint);
@@ -645,6 +646,11 @@
       .nav-rail-item:hover { color: var(--text); background: var(--hover-overlay); }
       .nav-rail-item.on { color: var(--accent); background: var(--accent-soft); }
       .nav-rail-item:focus-visible { box-shadow: var(--focus); }
+      .nav-rail-dot {
+        position: absolute; top: var(--space-1-5); right: var(--space-2);
+        width: var(--space-2); height: var(--space-2); border-radius: var(--radius-full);
+        background: var(--accent); box-shadow: 0 0 0 2px var(--bg-deep);
+      }
       .nav-rail-spacer { flex: 1; }
 
       .tool-rail {
@@ -1514,6 +1520,9 @@
       .settings-apply.is-warn { background: var(--warn-bg); border-color: var(--warn-border); }
       .settings-apply.is-warn p { color: var(--warn); }
       .settings-apply .setup-primary { margin-top: var(--space-3); }
+      .settings-update-card { margin-bottom: 0; }
+      .settings-update-bar { margin-top: var(--space-3); }
+      .settings-update-action { margin-top: var(--space-3); }
 
       .settings-quiet {
         padding: var(--space-3-5);

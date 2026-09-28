@@ -1,0 +1,68 @@
+name: Release
+
+# Builds the Windows installer on Windows, after the test suite passes.
+#
+#   - Pushing a version tag (v0.1.0) also publishes it as a GitHub release: the installer, its
+#     .blockmap, and latest.yml. That release is where installed copies look for updates — the
+#     `publish` block in desktop/package.json tells electron-builder, and through it the app, where.
+#   - Running it by hand (Actions → Release → Run workflow) builds without publishing, and keeps
+#     the installer as a workflow artifact for a week.
+#
+# The tag has to match desktop/package.json's version. An installed copy compares its own version
+# with latest.yml's, so a release built from an un-bumped package.json would never be offered.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: desktop
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+
+      - run: npm ci
+
+      - run: npm test
+
+      - name: Tag matches package.json
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          expected="v$(node -p "require('./package.json').version")"
+          if [ "$expected" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match desktop/package.json ($expected)"
+            exit 1
+          fi
+
+      - name: Build
+        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+        run: npm run dist:win
+
+      - name: Build and publish the release
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: npm run release:win
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: open-emulator-windows
+          path: |
+            desktop/release/*.exe
+            desktop/release/*.blockmap
+            desktop/release/latest.yml
+          if-no-files-found: error
+          retention-days: 7
