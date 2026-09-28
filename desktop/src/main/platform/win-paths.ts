@@ -1,9 +1,14 @@
 import { existsSync } from 'fs';
 import path from 'path';
 
-/** Converts an absolute Windows path to its WSL2 `/mnt/<drive>/...` passthrough form. */
+/**
+ * Converts an absolute Windows path to its WSL2 `/mnt/<drive>/...` passthrough form.
+ *
+ * `path.win32` rather than `path`: the input is always a Windows path, whatever this process runs
+ * on. Under the host's own rules on Linux, `C:\x` is a relative name and resolves to `<cwd>/C:\x`.
+ */
 export function toWslMountPath(winPath: string): string {
-  const normalized = path.resolve(winPath).replace(/\\/g, '/');
+  const normalized = path.win32.resolve(winPath).replace(/\\/g, '/');
   const match = normalized.match(/^([A-Za-z]):\/(.*)$/);
   if (!match) throw new Error(`cannot convert to a WSL mount path: ${winPath}`);
   return `/mnt/${match[1].toLowerCase()}/${match[2]}`;
