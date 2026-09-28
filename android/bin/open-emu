@@ -46,6 +46,18 @@ cmd_setup() {
   "$ROOT/scripts/setup_avd.sh"
 }
 
+# Stops an emulator this invocation started and is now giving up on. It was launched with setsid,
+# so nothing else will: left alone it keeps booting orphaned after `start` has already reported
+# failure, and the next `start` then takes the warm path against that half-booted guest.
+abandon_emulator() {
+  local pid="$1"
+  kill "$pid" 2>/dev/null || true
+  sleep 2
+  kill -9 "$pid" 2>/dev/null || true
+  rm -f "$PID_FILE"
+  pkill -f "qemu-system-x86_64.*${AVD_NAME}" 2>/dev/null || true
+}
+
 start_emulator() {
   local cold="${1:-0}"
   # Set when the cold boot is a *fallback* rather than something the user asked for. A fallback
@@ -166,24 +178,25 @@ start_emulator() {
   # 5s on top of a warm start that only takes ~11s in total.
   # A writable-system boot has to materialise a writable overlay for the 3GB super image before
   # the guest gets anywhere, which routinely runs past the normal wait.
+  # Without KVM, adbd comes up minutes into the boot rather than seconds — measured at 158-233s on
+  # a 4-core host — so the KVM figure gave up on guests that were booting fine. Scaled the same way
+  # boot_timeout below already is.
   local adb_wait=180
   [[ "${ANDROID_WRITABLE_SYSTEM:-}" == "1" ]] && adb_wait=600
+  (( HAS_KVM )) || adb_wait=900
 
   local device
   device="$(wait_for_adb_device "$adb_wait")" || {
     tail -n 100 "$EMULATOR_LOG" || true
-    die "adb device did not appear"
+    abandon_emulator "$pid"
+    die "adb device did not appear within ${adb_wait}s"
   }
   log "adb device=${device}"
 
   if (( cold == 0 )) && (( HAS_KVM )) && snapshot_exists; then
     if grep -q "Failed to load snapshot\|cannot load snapshot" "$EMULATOR_LOG"; then
       log "snapshot load failed — cold booting (snapshot kept for next attempt)"
-      kill "$pid" 2>/dev/null || true
-      sleep 2
-      kill -9 "$pid" 2>/dev/null || true
-      rm -f "$PID_FILE"
-      pkill -f "qemu-system-x86_64.*${AVD_NAME}" 2>/dev/null || true
+      abandon_emulator "$pid"
       sleep 2
       start_emulator 1 1
       return $?
@@ -195,7 +208,8 @@ start_emulator() {
 
   wait_for_boot "$device" "$boot_timeout" || {
     tail -n 100 "$EMULATOR_LOG" || true
-    die "Android boot_completed not reached"
+    abandon_emulator "$pid"
+    die "Android boot_completed not reached within ${boot_timeout}s"
   }
   log "Android boot_completed=1"
 }
