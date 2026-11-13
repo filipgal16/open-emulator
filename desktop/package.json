@@ -18,7 +18,8 @@
     "dist:dir": "npm run build && npm run icon && electron-builder --win --dir --publish never",
     "rom:build": "npm run build:main && node scripts/rom-build.mjs",
     "rom:check": "npm run build:main && node scripts/rom-check.mjs",
-    "wallpaper": "npm run build:main && node scripts/render-wallpaper.mjs"
+    "wallpaper": "npm run build:main && node scripts/render-wallpaper.mjs",
+    "preview": "node scripts/build-renderer.mjs && node scripts/copy-static.mjs && node scripts/preview-renderer.mjs"
   },
   "build": {
     "appId": "com.openemulator.desktop",
