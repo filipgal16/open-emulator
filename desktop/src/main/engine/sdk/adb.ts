@@ -23,6 +23,18 @@ export function parseDevices(stdout: string[]): string[] {
   return serials;
 }
 
+/**
+ * `install-multiple` for an app delivered as several APKs.
+ *
+ * One call, not one per file: the package manager only accepts a split inside the same install
+ * session as its base, so installing the pieces one after another fails on the second. `-r`
+ * replaces an installed copy, `-g` grants the runtime permissions the manifest asks for, the same
+ * as a single-file install here does.
+ */
+export function installMultipleArgs(files: string[]): string[] {
+  return ['install-multiple', '-r', '-g', ...files];
+}
+
 /** True when the guest has finished booting *and* its package manager will answer. */
 export function isBootComplete(bootCompleted: string | null, packageManagerOk: boolean): boolean {
   return bootCompleted?.trim() === '1' && packageManagerOk;
@@ -57,6 +69,16 @@ export class Adb {
 
   shell(serial: string, command: string, onLog: EngineLogHandler = NO_LOG, timeoutMs = 15_000): Promise<CommandResult> {
     return this.exec(serial, ['shell', command], onLog, timeoutMs);
+  }
+
+  /** Each path is its own argv entry, so spaces in a Windows path need no escaping. */
+  installMultiple(serial: string, files: string[], onLog: EngineLogHandler = NO_LOG, timeoutMs = 10 * 60_000): Promise<CommandResult> {
+    return this.exec(serial, installMultipleArgs(files), onLog, timeoutMs);
+  }
+
+  /** Copies a host file into the guest. `guestPath` is not parsed by any shell on the way. */
+  push(serial: string, hostPath: string, guestPath: string, onLog: EngineLogHandler = NO_LOG, timeoutMs = 10 * 60_000): Promise<CommandResult> {
+    return this.exec(serial, ['push', hostPath, guestPath], onLog, timeoutMs);
   }
 
   /** A single property, or null when the guest doesn't answer. */

@@ -9,7 +9,7 @@ import { Adb } from './adb';
 import { avdConfigOverrides, applyAvdConfig, emulatorArgs } from './avd-config';
 import { avdExists, createAvd, syncAdvancedFeatures } from './avd';
 import { findQemuPid } from './find-process';
-import { tuneForHost, type GuestTuning } from './host';
+import { tuneForHost, type GuestTuning, type HostFacts } from './host';
 import { avdDir, avdState, snapshotDir, systemImagePath, type SdkLayout } from './layout';
 import { recipeForProfile, romParams } from './rom-profile';
 import { buildRom, readManifest, romKeyDir, romPaths, romState } from '../../rom/builder';
@@ -34,6 +34,13 @@ export interface SdkEngineOptions {
   profile: string | null;
   /** Read live, so changing the identity in settings does not need an app restart. */
   device?: () => string;
+  /**
+   * What the user asked for in Settings, read live for the same reason. A null field means
+   * "decide from this machine" — the measured default, or the profile's own hint.
+   */
+  performance?: () => { cores: number | null; ramMb: number | null };
+  /** The user's interface size, as a panel density. Null keeps the device's own. */
+  display?: () => { density: number | null };
   /** Whether a hypervisor the emulator can use is available. Decides accel and renderer. */
   accelerated: () => boolean;
   /** False forces `-no-window`; true lets the emulator paint a window we can embed. */
@@ -89,8 +96,26 @@ export class SdkEngine implements AndroidEngine {
     return loadProfile(this.options.androidRoot, this.profileName ?? 'openemu');
   }
 
+  /**
+   * The identity the guest reports as, with the user's interface size laid over its panel.
+   *
+   * The density is the one part of the panel worth exposing. The window decides the pixels — the
+   * display follows it — and what is left is how many of them a button takes, which is what a
+   * person means by "make everything bigger".
+   */
   private device(): DeviceIdentity {
-    return loadDevice(this.options.androidRoot, this.options.device?.() ?? 'generic');
+    const device = loadDevice(this.options.androidRoot, this.options.device?.() ?? 'generic');
+    const density = this.options.display?.().density ?? null;
+    return density === null ? device : { ...device, lcdDensity: density };
+  }
+
+  private hostFacts(): HostFacts {
+    return {
+      cpus: os.cpus().length,
+      totalRamMb: Math.round(os.totalmem() / (1024 * 1024)),
+      accelerated: this.options.accelerated(),
+      hasWindow: this.options.windowed !== false,
+    };
   }
 
   /**
@@ -98,19 +123,22 @@ export class SdkEngine implements AndroidEngine {
    *
    * Public because setup builds the ROM before there is any start, and a ROM that rewrites the ARM
    * translator's cpuinfo has to be told the very core count this hands `hw.cpu.ncore`; deriving it
-   * anywhere else could disagree. The profile's RAM hint replaces the measured default — this
-   * engine takes no user override for RAM.
+   * anywhere else could disagree.
+   *
+   * Three voices, in order: what the user set in Settings, then the profile's own hint (RAM only),
+   * then the measured default for this machine.
    */
   guestTuning(profile: GuestProfile = this.profile()): GuestTuning {
-    return tuneForHost(
-      {
-        cpus: os.cpus().length,
-        totalRamMb: Math.round(os.totalmem() / (1024 * 1024)),
-        accelerated: this.options.accelerated(),
-        hasWindow: this.options.windowed !== false,
-      },
-      profile.ramMb !== null ? { ramMb: profile.ramMb } : {},
-    );
+    const user = this.options.performance?.() ?? { cores: null, ramMb: null };
+    return tuneForHost(this.hostFacts(), {
+      cores: user.cores ?? undefined,
+      ramMb: user.ramMb ?? profile.ramMb ?? undefined,
+    });
+  }
+
+  /** The same, as if nothing were set in Settings: what "Automatic" means for this profile. */
+  automaticTuning(profile: GuestProfile = this.profile()): GuestTuning {
+    return tuneForHost(this.hostFacts(), profile.ramMb !== null ? { ramMb: profile.ramMb } : {});
   }
 
   private stateDir(avdName: string): string {
@@ -284,6 +312,55 @@ export class SdkEngine implements AndroidEngine {
     return true;
   }
 
+  /**
+   * Drops the snapshot of an AVD whose hardware is about to change: cores, memory, the panel, the
+   * renderer.
+   *
+   * A snapshot is the guest's RAM and device state as that hardware left it, and the emulator
+   * refuses to restore one onto different hardware. The cold-retry path would then boot it — and
+   * keep the snapshot, so every later start would be refused and cold-booted the same way. This is
+   * what a slider in Settings used to do to someone, had the sliders been connected.
+   *
+   * Decided by comparing what `config.ini` says now with what this start is about to write, so it
+   * covers every source of change alike: Settings, a profile's hint, a different machine. Run
+   * before `syncAvdConfig`, which overwrites the evidence.
+   */
+  private forgetOtherHardware(profile: GuestProfile, tuning: GuestTuning): boolean {
+    const avdName = profile.avdName;
+    if (!avdExists(this.options.layout, avdName) || !this.hasBooted(avdName)) return false;
+
+    const wanted = avdConfigOverrides({
+      profile,
+      device: this.device(),
+      tuning,
+      hasSnapshot: false,
+      snapshotName: SNAPSHOT,
+    });
+    let current: string;
+    try {
+      current = readFileSync(path.join(avdDir(this.options.layout, avdName), 'config.ini'), 'utf8');
+    } catch {
+      return false;
+    }
+    const now = new Map<string, string>();
+    for (const line of current.split(/\r?\n/)) {
+      const at = line.indexOf('=');
+      if (at > 0) now.set(line.slice(0, at).trim(), line.slice(at + 1).trim());
+    }
+
+    // Only the keys that describe hardware. The `fastboot.*` ones follow the snapshot's presence
+    // and change on their own.
+    const changed = Object.entries(wanted)
+      .filter(([key]) => key.startsWith('hw.'))
+      .filter(([key, value]) => now.get(key) !== String(value))
+      .map(([key, value]) => `${key} ${now.get(key) ?? '(unset)'} → ${value}`);
+    if (changed.length === 0) return false;
+
+    this.log(`hardware changed for ${avdName} (${changed.join(', ')}) — discarding its snapshot, keeping userdata`);
+    this.forgetSnapshot(avdName);
+    return true;
+  }
+
   /** A brand-new AVD has nothing to forget; recording starts at its first provision. */
   private hasBooted(avdName: string): boolean {
     const dir = avdDir(this.options.layout, avdName);
@@ -405,7 +482,8 @@ export class SdkEngine implements AndroidEngine {
     // `syncAvdConfig`, which decides from the snapshot's presence whether to point the AVD at it.
     const romChanged = recipe ? this.forgetStaleRom(profile.avdName, recipe) : false;
     const featuresChanged = this.syncFeatures(profile.avdName);
-    const reprovision = (romChanged || featuresChanged) && !this.provisioning;
+    const hardwareChanged = this.forgetOtherHardware(profile, tuning);
+    const reprovision = (romChanged || featuresChanged || hardwareChanged) && !this.provisioning;
 
     this.syncAvdConfig(profile, tuning);
 
@@ -465,7 +543,13 @@ export class SdkEngine implements AndroidEngine {
 
     this.log(`booted on ${serial}`);
     if (reprovision) {
-      this.log(romChanged ? 'provisioning again, against the new ROM' : 'provisioning again, with the new emulator features');
+      this.log(
+        romChanged
+          ? 'provisioning again, against the new ROM'
+          : featuresChanged
+            ? 'provisioning again, with the new emulator features'
+            : 'provisioning again, on the new hardware',
+      );
       const provisioned = await this.provision(onLog);
       // The guest is up either way; a failed re-provision only costs the fast start, and the next
       // launch's background provisioning tries again because the ROM id was not recorded.
@@ -632,6 +716,18 @@ export class SdkEngine implements AndroidEngine {
     // Nothing to translate: the emulator and the file are on the same filesystem. The path is one
     // argv entry, so spaces and quotes in it need no escaping at all.
     return this.adb.exec(serial, ['install', '-r', '-g', '-d', hostPath], onLog, timeoutMs);
+  }
+
+  async installApks(hostPaths: string[], onLog: EngineLogHandler = NO_LOG, timeoutMs = 10 * 60_000): Promise<CommandResult> {
+    const serial = await this.requireSerial();
+    if (!serial) return fail('no running guest');
+    return this.adb.installMultiple(serial, hostPaths, onLog, timeoutMs);
+  }
+
+  async pushFile(hostPath: string, guestPath: string, onLog: EngineLogHandler = NO_LOG, timeoutMs = 10 * 60_000): Promise<CommandResult> {
+    const serial = await this.requireSerial();
+    if (!serial) return fail('no running guest');
+    return this.adb.push(serial, hostPath, guestPath, onLog, timeoutMs);
   }
 
   /**

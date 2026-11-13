@@ -66,6 +66,14 @@ export interface Settings {
   /** Null means "choose from this machine". */
   cores: number | null;
   ramMb: number | null;
+  /**
+   * How large Android draws everything, as the panel's density in dpi. Null keeps the chosen
+   * device's own.
+   *
+   * There is no resolution setting on purpose: the display follows the window, so its size *is*
+   * the resolution. What a window cannot say is how many of those pixels a button should take.
+   */
+  density: number | null;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -74,12 +82,33 @@ export const DEFAULT_SETTINGS: Settings = {
   device: 'generic',
   cores: null,
   ramMb: null,
+  density: null,
 };
+
+/**
+ * The range the controls offer. The store accepts a little more (a hand-edited file is clamped,
+ * not refused), but these are the values a slider should be able to reach.
+ */
+export const RAM_MIN_MB = 2048;
+export const RAM_MAX_MB = 16_384;
+export const RAM_STEP_MB = 512;
+/** Windows keeps this much for itself however the slider is set. */
+export const RAM_HOST_RESERVE_MB = 2048;
+/** Android's own density buckets run from 160 (large tablets) to 480 (small, sharp phones). */
+export const DENSITY_MIN = 160;
+export const DENSITY_MAX = 480;
+export const DENSITY_STEP = 40;
 
 /** What the automatic answer would be, so the UI can show it beside the override. */
 export interface TuningPreview {
+  /** What the next start will use: the override if there is one, else the automatic value. */
   cores: number;
   ramMb: number;
+  density: number;
+  /** What "Automatic" means on this machine, for the profile in use. */
+  autoCores: number;
+  autoRamMb: number;
+  autoDensity: number;
   gpuMode: string;
   accelerated: boolean;
   /** Plain-language acceleration status, suitable to show directly. */

@@ -1,11 +1,14 @@
-import { copyFileSync, existsSync, mkdirSync, readdirSync, statSync } from 'fs';
+import { existsSync, mkdirSync, readdirSync, statSync } from 'fs';
+import { copyFile } from 'fs/promises';
 import path from 'path';
 import type { AppDetail, StoreApp } from '../../../shared/store-types';
+import { hasPackageExtension, packageFileLabel } from '../bundle';
 import type { AppSource, DownloadSpec } from './source';
 
 /**
- * APK files already on the host: whatever sits in `android/apps/`, plus anything dropped onto the
- * window.
+ * App files already on the host: whatever sits in `android/apps/`, plus anything dropped onto the
+ * window or chosen with Install from file. Plain APKs and the two bundle formats games ship as
+ * (`.xapk`, `.apks`) are listed alike; telling them apart is the installer's job, at install time.
  *
  * No APK parsing happens here. Reading a package name out of an APK means unzipping it and
  * decoding Android's binary XML, and getting that subtly wrong would mislabel apps — while the
@@ -22,15 +25,20 @@ export class LocalSource implements AppSource {
     private readonly importDir: string,
   ) {}
 
-  /** Copies a dropped APK into the managed directory. Returns its new path. */
-  import(sourcePath: string): string {
-    if (path.extname(sourcePath).toLowerCase() !== '.apk') {
-      throw new Error('not an .apk file');
+  /**
+   * Copies a dropped or chosen app file into the managed directory. Returns its new path.
+   *
+   * Asynchronous because a game bundle can be gigabytes, and a synchronous copy that size would
+   * stall every other request the main process serves for as long as it takes.
+   */
+  async import(sourcePath: string): Promise<string> {
+    if (!hasPackageExtension(sourcePath)) {
+      throw new Error('not an .apk, .xapk or .apks file');
     }
     mkdirSync(this.importDir, { recursive: true });
     const dest = path.join(this.importDir, path.basename(sourcePath));
     // Same file dropped twice is a no-op rather than an error.
-    if (path.resolve(sourcePath) !== path.resolve(dest)) copyFileSync(sourcePath, dest);
+    if (path.resolve(sourcePath) !== path.resolve(dest)) await copyFile(sourcePath, dest);
     return dest;
   }
 
@@ -48,8 +56,8 @@ export class LocalSource implements AppSource {
     return {
       ...this.toStoreApp(file),
       description:
-        'A local APK file. Its real package name and version are read from the guest once it is ' +
-        'installed.',
+        'An app file on this PC. Its real package name and version are read from the guest once ' +
+        'it is installed.',
       webSite: null,
       sourceCode: null,
       screenshotUrls: [],
@@ -62,7 +70,7 @@ export class LocalSource implements AppSource {
     if (!file) return null;
     return {
       packageName: this.idFor(file.path),
-      label: path.basename(file.path, '.apk'),
+      label: packageFileLabel(file.path),
       source: this.id,
       kind: 'file',
       location: file.path,
@@ -80,7 +88,7 @@ export class LocalSource implements AppSource {
   }
 
   private toStoreApp(file: { path: string; size: number; mtime: number }): StoreApp {
-    const base = path.basename(file.path, '.apk');
+    const base = packageFileLabel(file.path);
     return {
       id: `local:${this.idFor(file.path)}`,
       source: this.id,
@@ -115,7 +123,7 @@ export class LocalSource implements AppSource {
         continue;
       }
       for (const entry of entries) {
-        if (path.extname(entry).toLowerCase() !== '.apk') continue;
+        if (!hasPackageExtension(entry)) continue;
         if (seen.has(entry)) continue;
         const full = path.join(dir, entry);
         try {

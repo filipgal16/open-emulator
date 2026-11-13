@@ -1,10 +1,25 @@
 import { useEffect, useState } from 'react';
 import type { DefenderState } from '../../../shared/ipc-types';
-import { DEVICES, DEVICE_IDS, type DeviceId, type Settings, type SettingsState, type ThemeChoice } from '../../../shared/settings-types';
+import {
+  DENSITY_MAX,
+  DENSITY_MIN,
+  DENSITY_STEP,
+  DEVICES,
+  DEVICE_IDS,
+  RAM_HOST_RESERVE_MB,
+  RAM_MAX_MB,
+  RAM_MIN_MB,
+  RAM_STEP_MB,
+  type DeviceId,
+  type Settings,
+  type SettingsState,
+  type ThemeChoice,
+} from '../../../shared/settings-types';
 import { formatBytes } from '../../../shared/store-types';
 import { SHORTCUT_HELP } from '../../keyboard';
 import { applyDocumentTheme } from '../../theme';
 import { Icon } from '../Icon';
+import { SliderField } from './SliderField';
 import { UpdatesBlock } from './UpdatesBlock';
 
 const THEMES: Array<{ id: ThemeChoice; label: string }> = [
@@ -12,9 +27,6 @@ const THEMES: Array<{ id: ThemeChoice; label: string }> = [
   { id: 'light', label: 'Light' },
   { id: 'dark', label: 'Dark' },
 ];
-
-const CORE_PRESETS = [2, 4, 6, 8, 12];
-const RAM_PRESETS_MB = [2048, 3072, 4096, 6144, 8192];
 
 /**
  * Settings. A full-area panel in the stage, never a overlay on the device — a native child
@@ -134,14 +146,6 @@ export function SettingsView() {
     settings.downloadRoot !== null && !sameFolder(settings.downloadRoot, storage.root);
   const shownRoot = pendingRestart && settings.downloadRoot ? settings.downloadRoot : storage.root;
   const storageBusy = moving || freeing || restarting;
-  // `tuning.cores` / `tuning.ramMb` are the effective values (override applied). The Automatic
-  // chip still needs the measured default beside a pin, so that is derived from the host facts
-  // using the same rules the engine uses — and taken from `tuning` itself when nothing is pinned.
-  const autoCores = settings.cores === null ? tuning.cores : automaticCores(tuning.hostCpus, tuning.accelerated);
-  const autoRamMb = settings.ramMb === null ? tuning.ramMb : automaticRamMb(tuning.hostRamMb, tuning.accelerated);
-  const coreOptions = numberedChoices(CORE_PRESETS, tuning.hostCpus, settings.cores, autoCores, 1, 32);
-  const ramOptions = numberedChoices(RAM_PRESETS_MB, Math.min(tuning.hostRamMb, 16_384), settings.ramMb, autoRamMb, 1024, 16_384);
-  const ramRaised = settings.ramMb !== null && settings.ramMb > autoRamMb;
 
   return (
     <section className="settings" aria-labelledby="settings-title">
@@ -212,6 +216,29 @@ export function SettingsView() {
         </section>
 
         <section className="settings-block">
+          <h3 className="settings-label">Display</h3>
+          <p className="settings-note">
+            The screen follows this window: make the window larger and Android has more room.
+            What is set here is how big Android draws things inside it.
+          </p>
+
+          <SliderField
+            label="Interface size"
+            value={settings.density}
+            automatic={tuning.autoDensity}
+            min={DENSITY_MIN}
+            max={DENSITY_MAX}
+            step={DENSITY_STEP}
+            unit="dpi"
+            describe={(density) => `${density} dpi`}
+            minLabel="Smaller, more on screen"
+            maxLabel="Larger"
+            hint={densityHint}
+            onCommit={(density) => void patch({ density })}
+          />
+        </section>
+
+        <section className="settings-block">
           <h3 className="settings-label">Performance</h3>
           <dl className="settings-facts">
             <div>
@@ -232,61 +259,38 @@ export function SettingsView() {
             )}
           </dl>
 
-          <div className="settings-field">
-            <p className="settings-field-label" id="settings-cores-label">Processor</p>
-            <div className="settings-pills" role="radiogroup" aria-labelledby="settings-cores-label">
-              <AutoPill
-                selected={settings.cores === null}
-                detail={`${autoCores} ${autoCores === 1 ? 'core' : 'cores'}`}
-                onSelect={() => void patch({ cores: null })}
-              />
-              {coreOptions.map((value) => (
-                <button
-                  key={value}
-                  type="button"
-                  role="radio"
-                  aria-checked={settings.cores === value}
-                  className={settings.cores === value ? 'settings-pill on' : 'settings-pill'}
-                  onClick={() => void patch({ cores: value })}
-                >
-                  {value}
-                </button>
-              ))}
-            </div>
-            <p className="settings-hint">
-              {tuning.accelerated
-                ? 'Automatic leaves one core for Windows and caps at twelve — past that, boots stop getting faster.'
-                : 'Without acceleration, two cores is the measured default. More threads just fight the software CPU.'}
-            </p>
-          </div>
+          <SliderField
+            label="Processor"
+            value={settings.cores}
+            automatic={tuning.autoCores}
+            min={1}
+            max={Math.min(32, Math.max(1, tuning.hostCpus))}
+            step={1}
+            unit="cores"
+            describe={coresLabel}
+            hint={(cores, automatic) => coresHint(cores, automatic, tuning.hostCpus, tuning.accelerated)}
+            onCommit={(cores) => void patch({ cores })}
+          />
 
-          <div className="settings-field">
-            <p className="settings-field-label" id="settings-ram-label">Memory</p>
-            <div className="settings-pills" role="radiogroup" aria-labelledby="settings-ram-label">
-              <AutoPill
-                selected={settings.ramMb === null}
-                detail={formatRam(autoRamMb)}
-                onSelect={() => void patch({ ramMb: null })}
-              />
-              {ramOptions.map((value) => (
-                <button
-                  key={value}
-                  type="button"
-                  role="radio"
-                  aria-checked={settings.ramMb === value}
-                  className={settings.ramMb === value ? 'settings-pill on' : 'settings-pill'}
-                  onClick={() => void patch({ ramMb: value })}
-                >
-                  {formatRam(value)}
-                </button>
-              ))}
-            </div>
-            <p className={ramRaised ? 'settings-hint is-warn' : 'settings-hint'}>
-              {ramRaised
-                ? `This is more than the automatic ${formatRam(autoRamMb)}. Resume will take longer — warm start is dominated by restoring the snapshot's memory image, which grows with this setting.`
-                : "More memory makes the guest slower to resume. Warm start is dominated by restoring the snapshot's memory image, which grows with the setting."}
-            </p>
-          </div>
+          <SliderField
+            label="Memory"
+            value={settings.ramMb}
+            automatic={tuning.autoRamMb}
+            min={RAM_MIN_MB}
+            max={ramCeilingMb(tuning.hostRamMb)}
+            step={RAM_STEP_MB}
+            unit="GB"
+            toShown={(mb) => mb / 1024}
+            fromShown={(gb) => gb * 1024}
+            describe={formatRam}
+            hint={(ramMb, automatic) => ramHint(ramMb, automatic, tuning.autoRamMb, tuning.hostRamMb)}
+            onCommit={(ramMb) => void patch({ ramMb })}
+          />
+
+          <p className="settings-pending">
+            Processor and memory take effect the next time you start the device. The first start
+            after a change takes longer, because Android boots fresh instead of resuming.
+          </p>
 
           <DefenderField />
         </section>
@@ -511,52 +515,55 @@ function DeviceChoice({
   );
 }
 
-function AutoPill({
-  selected,
-  detail,
-  onSelect,
-}: {
-  selected: boolean;
-  detail: string;
-  onSelect: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      role="radio"
-      aria-checked={selected}
-      className={selected ? 'settings-pill settings-pill-auto on' : 'settings-pill settings-pill-auto'}
-      onClick={onSelect}
-    >
-      Automatic
-      <span className="settings-pill-detail">{detail}</span>
-    </button>
-  );
+function coresLabel(cores: number): string {
+  return cores === 1 ? '1 core' : `${cores} cores`;
 }
 
-/** Unique sorted values: presets that fit this machine, plus the automatic answer and any override. */
-function numberedChoices(
-  presets: number[],
-  cap: number,
-  current: number | null,
-  automatic: number,
-  min: number,
-  max: number,
-): number[] {
-  const ceiling = Math.min(max, Math.max(min, cap));
-  const values = new Set(presets.filter((value) => value >= min && value <= ceiling));
-  if (automatic >= min && automatic <= ceiling) values.add(automatic);
-  if (current !== null && current >= min && current <= max) values.add(current);
-  return [...values].sort((a, b) => a - b);
+function coresHint(cores: number, automatic: boolean, hostCpus: number, accelerated: boolean): { text: string; warn?: boolean } {
+  if (!accelerated) {
+    return automatic
+      ? { text: 'Without acceleration Android runs in software, and two cores is the measured best. More just fight each other.' }
+      : { text: 'Without acceleration, more than two cores usually makes Android slower, not faster.', warn: cores > 2 };
+  }
+  if (automatic) {
+    return { text: `Uses ${coresLabel(cores)} of this PC's ${hostCpus}, leaving the rest for Windows.` };
+  }
+  if (cores >= hostCpus) {
+    return { text: 'That is every core this PC has. Windows and Android will compete for them, and both get slower.', warn: true };
+  }
+  return { text: `${coresLabel(cores)} of this PC's ${hostCpus}. Games rarely use more than six.` };
 }
 
-function automaticCores(hostCpus: number, accelerated: boolean): number {
-  if (!accelerated) return 2;
-  return Math.min(12, Math.max(1, hostCpus - 1));
+/** The most the slider offers: what the PC has, less what Windows keeps, on a step the slider can rest on. */
+function ramCeilingMb(hostRamMb: number): number {
+  const usable = Math.min(RAM_MAX_MB, hostRamMb - RAM_HOST_RESERVE_MB);
+  return Math.max(RAM_MIN_MB, Math.floor(usable / RAM_STEP_MB) * RAM_STEP_MB);
 }
 
-function automaticRamMb(hostRamMb: number, accelerated: boolean): number {
-  return hostRamMb < (accelerated ? 4096 : 5120) ? 2048 : 3072;
+function ramHint(ramMb: number, automatic: boolean, autoRamMb: number, hostRamMb: number): { text: string; warn?: boolean } {
+  if (automatic) {
+    return { text: `Gives Android ${formatRam(ramMb)}: enough for most apps, and quick to resume.` };
+  }
+  if (ramMb > hostRamMb / 2) {
+    return {
+      text: `More than half of this PC's ${formatRam(hostRamMb)}. Windows may slow down while Android is running.`,
+      warn: true,
+    };
+  }
+  if (ramMb > autoRamMb) {
+    return { text: 'More memory helps large games. Resuming takes a little longer, because there is more to bring back.' };
+  }
+  if (ramMb < autoRamMb) {
+    return { text: `Less than the automatic ${formatRam(autoRamMb)}. Lighter on this PC, but large games may close themselves.` };
+  }
+  return { text: 'The same as automatic.' };
+}
+
+function densityHint(density: number, automatic: boolean): { text: string } {
+  if (automatic) return { text: "Keeps the chosen device's own size." };
+  if (density <= 200) return { text: 'Tablet-sized: small text and a lot of room. Takes effect the next time you start the device.' };
+  if (density >= 400) return { text: 'Phone-sized: large text and buttons. Takes effect the next time you start the device.' };
+  return { text: 'Takes effect the next time you start the device.' };
 }
 
 function formatRam(mb: number): string {

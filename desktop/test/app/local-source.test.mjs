@@ -22,7 +22,7 @@ test('APK files in the watched directories are listed', async () => {
     const source = new LocalSource([repoApps], imported);
     const results = await source.search('', null, 10);
 
-    assert.equal(results.length, 1, 'only .apk files count');
+    assert.equal(results.length, 1, 'only app files count');
     assert.equal(results[0].source, 'local');
     assert.equal(results[0].packageName, 'F-Droid.apk');
     assert.equal(results[0].name, 'F Droid');
@@ -37,7 +37,7 @@ test('a dropped APK is copied into the managed directory so it survives the drag
     writeFileSync(dropped, 'x');
 
     const source = new LocalSource([repoApps], imported);
-    const stored = source.import(dropped);
+    const stored = await source.import(dropped);
 
     assert.ok(existsSync(stored));
     assert.equal(path.dirname(stored), imported);
@@ -52,8 +52,8 @@ test('importing the same file twice is a no-op rather than an error', async () =
     writeFileSync(dropped, 'x');
 
     const source = new LocalSource([repoApps], imported);
-    const first = source.import(dropped);
-    const second = source.import(first);
+    const first = await source.import(dropped);
+    const second = await source.import(first);
 
     assert.equal(first, second);
     assert.equal((await source.search('', null, 10)).length, 1);
@@ -67,7 +67,7 @@ test('non-APK files are refused on import', async () => {
     writeFileSync(notAnApk, 'x');
 
     const source = new LocalSource([repoApps], imported);
-    assert.throws(() => source.import(notAnApk), /not an \.apk/);
+    await assert.rejects(() => source.import(notAnApk), /not an \.apk, \.xapk or \.apks/);
   });
 });
 

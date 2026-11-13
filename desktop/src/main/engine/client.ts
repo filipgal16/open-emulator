@@ -106,6 +106,32 @@ export class OpenEmuClient {
     return this.engine.installApk(apkPath, onLog, timeoutMs);
   }
 
+  /** Whether this runtime can install an app that arrives as several APKs. */
+  get canInstallBundles(): boolean {
+    return typeof this.engine.installApks === 'function' && typeof this.engine.pushFile === 'function';
+  }
+
+  /** Windows paths, base first. One install session — see `installMultipleArgs`. */
+  installMultiple(apkPaths: string[], onLog: EngineLogHandler, timeoutMs = 10 * 60_000): Promise<CommandResult> {
+    if (!this.engine.installApks) return Promise.resolve(unsupported());
+    return this.engine.installApks(apkPaths, onLog, timeoutMs);
+  }
+
+  /**
+   * Copies a host file into the guest, creating its directory first — explicitly rather than
+   * leaving it to `adb push`, so storage that refuses the directory fails here, with its own error,
+   * before a copy that can run to gigabytes has started.
+   */
+  async pushFile(hostPath: string, guestPath: string, onLog: EngineLogHandler, timeoutMs = 10 * 60_000): Promise<CommandResult> {
+    if (!this.engine.pushFile) return unsupported();
+    const dir = guestPath.slice(0, guestPath.lastIndexOf('/'));
+    if (dir.length > 0) {
+      const made = await this.engine.shell(`mkdir -p ${this.engine.quoteGuestArg(dir)}`, onLog, 15_000);
+      if (made.code !== 0) return made;
+    }
+    return this.engine.pushFile(hostPath, guestPath, onLog, timeoutMs);
+  }
+
   /** Fires a VIEW intent — how the Play client is driven (`market://search?q=…`). */
   async viewIntent(uri: string, onLog: EngineLogHandler): Promise<boolean> {
     const result = await this.engine.shell(
@@ -128,4 +154,8 @@ export class OpenEmuClient {
   shell(command: string, onLog: EngineLogHandler, timeoutMs = 15_000): Promise<CommandResult> {
     return this.engine.shell(command, onLog, timeoutMs);
   }
+}
+
+function unsupported(): CommandResult {
+  return { code: 1, signal: null, stdout: [], stderr: ['this runtime cannot install apps made of several files'] };
 }

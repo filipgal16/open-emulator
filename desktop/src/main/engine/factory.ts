@@ -41,6 +41,8 @@ export interface EngineContext {
    * for the other runtimes, which build no ROM.
    */
   guestTuning: ((profile: GuestProfile) => GuestTuning) | null;
+  /** What "Automatic" resolves to for a profile, for Settings to show beside an override. */
+  automaticTuning: ((profile: GuestProfile) => GuestTuning) | null;
 }
 
 export interface CreateEngineOptions {
@@ -50,6 +52,10 @@ export interface CreateEngineOptions {
   profile: string | null;
   /** Which device identity the guest should report as. Read live. */
   device?: () => string;
+  /** The user's cores and memory from Settings; null fields mean automatic. Read live. */
+  performance?: () => { cores: number | null; ramMb: number | null };
+  /** The user's interface size from Settings, as a panel density. Read live. */
+  display?: () => { density: number | null };
   /** Shared mutable target, only needed by the WSL engine. */
   wsl?: { bridge: WslBridge; target: { profile: string | null } };
   onLog?: (message: string) => void;
@@ -84,13 +90,21 @@ export function createEngine(options: CreateEngineOptions): EngineContext {
       androidRoot: path.join(repoRootWinPath(), 'android'),
       profile: options.profile,
       device: options.device,
+      performance: options.performance,
+      display: options.display,
       accelerated: () => accelerated,
       windowed: true,
       onLog: options.onLog,
     });
-    return { layout, acceleration, engine, guestTuning: (profile) => engine.guestTuning(profile) };
+    return {
+      layout,
+      acceleration,
+      engine,
+      guestTuning: (profile) => engine.guestTuning(profile),
+      automaticTuning: (profile) => engine.automaticTuning(profile),
+    };
   }
 
   if (!options.wsl) throw new Error(`the ${options.id} engine needs a WSL bridge`);
-  return { layout, acceleration, engine: new WslEngine(options.wsl.bridge, options.wsl.target), guestTuning: null };
+  return { layout, acceleration, engine: new WslEngine(options.wsl.bridge, options.wsl.target), guestTuning: null, automaticTuning: null };
 }

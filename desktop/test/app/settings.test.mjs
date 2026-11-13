@@ -66,6 +66,10 @@ test('overrides are clamped to values that produce a working guest', async () =>
     assert.equal(store.set({ cores: 0 }).cores, 1);
     assert.equal(store.set({ ramMb: 128 }).ramMb, 1024);
     assert.equal(store.set({ ramMb: 999999 }).ramMb, 16384);
+    assert.equal(store.set({ density: 40 }).density, 120);
+    assert.equal(store.set({ density: 5000 }).density, 640);
+    assert.equal(store.set({ density: 320 }).density, 320);
+    assert.equal(store.set({ density: null }).density, null, "null goes back to the device's own");
   });
 });
 

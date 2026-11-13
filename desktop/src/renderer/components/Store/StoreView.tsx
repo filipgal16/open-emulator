@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { DragEvent } from 'react';
 import type { InstallJob, SourceId, StoreApp, StoreState } from '../../../shared/store-types';
-import { INITIAL_STORE_STATE } from '../../../shared/store-types';
+import { INITIAL_STORE_STATE, SOURCES } from '../../../shared/store-types';
 import { onIndexUpdated, onInstalled, onJob } from '../../hooks/storeEvents';
 import { AppCard } from './AppCard';
 import { AppDetail } from './AppDetail';
@@ -20,6 +20,9 @@ const FILTERS: Array<{ id: Filter; label: string }> = [
 /** Long enough that typing doesn't re-rank on every keystroke, short enough to feel immediate. */
 const SEARCH_DEBOUNCE_MS = 180;
 
+/** A plain app, or one of the bundle formats games are shared as. The main process checks inside. */
+const APP_FILE = /\.(apk|xapk|apks)$/i;
+
 export function StoreView() {
   const [state, setState] = useState<StoreState>(INITIAL_STORE_STATE);
   const [filter, setFilter] = useState<Filter>('all');
@@ -30,6 +33,7 @@ export function StoreView() {
   const [dismissed, setDismissed] = useState<string[]>([]);
   const [installed, setInstalled] = useState<Set<string>>(new Set());
   const [dropping, setDropping] = useState(false);
+  const [choosingFile, setChoosingFile] = useState(false);
   const searchSeq = useRef(0);
   const openerIdRef = useRef<string | null>(null);
 
@@ -122,19 +126,49 @@ export function StoreView() {
     });
   }
 
+  /** Shows the new jobs straight away and the Local list they were added to. */
+  function showFileJobs(started: InstallJob[]) {
+    if (started.length === 0) return;
+    setJobs((prev) => [...started.filter((job) => !prev.some((c) => c.id === job.id)), ...prev]);
+    setFilter('local');
+    setQuery('');
+    openerIdRef.current = null;
+    setSelected(null);
+  }
+
   async function handleDrop(event: DragEvent<HTMLDivElement>) {
     event.preventDefault();
     setDropping(false);
 
     const paths = Array.from(event.dataTransfer.files)
       .map((file) => window.openEmu.pathForFile(file))
-      .filter((filePath): filePath is string => filePath !== null && filePath.toLowerCase().endsWith('.apk'));
+      .filter((filePath): filePath is string => filePath !== null && APP_FILE.test(filePath));
 
     if (paths.length === 0) return;
-    await Promise.all(paths.map((filePath) => window.openEmu.storeImportApk(filePath)));
-    setFilter('local');
-    setQuery('');
+    showFileJobs(await window.openEmu.storeInstallFiles(paths));
   }
+
+  async function installFromFile() {
+    setChoosingFile(true);
+    try {
+      showFileJobs(await window.openEmu.storeInstallFromFile());
+    } finally {
+      setChoosingFile(false);
+    }
+  }
+
+  const deviceReady = state.guestSdk !== null;
+  const installFromFileButton = (className: string) => (
+    <button
+      type="button"
+      className={className}
+      disabled={!deviceReady || choosingFile}
+      title={deviceReady ? 'Install an .apk, .xapk or .apks file from this PC' : 'Start the device to install apps'}
+      onClick={() => void installFromFile()}
+    >
+      Install from file…
+    </button>
+  );
 
   function recheckGuest() {
     void window.openEmu.storeProbeGuest(true).then(setState);
@@ -208,6 +242,7 @@ export function StoreView() {
             </button>
           ))}
         </div>
+        {installFromFileButton('setup-secondary')}
       </div>
 
       {/* The Play frame sizes itself to the guest and must not sit inside a scroller — the
@@ -256,13 +291,15 @@ export function StoreView() {
                   <h2>{filter === 'local' ? 'On this PC' : 'Browse'}</h2>
                   <p className="store-home-copy">
                     {filter === 'local'
-                      ? 'APKs you dropped here, and anything in the local apps folder.'
+                      ? 'App files you added from this PC, and anything in the local apps folder.'
                       : state.indexReady
                         ? `${state.indexAppCount.toLocaleString()} free and open-source apps from F-Droid, searched on this PC.`
                         : 'Fetching the F-Droid catalogue — this happens once, then search is local.'}
                   </p>
                 </div>
-                <p className="store-home-hint">Drop an APK anywhere on this window to install it.</p>
+                <p className="store-home-hint">
+                  Use Install from file, or drop an .apk, .xapk or .apks file anywhere on this window.
+                </p>
               </header>
             )}
             {results !== null && !browsing && list.length > 0 && (
@@ -275,7 +312,7 @@ export function StoreView() {
                 <p className="empty-title">
                   {browsing
                     ? filter === 'local'
-                      ? 'No local APKs yet'
+                      ? 'No app files yet'
                       : 'The catalogue is empty'
                     : state.indexReady
                       ? 'Nothing matched'
@@ -283,11 +320,12 @@ export function StoreView() {
                 </p>
                 <p className="empty-copy">
                   {browsing && filter === 'local'
-                    ? 'Drop an APK onto this window, or put one in android/apps/.'
+                    ? SOURCES.local.emptyHint
                     : state.indexReady
-                      ? 'Try a different name, or drop an APK onto this window to install one directly.'
+                      ? 'Try a different name, or install an app file from this PC with Install from file.'
                       : 'The F-Droid index is downloaded once, then searched locally.'}
                 </p>
+                {browsing && filter === 'local' && installFromFileButton('setup-primary')}
               </div>
             )}
             {results !== null && browsing && localApps.length > 0 && filter === 'all' && (

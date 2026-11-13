@@ -86,6 +86,18 @@ export interface AndroidEngine {
    */
   installApk(hostPath: string, onLog: EngineLogHandler, timeoutMs?: number): Promise<CommandResult>;
 
+  /**
+   * Installs one app delivered as several APKs (a base and its splits), in a single session.
+   *
+   * Optional because the WSL engine reaches adb only through the `open-emu` script, which installs
+   * one file at a time; teaching it this would be work on a runtime slated for deletion. Callers
+   * treat its absence as "this runtime cannot install bundles".
+   */
+  installApks?(hostPaths: string[], onLog: EngineLogHandler, timeoutMs?: number): Promise<CommandResult>;
+
+  /** Copies a host file to an absolute path in the guest. Optional for the same reason. */
+  pushFile?(hostPath: string, guestPath: string, onLog: EngineLogHandler, timeoutMs?: number): Promise<CommandResult>;
+
   // ── Presentation ─────────────────────────────────────────────────────────────────────────────
   /**
    * The process whose window shows the guest, or null when this engine has no window and the
