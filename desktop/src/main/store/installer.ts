@@ -1,19 +1,38 @@
 import { createHash } from 'crypto';
 import { createWriteStream, existsSync, mkdirSync, renameSync, rmSync, statSync } from 'fs';
 import path from 'path';
+import type { CommandResult } from '../../shared/ipc-types';
 import type { InstallJob } from '../../shared/store-types';
 import type { AppLibrary } from '../guest/app-library';
 import type { OpenEmuClient } from '../engine/client';
+import {
+  inspectPackageFile,
+  installTimeoutMs,
+  PACKAGE_NAME,
+  PackageFileError,
+  parseAbiList,
+  planExpansions,
+  selectApks,
+  type AppBundle,
+} from './bundle';
 import type { DownloadSpec } from './sources/source';
+import { extractZipEntry, ZipError } from './zip-archive';
 
 const MAX_APK_BYTES = 1_500 * 1024 * 1024;
 const DOWNLOAD_TIMEOUT_MS = 15 * 60_000;
 const INSTALL_TIMEOUT_MS = 10 * 60_000;
+/** Unpacking gigabytes in 64 KB chunks would otherwise send the window tens of thousands of updates. */
+const PROGRESS_INTERVAL_MS = 200;
 
 export interface InstallerOptions {
   fetchImpl?: typeof fetch;
   onLog?: (message: string) => void;
   now?: () => number;
+  /**
+   * Where bundles are unpacked before install. Each job gets its own directory inside, removed
+   * when the job ends however it ends. Defaults to a directory beside the download cache.
+   */
+  scratchDir?: string;
 }
 
 export type JobListener = (job: InstallJob) => void;
@@ -35,6 +54,7 @@ export class Installer {
   private readonly fetchImpl: typeof fetch;
   private readonly onLog: (message: string) => void;
   private readonly now: () => number;
+  private readonly scratchDir: string;
 
   constructor(
     private readonly openEmu: OpenEmuClient,
@@ -45,6 +65,7 @@ export class Installer {
     this.fetchImpl = options.fetchImpl ?? ((...args) => fetch(...args));
     this.onLog = options.onLog ?? (() => undefined);
     this.now = options.now ?? (() => Date.now());
+    this.scratchDir = options.scratchDir ?? `${downloadDir}-unpacking`;
   }
 
   onUpdate(listener: JobListener): () => void {
@@ -88,6 +109,31 @@ export class Installer {
     return job;
   }
 
+  /**
+   * Records a file that was turned away before it could become a job.
+   *
+   * As a failed job rather than a return value, so the reason appears in the same install list
+   * the person is already watching, next to the files from the same choice that did go ahead.
+   */
+  refuse(label: string, reason: string): InstallJob {
+    const job: InstallJob = {
+      id: `${this.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+      packageName: label,
+      resolvedPackage: null,
+      label,
+      source: 'local',
+      state: 'failed',
+      bytesDone: 0,
+      bytesTotal: 0,
+      error: reason,
+      startedAt: this.now(),
+    };
+    this.onLog(`refused ${label}: ${reason}`);
+    this.queue.push(job);
+    this.emit(job);
+    return job;
+  }
+
   private emit(job: InstallJob): void {
     for (const listener of this.listeners) listener({ ...job });
   }
@@ -123,10 +169,17 @@ export class Installer {
 
   private async run(job: InstallJob, spec: DownloadSpec): Promise<void> {
     let apkPath: string;
+    let bundle: AppBundle | null = null;
     try {
       apkPath = spec.kind === 'file' ? this.useLocalFile(job, spec) : await this.download(job, spec);
+      if (spec.kind === 'file') bundle = bundleIn(apkPath);
     } catch (err) {
       this.fail(job, (err as Error).message);
+      return;
+    }
+
+    if (bundle) {
+      await this.runBundle(job, spec, apkPath, bundle);
       return;
     }
 
@@ -146,12 +199,7 @@ export class Installer {
       // it is the engine's problem, which is what keeps this class runtime-agnostic.
       const result = await this.openEmu.install(apkPath, () => undefined, INSTALL_TIMEOUT_MS);
       if (result.code !== 0) {
-        // `fail` rather than `failure`: adb's own wording is "failed to install" and
-        // "INSTALL_FAILED_…", and matching only the noun threw away the one line worth showing.
-        const detail = [...result.stderr, ...result.stdout]
-          .filter((line) => /fail|error|not allowed|invalid|denied/i.test(line))
-          .slice(-1)[0];
-        this.fail(job, detail ?? `open-emu install exited ${result.code}`);
+        this.fail(job, failureDetail(result, 'open-emu install'));
         return;
       }
     } catch (err) {
@@ -169,6 +217,107 @@ export class Installer {
 
     this.update(job, { state: 'done', bytesDone: job.bytesTotal || job.bytesDone });
     this.onLog(`installed ${job.resolvedPackage ?? job.label} (${spec.source})`);
+  }
+
+  /**
+   * Unpacks the APKs this guest needs from a bundle and installs them in one session, then copies
+   * any game data files into place.
+   *
+   * The guest is asked for its processor types before anything is unpacked, so a bundle it cannot
+   * run is turned away in a second rather than after minutes of extracting gigabytes. The scratch
+   * directory goes whichever way the job ends: what is in it is a copy of a file the person still
+   * has, and can be as large as that file.
+   */
+  private async runBundle(job: InstallJob, spec: DownloadSpec, bundlePath: string, bundle: AppBundle): Promise<void> {
+    if (!this.openEmu.canInstallBundles) {
+      this.fail(job, 'This kind of app file can only be installed on the built-in Android runtime.');
+      return;
+    }
+
+    const abis = parseAbiList(await this.openEmu.getprop('ro.product.cpu.abilist', () => undefined));
+    if (abis.length === 0) {
+      this.fail(job, 'The device isn’t answering. Start it, then try again.');
+      return;
+    }
+
+    let chosen: string[];
+    try {
+      chosen = selectApks(bundle.apks, bundle.manifest, abis).apks;
+    } catch (err) {
+      this.fail(job, (err as Error).message);
+      return;
+    }
+
+    const members = chosen.map((name) => bundle.apks.find((entry) => entry.name === name)!);
+    const manifestPackage = bundle.manifest?.packageName ?? null;
+    const expansions = planExpansions(bundle, manifestPackage);
+    const total = [...members, ...expansions.map((plan) => plan.entry)].reduce((sum, entry) => sum + entry.size, 0);
+    const workDir = path.join(this.scratchDir, `bundle-${job.id}`);
+
+    try {
+      rmSync(workDir, { recursive: true, force: true });
+      mkdirSync(workDir, { recursive: true });
+
+      this.update(job, { state: 'unpacking', bytesDone: 0, bytesTotal: total });
+      let lastEmit = 0;
+      const progress = (bytes: number) => {
+        job.bytesDone += bytes;
+        if (this.now() - lastEmit < PROGRESS_INTERVAL_MS) return;
+        lastEmit = this.now();
+        this.emit(job);
+      };
+
+      // Numbered rather than named after the members: the names come from a downloaded file, and
+      // only this directory's own scheme is ever joined onto a host path.
+      const apkPaths: string[] = [];
+      for (const [index, entry] of members.entries()) {
+        const target = path.join(workDir, `${index}.apk`);
+        await extractZipEntry(bundlePath, entry, target, progress);
+        apkPaths.push(target);
+      }
+      const obbPaths: string[] = [];
+      for (const [index, plan] of expansions.entries()) {
+        const target = path.join(workDir, `${index}.obb`);
+        await extractZipEntry(bundlePath, plan.entry, target, progress);
+        obbPaths.push(target);
+      }
+
+      const before = await this.library.listPackageNames().catch((): string[] => []);
+      this.update(job, { state: 'installing', bytesDone: total });
+
+      const installBytes = members.reduce((sum, entry) => sum + entry.size, 0);
+      const result = await this.openEmu.installMultiple(apkPaths, () => undefined, installTimeoutMs(installBytes));
+      if (result.code !== 0) {
+        this.fail(job, failureDetail(result, 'install-multiple'));
+        return;
+      }
+
+      const after = await this.library.listPackageNames().catch((): string[] => []);
+      const added = after.filter((pkg) => !before.includes(pkg));
+      // The guest's answer first, as for a single APK. A reinstall adds nothing to the diff, and
+      // then the manifest's name is the best there is — checked, since it came with the download.
+      if (added.length === 1) this.update(job, { resolvedPackage: added[0] });
+      else if (manifestPackage && PACKAGE_NAME.test(manifestPackage)) this.update(job, { resolvedPackage: manifestPackage });
+
+      // The app is installed at this point and stays installed: a game whose data did not copy
+      // can usually fetch it again itself, and undoing a good install would not help it.
+      let warning: string | null = null;
+      for (const [index, plan] of expansions.entries()) {
+        const pushed = await this.openEmu.pushFile(obbPaths[index], plan.guestPath, () => undefined, installTimeoutMs(plan.entry.size));
+        if (pushed.code !== 0) {
+          this.onLog(`could not copy ${plan.guestPath}: ${failureDetail(pushed, 'adb push')}`);
+          warning = 'Installed, but the game’s data files couldn’t be copied. It may download them again when it starts.';
+          break;
+        }
+      }
+
+      this.update(job, { state: 'done', bytesDone: total, error: warning });
+      this.onLog(`installed ${job.resolvedPackage ?? job.label} (${spec.source}, ${members.length} APKs, ${expansions.length} OBBs)`);
+    } catch (err) {
+      this.fail(job, unpackFailure(err as Error));
+    } finally {
+      rmSync(workDir, { recursive: true, force: true });
+    }
   }
 
   private useLocalFile(job: InstallJob, spec: DownloadSpec): string {
@@ -255,4 +404,45 @@ export class Installer {
     renameSync(tmpPath, finalPath);
     return finalPath;
   }
+}
+
+/**
+ * A local file's bundle contents, or null to install it as a single APK.
+ *
+ * A file named `.apk` that turns out not to be a bundle goes to the guest as it is, even when it
+ * could not be read as a zip: the guest's package manager is the authority on what an APK is, and
+ * its own refusal says more than a guess from here. A file named `.xapk` or `.apks` has no such
+ * fallback, so whatever is wrong with it is reported.
+ */
+function bundleIn(filePath: string): AppBundle | null {
+  try {
+    const found = inspectPackageFile(filePath);
+    return found.kind === 'bundle' ? found : null;
+  } catch (err) {
+    if (path.extname(filePath).toLowerCase() === '.apk') return null;
+    throw err;
+  }
+}
+
+/**
+ * The one line of adb's output worth showing.
+ *
+ * `fail` rather than `failure`: adb's own wording is "failed to install" and "INSTALL_FAILED_…",
+ * and matching only the noun threw away the one line worth showing.
+ */
+function failureDetail(result: CommandResult, command: string): string {
+  const detail = [...result.stderr, ...result.stdout]
+    .filter((line) => /fail|error|not allowed|invalid|denied/i.test(line))
+    .slice(-1)[0];
+  return detail ?? `${command} exited ${result.code}`;
+}
+
+/** Unpacking errors, translated for the person who chose the file. */
+function unpackFailure(err: Error): string {
+  if (err instanceof PackageFileError) return err.message;
+  if (err instanceof ZipError) return 'This file is damaged. Download it again, then try again.';
+  if ((err as NodeJS.ErrnoException).code === 'ENOSPC') {
+    return 'There isn’t enough free disk space to unpack this app.';
+  }
+  return err.message;
 }

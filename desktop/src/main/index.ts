@@ -12,7 +12,7 @@ import { buildSteps, SetupRunner } from './setup-wizard';
 import { ScreenMirror } from './wsl/screen-mirror';
 import { EngineMirror } from './engine/engine-mirror';
 import { buildNativeSteps } from './engine/sdk/setup-steps';
-import { loadProfile } from './engine/env-file';
+import { loadDevice, loadProfile } from './engine/env-file';
 import { repoRootWinPath } from './platform/win-paths';
 import { moveDownloadRoot, SettingsStore, storageUsage } from './settings';
 import { DEFAULT_SETTINGS } from '../shared/settings-types';
@@ -73,13 +73,15 @@ const bridge = new WslBridge(target);
 // only one that shows the guest at the emulator's own frame rate. `OPEN_EMULATOR_ENGINE=wsl` keeps
 // the headless, mirrored runtime reachable.
 const engineId = resolveEngineId(process.env.OPEN_EMULATOR_ENGINE);
-const { engine, layout, guestTuning } = createEngine({
+const { engine, layout, guestTuning, automaticTuning } = createEngine({
   id: engineId,
   profile: target.profile,
   downloadRoot: settings.get().downloadRoot,
   // Read live rather than captured: settings load after this, and a change should apply to the
   // next boot without restarting the app.
   device: () => settings.get().device,
+  performance: () => ({ cores: settings.get().cores, ramMb: settings.get().ramMb }),
+  display: () => ({ density: settings.get().density }),
   wsl: { bridge, target },
   onLog: (line) => console.log(line),
 });
@@ -449,6 +451,11 @@ let lastStatus: Partial<DeviceState> = {};
 let busyPhase: EmuPhase | null = null;
 let deviceError: string | null = null;
 
+/** The profile in use: the one named on the command line, else the one picked in the device menu. */
+function currentProfileName(): string {
+  return target.profile ?? devicePrefs?.get() ?? 'openemu';
+}
+
 function currentDeviceState(): DeviceState {
   return {
     ...INITIAL_DEVICE_STATE,
@@ -591,16 +598,40 @@ async function settingsState(): Promise<SettingsState> {
 
   const hostCpus = os.cpus().length;
   const hostRamMb = Math.round(os.totalmem() / (1024 * 1024));
-  const tuning = tuneForHost(
-    { cpus: hostCpus, totalRamMb: hostRamMb, accelerated: acceleration.available, hasWindow: true },
-    { cores: current.cores ?? undefined, ramMb: current.ramMb ?? undefined },
-  );
+
+  // Asked of the engine where there is one, so the screen shows what the next start will really
+  // use — the profile's own memory hint included — rather than a second copy of the rules.
+  const facts = { cpus: hostCpus, totalRamMb: hostRamMb, accelerated: acceleration.available, hasWindow: true };
+  let profile: ReturnType<typeof loadProfile> | null = null;
+  try {
+    profile = loadProfile(path.join(repoRootWinPath(), 'android'), currentProfileName());
+  } catch {
+    // A profile that cannot be read is reported where it matters, at start. Here it only means
+    // the automatic values fall back to the machine's own.
+  }
+  const automatic = profile && automaticTuning ? automaticTuning(profile) : tuneForHost(facts);
+  const tuning =
+    profile && guestTuning
+      ? guestTuning(profile)
+      : tuneForHost(facts, { cores: current.cores ?? undefined, ramMb: current.ramMb ?? undefined });
+
+  // The chosen device's own panel density: what the interface-size slider calls automatic.
+  let autoDensity = 240;
+  try {
+    autoDensity = loadDevice(path.join(repoRootWinPath(), 'android'), current.device).lcdDensity ?? autoDensity;
+  } catch {
+    // Same as above: a device file that cannot be read stops a start, not this screen.
+  }
 
   return {
     settings: current,
     engine: engineId,
     tuning: {
       ...tuning,
+      density: current.density ?? autoDensity,
+      autoCores: automatic.cores,
+      autoRamMb: automatic.ramMb,
+      autoDensity,
       accelerated: acceleration.available,
       accelerationDetail: acceleration.detail,
       hostCpus,
@@ -699,7 +730,7 @@ app.whenReady().then(() => {
 
   // Built here rather than at module scope: these stores live under `app.getPath('userData')`,
   // which isn't resolvable until the app is ready.
-  store = createStore(openEmu, library, (line) => console.log(line));
+  store = createStore(openEmu, library, (line) => console.log(line), path.join(layout.root, 'downloads'));
   store.registerIpc(() => mainWindow);
 
   const account = createAccount(openEmu, {

@@ -20,7 +20,7 @@ export const SOURCES: Record<SourceId, SourceSpec> = {
   local: {
     id: 'local',
     label: 'Local',
-    emptyHint: 'Drop an APK onto this window, or put one in android/apps/.',
+    emptyHint: 'Choose Install from file, drop an app file onto this window, or put one in android/apps/.',
   },
   play: {
     id: 'play',
@@ -87,6 +87,8 @@ export type InstallState =
   | 'queued'
   | 'downloading'
   | 'verifying'
+  /** Taking the pieces this device needs out of an app bundle (.xapk, .apks). */
+  | 'unpacking'
   | 'installing'
   | 'done'
   | 'failed';
@@ -109,6 +111,10 @@ export interface InstallJob {
   bytesDone: number;
   /** 0 when the server sent no content-length; the UI shows an indeterminate bar. */
   bytesTotal: number;
+  /**
+   * Why the job failed. Also set on a `done` job when the app installed but something after it
+   * did not — a game's data files that could not be copied — since the install itself stands.
+   */
   error: string | null;
   startedAt: number;
 }

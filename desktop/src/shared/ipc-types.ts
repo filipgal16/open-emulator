@@ -106,7 +106,13 @@ export interface OpenEmuApi {
   /** Null when the app or version could not be resolved. Progress arrives via `onStoreJob`. */
   storeInstall(source: SourceId, packageName: string, versionCode: number | null): Promise<InstallJob | null>;
   storeJobs(): Promise<InstallJob[]>;
-  storeImportApk(filePath: string): Promise<boolean>;
+  /**
+   * Installs app files already on this PC (.apk, .xapk, .apks) — a drop onto the window. One job
+   * per file; a file that is not an app comes back as a failed job saying why.
+   */
+  storeInstallFiles(paths: string[]): Promise<InstallJob[]>;
+  /** Opens the native file picker and installs whatever is chosen. Empty when cancelled. */
+  storeInstallFromFile(): Promise<InstallJob[]>;
   onStoreJob(callback: (job: InstallJob) => void): void;
   /** Fires once an install has really landed in the guest — the cue to re-read the app list. */
   onStoreInstalled(callback: (packageName: string) => void): void;

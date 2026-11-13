@@ -26,6 +26,8 @@ function actionLabel(job: InstallJob | null, here: boolean, blocked: string | nu
         return job.bytesTotal > 0 ? `${Math.round((job.bytesDone / job.bytesTotal) * 100)}%` : 'Downloading';
       case 'verifying':
         return 'Verifying';
+      case 'unpacking':
+        return 'Unpacking';
       case 'installing':
         return 'Installing';
       default:

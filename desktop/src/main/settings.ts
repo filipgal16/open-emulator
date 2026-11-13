@@ -72,6 +72,8 @@ function sanitize(raw: unknown): Settings {
     device: isDeviceId(input.device) ? input.device : DEFAULT_SETTINGS.device,
     cores: clamp(input.cores, 1, 32),
     ramMb: clamp(input.ramMb, 1024, 16_384),
+    // The emulator's own bounds for a panel; the Settings slider offers the useful middle.
+    density: clamp(input.density, 120, 640),
   };
 }
 

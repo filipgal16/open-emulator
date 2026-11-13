@@ -33,7 +33,7 @@
   var now = Date.now();
 
   // ── Listeners ────────────────────────────────────────────────────────────────────────────────
-  var listeners = { setup: [], log: [], frame: [], device: [], job: [], installed: [], index: [] };
+  var listeners = { setup: [], log: [], frame: [], device: [], job: [], installed: [], index: [], update: [] };
   function emit(kind, value) {
     listeners[kind].slice().forEach(function (cb) {
       try { cb(value); } catch (err) { console.error('[preview] listener threw', err); }
@@ -345,6 +345,25 @@
       pushJob(job);
     }, T(450));
   }
+  // The shape a bundle from Install from file takes: unpack with progress, then a long install
+  // with no byte count, the way install-multiple reports nothing until it finishes.
+  function runBundleInstall(job, app) {
+    var total = job.bytesTotal, n = 10, i = 0;
+    var t = setInterval(function () {
+      i++;
+      if (i <= n) { job.state = 'unpacking'; job.bytesDone = Math.round(total * i / n); }
+      else if (i <= n + 6) { job.state = 'installing'; }
+      else {
+        job.state = 'done'; job.resolvedPackage = 'com.example.skyleague'; job.bytesDone = total;
+        clearInterval(t);
+        if (!installed.some(function (a) { return a.packageName === job.resolvedPackage; })) installed.push({ packageName: job.resolvedPackage, label: app.name });
+        pushJob(job);
+        emit('installed', job.resolvedPackage);
+        return;
+      }
+      pushJob(job);
+    }, T(450));
+  }
 
   // ── Account ──────────────────────────────────────────────────────────────────────────────────
   var profile = { displayName: 'Alex', email: 'alex.example@gmail.com', hasStoredPassword: true, autoFill: false, createdAt: now - 20 * DAY };
@@ -360,19 +379,28 @@
   }
 
   // ── Settings ─────────────────────────────────────────────────────────────────────────────────
-  var settings = { theme: theme, downloadRoot: null, device: 'generic', cores: null, ramMb: null };
+  var settings = { theme: theme, downloadRoot: null, device: 'generic', cores: null, ramMb: null, density: null };
   var storage = { root: 'C:\\Users\\Alex\\AppData\\Local\\open-emulator', totalBytes: 9.4 * 1073741824, reclaimableBytes: 1.3 * 1073741824 };
   var lastMessage;
   function settingsNow() {
     var s = {
       settings: clone(settings),
-      tuning: { cores: 4, ramMb: 4096, gpuMode: 'host', accelerated: true, accelerationDetail: 'Windows Hypervisor Platform is on', hostCpus: 12, hostRamMb: 32768 },
+      // Effective values follow the override, the way the main process computes them.
+      tuning: {
+        cores: settings.cores === null ? 11 : settings.cores, ramMb: settings.ramMb === null ? 4096 : settings.ramMb,
+        density: settings.density === null ? 240 : settings.density,
+        autoCores: 11, autoRamMb: 4096, autoDensity: 240,
+        gpuMode: 'host', accelerated: true, accelerationDetail: 'Windows Hypervisor Platform is on', hostCpus: 12, hostRamMb: 32768,
+      },
       storage: clone(storage), engine: 'sdk',
     };
     if (lastMessage) s.lastMessage = lastMessage;
     return s;
   }
   var defender = 'not-excluded';
+  var updateState = {
+    phase: 'up-to-date', currentVersion: '0.1.0', latestVersion: null, percent: null, message: null, checkedAt: now - 3600000,
+  };
 
   // ── The API ──────────────────────────────────────────────────────────────────────────────────
   function search(query, source, limit) {
@@ -469,7 +497,21 @@
       return Promise.resolve(clone(job));
     },
     storeJobs: function () { return Promise.resolve(clone(jobs)); },
-    storeImportApk: function () { return Promise.resolve(true); },
+    // A drop carries no real paths here (pathForFile is null), so only the picker does anything:
+    // it behaves as if one game bundle was chosen.
+    storeInstallFiles: function () { return Promise.resolve([]); },
+    storeInstallFromFile: function () {
+      return sleep(500).then(function () {
+        var app = mk('local', 'sky-league.xapk', 'sky-league', 'C:\\Users\\Alex\\Downloads\\sky-league.xapk', { v: '', vc: 0, size: 2.7 * 1073741824, license: null, minSdk: 0, days: 0, cats: [] });
+        if (!CATALOGUE.some(function (a) { return a.id === app.id; })) CATALOGUE.push(app);
+        var job = makeJob(app);
+        job.state = 'queued';
+        jobs.unshift(job);
+        setTimeout(function () { runBundleInstall(job, app); }, T(300));
+        emit('index', storeStateNow());
+        return [clone(job)];
+      });
+    },
     onStoreJob: on('job'),
     onStoreInstalled: on('installed'),
     onStoreIndexUpdated: on('index'),
@@ -531,6 +573,22 @@
     defenderSetExcluded: function (enabled) {
       return sleep(800).then(function () { defender = enabled ? 'excluded' : 'not-excluded'; return { state: defender }; });
     },
+
+    // Self-update: already on the newest version, nothing downloading. A check reports the same.
+    updateState: function () { return Promise.resolve(clone(updateState)); },
+    updateCheck: function () {
+      updateState.phase = 'checking';
+      emit('update', clone(updateState));
+      return sleep(900).then(function () {
+        updateState.phase = 'up-to-date';
+        updateState.checkedAt = Date.now();
+        emit('update', clone(updateState));
+        return clone(updateState);
+      });
+    },
+    updateDownload: function () { return Promise.resolve(clone(updateState)); },
+    updateInstall: function () { return Promise.resolve(false); },
+    onUpdateState: on('update'),
   };
 
   window.openEmu = api;

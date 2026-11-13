@@ -12,6 +12,9 @@ const PIPELINE: InstallState[] = ['queued', 'downloading', 'verifying', 'install
 function stageIndex(state: InstallState): number {
   if (state === 'done') return PIPELINE.length;
   if (state === 'failed') return -1;
+  // A bundle is unpacked where a download would be verified: after the file is in hand, before it
+  // goes to the device. Sharing the slot keeps every job on the same four dots.
+  if (state === 'unpacking') return PIPELINE.indexOf('verifying');
   return PIPELINE.indexOf(state);
 }
 
@@ -31,10 +34,20 @@ function describe(job: InstallJob): { title: string; detail: string } {
     }
     case 'verifying':
       return { title: 'Verifying', detail: 'Checking the file against its published digest' };
+    case 'unpacking': {
+      const percent = job.bytesTotal > 0 ? Math.round((job.bytesDone / job.bytesTotal) * 100) : null;
+      return {
+        title: percent !== null ? `Unpacking · ${percent}%` : 'Unpacking',
+        detail:
+          job.bytesTotal > 0
+            ? `Getting this app’s files ready · ${formatBytes(job.bytesDone)} of ${formatBytes(job.bytesTotal)}`
+            : 'Getting this app’s files ready',
+      };
+    }
     case 'installing':
       return { title: 'Installing', detail: 'Writing into the device' };
     case 'done':
-      return { title: 'Installed', detail: 'Ready to open from Apps' };
+      return { title: 'Installed', detail: job.error ?? 'Ready to open from Apps' };
     case 'failed':
       return { title: 'Couldn’t install', detail: job.error ?? 'Something went wrong' };
   }

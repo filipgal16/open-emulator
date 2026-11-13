@@ -1272,6 +1272,9 @@
       .chip:hover { color: var(--text); border-color: var(--border-strong); background: var(--hover-overlay); }
       .chip.on { background: var(--accent-fill); border-color: var(--accent-border); color: var(--accent-strong); }
       .chip.on:focus-visible { box-shadow: var(--focus); }
+      /* Install from file: the quiet button, trimmed to the search field's height so the bar
+         does not grow for it. */
+      .store-bar .setup-secondary { flex: none; white-space: nowrap; padding: var(--space-2) var(--space-3-5); }
 
       .store-body { flex: 1; min-height: 0; overflow-y: auto; padding: var(--space-5) var(--space-5); }
       .store-body-play { overflow: hidden; display: flex; flex-direction: column; padding: var(--space-4) var(--space-4); }
@@ -1786,21 +1789,88 @@
       .settings-toggle.is-unknown::after { transform: translateX(9px); background: var(--faint); box-shadow: none; }
       .settings-toggle:disabled { cursor: default; opacity: 0.55; }
       .settings-toggle:focus-visible { box-shadow: var(--focus); }
-      .settings-pills { display: flex; flex-wrap: wrap; gap: var(--space-1-5); }
-      .settings-pill {
-        display: inline-flex; align-items: baseline; gap: var(--space-1-5);
-        padding: var(--space-1-5) var(--space-3);
-        background: var(--raised); color: var(--text-dim);
-        border: 1px solid var(--border); border-radius: var(--radius-full);
-        font: inherit; font-size: var(--text-xs); font-weight: var(--weight-semibold); cursor: pointer;
-        transition: color var(--ease), background var(--ease), border-color var(--ease);
+      /* ── A number, set by switch, slider or box ──────────────────────────────────────────────
+         The track is the same hairline as every other bar in the app: ink to mint up to the
+         thumb, a tick where Automatic would put it. */
+      .settings-slider-field { margin: 0 0 var(--space-6); }
+      .settings-slider-head {
+        display: flex; align-items: baseline; gap: var(--space-3);
+        margin: 0 0 var(--space-2-5);
       }
-      .settings-pill:hover { color: var(--text); border-color: var(--border-strong); background: var(--surface-hover); }
-      .settings-pill.on { background: var(--accent-fill); border-color: var(--accent-border); color: var(--accent-strong); }
-      .settings-pill.on:focus-visible { box-shadow: var(--focus); }
-      .settings-pill-auto { padding-inline: var(--space-3-5); }
-      .settings-pill-detail { font-weight: var(--weight-regular); color: var(--faint); }
-      .settings-pill.on .settings-pill-detail { color: var(--accent-strong); opacity: 0.8; }
+      .settings-slider-head .settings-field-label { margin: 0; font-size: var(--text-sm); color: var(--text); }
+      .settings-slider-value {
+        font-size: var(--text-sm); color: var(--muted); font-variant-numeric: tabular-nums;
+      }
+      .settings-auto {
+        margin-left: auto; display: inline-flex; align-items: center; gap: var(--space-2);
+        font-size: var(--text-xs); color: var(--muted); cursor: pointer; align-self: center;
+      }
+      .settings-slider-row { display: flex; align-items: flex-start; gap: var(--space-4); }
+      .settings-slider-wrap { position: relative; flex: 1; min-width: 0; padding-top: var(--space-2); }
+      .settings-slider {
+        -webkit-appearance: none; appearance: none;
+        display: block; width: 100%; height: 16px; margin: 0;
+        background: transparent; cursor: pointer;
+      }
+      .settings-slider::-webkit-slider-runnable-track {
+        height: 4px; border-radius: var(--radius-full);
+        background:
+          linear-gradient(90deg, var(--progress-from), var(--progress-to)) 0 0 / var(--fill, 0%) 100% no-repeat,
+          var(--hairline-strong);
+      }
+      .settings-slider::-webkit-slider-thumb {
+        -webkit-appearance: none; appearance: none;
+        width: 16px; height: 16px; margin-top: -6px;
+        border-radius: var(--radius-full);
+        background: var(--text);
+        border: 3px solid var(--bg);
+        box-shadow: 0 0 0 1px var(--border-strong);
+        transition: box-shadow var(--ease), transform var(--ease);
+      }
+      .settings-slider:hover:not(:disabled)::-webkit-slider-thumb { box-shadow: 0 0 0 1px var(--accent), 0 0 0 5px var(--accent-glow); }
+      .settings-slider:active:not(:disabled)::-webkit-slider-thumb { transform: scale(1.12); }
+      .settings-slider:focus-visible { box-shadow: none; }
+      .settings-slider:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 2px var(--accent), 0 0 0 6px var(--accent-glow); }
+      /* On Automatic the control shows the value it would have, but is plainly not in the user's hands. */
+      .settings-slider:disabled { cursor: default; }
+      .settings-slider:disabled::-webkit-slider-runnable-track {
+        background:
+          linear-gradient(90deg, var(--faint), var(--faint)) 0 0 / var(--fill, 0%) 100% no-repeat,
+          var(--hairline);
+      }
+      .settings-slider:disabled::-webkit-slider-thumb { background: var(--faint); box-shadow: none; }
+      /* The thumb's centre travels from half its width to the track's width less half, so the tick does too. */
+      .settings-slider-mark {
+        position: absolute; top: calc(var(--space-2) + 12px);
+        left: calc(8px + (100% - 16px) * var(--at, 0));
+        width: 1px; height: 6px; margin-left: -0.5px;
+        background: var(--border-strong); pointer-events: none;
+      }
+      .settings-slider-field.is-auto .settings-slider-mark { visibility: hidden; }
+      .settings-slider-ends {
+        display: flex; justify-content: space-between; margin-top: var(--space-2);
+        font-size: var(--text-2xs); color: var(--faint); line-height: var(--leading-snug);
+      }
+      .settings-number {
+        flex: none; display: inline-flex; align-items: center; gap: var(--space-1-5);
+        height: 32px; padding: 0 var(--space-2-5);
+        background: var(--bg-deep); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm);
+        transition: border-color var(--ease), box-shadow var(--ease);
+      }
+      .settings-number:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-glow); }
+      .settings-number-input {
+        width: 3.25em; padding: 0; border: none; background: none; outline: none;
+        font-size: var(--text-sm); font-variant-numeric: tabular-nums; text-align: right; color: var(--text);
+      }
+      .settings-number-input:focus-visible { box-shadow: none; }
+      .settings-number-input:disabled { color: var(--faint); }
+      .settings-number-unit { font-size: var(--text-xs); color: var(--faint); }
+      /* A note that closes a group of sliders needs room before whatever follows it. */
+      .settings-slider-field + .settings-pending { margin-bottom: var(--space-6); }
+      .settings-note {
+        margin: 0 0 var(--space-5); font-size: var(--text-sm); color: var(--muted);
+        line-height: var(--leading-relaxed); max-width: 36rem;
+      }
 
       .settings-folder {
         margin: 0 0 var(--space-5);

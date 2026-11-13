@@ -55,7 +55,8 @@ const api: OpenEmuApi = {
   storeInstall: (source: SourceId, packageName: string, versionCode: number | null) =>
     ipcRenderer.invoke('store:install', source, packageName, versionCode),
   storeJobs: () => ipcRenderer.invoke('store:jobs'),
-  storeImportApk: (filePath: string) => ipcRenderer.invoke('store:import-apk', filePath),
+  storeInstallFiles: (paths: string[]) => ipcRenderer.invoke('store:install-files', paths),
+  storeInstallFromFile: () => ipcRenderer.invoke('store:install-from-file'),
   onStoreJob: (callback) => {
     ipcRenderer.on('store:job-update', (_event, job: InstallJob) => callback(job));
   },
