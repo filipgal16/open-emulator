@@ -87,7 +87,7 @@ Three sources behind one search box:
 |---|---|
 | **F-Droid** | ~4,300 open-source apps. The catalogue is downloaded once and searched locally, so results are instant and work offline. Every download is checked against the digest F-Droid publishes before it reaches the guest. |
 | **Play** | The real Google Play Store, running inside the guest and framed in the app. Needs the Play guest version — the tab offers a button to switch. |
-| **Local** | Drag an `.apk` onto the window. |
+| **Local** | Press **Install from file…**, or drag a file onto the window. Takes `.apk`, and the `.xapk` / `.apks` bundles games are usually shipped as — the app picks the right parts for the device and installs them together. |
 
 Apps needing a newer Android than the guest are shown with the reason rather than hidden, so an
 install never fails after a long download.
@@ -103,10 +103,16 @@ unavailable the app stores nothing rather than falling back to a plain file.
 
 ### Settings
 
-Theme, which handset the guest reports as, how many cores and how much memory it gets, and where
-Android is downloaded. The performance defaults are measured rather than obvious — more memory
-makes the guest *slower* to resume, because a warm start is dominated by restoring the snapshot's
-memory image — so the automatic answer is shown beside every override.
+Everything is set in the app; there is no file to edit.
+
+- **Appearance** — light, dark, or follow Windows.
+- **Device identity** — which handset the guest reports as.
+- **Display** — the screen follows the window, so its size is the resolution. A slider sets how
+  large Android draws things inside it.
+- **Performance** — processor cores and memory, each with an **Automatic** switch, a slider and a
+  box to type a number into. Automatic is a measured default, and a tick on the slider shows where
+  it sits. Changes apply at the next start, which boots fresh once and then resumes as before.
+- **Storage** — where Android is downloaded, with a folder picker that moves what is already there.
 
 ### Updates
 
@@ -122,11 +128,13 @@ switching never disturbs the others.
 
 | Version | What it is | Ships? |
 |---|---|---|
+| **open-emulator Android** | Our own build of plain Android: debloated and rebranded. The default. | Built from AOSP on your PC — yes |
+| **open-emulator Android (Google APIs)** | Our build for games: runs apps made for ARM phones, with Google Play Services. | Built from Google's image on your PC — personal use |
 | **Fast** | Plain Android (AOSP). Boots quickest, no Google Play. | Apache-2.0 — yes |
 | **Google apps** | Adds Google Play Services for apps that need them. | Google proprietary — personal use |
 | **Play Store** | Google Play built in. | Google proprietary — personal use |
 
-The last two bundle Google Mobile Services, which cannot be redistributed. Read
+Everything marked personal use contains Google Mobile Services, which cannot be redistributed. Read
 [`LICENSING.md`](LICENSING.md) before shipping anything based on them.
 
 ---
