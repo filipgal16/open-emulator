@@ -11,11 +11,10 @@ No terminal. No configuration. Double-click, wait once, use Android.
 
 ### [⬇ Download open-emulator for Windows](https://github.com/filipgal16/open-emulator/releases/latest)
 
-**`open-emulator-Setup-0.0.1.exe`** — about 76 MB. Per-user install, no administrator prompt. The
-installer asks where to put the app, and the app asks where to put Android.
-
-Direct link to the current build:
-<https://github.com/filipgal16/open-emulator/releases/latest/download/open-emulator-Setup-0.0.1.exe>
+**`open-emulator-Setup-<version>.exe`** — about 80 MB, on the
+[latest release](https://github.com/filipgal16/open-emulator/releases/latest). Per-user install, no
+administrator prompt. The installer asks where to put the app, and the app asks where to put
+Android. After that, the app tells you when a newer version is out — see [Updates](#updates).
 
 > **The installer is unsigned.** Windows SmartScreen will show *"Windows protected your PC"*.
 > Click **More info → Run anyway**. Removing that warning requires a code-signing certificate —
@@ -109,6 +108,13 @@ Android is downloaded. The performance defaults are measured rather than obvious
 makes the guest *slower* to resume, because a warm start is dominated by restoring the snapshot's
 memory image — so the automatic answer is shown beside every override.
 
+### Updates
+
+The app looks for a newer version in the background and, when there is one, puts a dot on
+**Settings**. Nothing downloads until you press **Download** in Settings → Updates, and nothing
+installs until you press **Restart to update** — or close the app, which installs it then. It never
+offers an older version than the one you have.
+
 ### Android versions
 
 The toolbar's version picker switches guests. Each keeps its own device, apps, and snapshot, so
@@ -160,9 +166,9 @@ Full command reference: [`documentation.md`](documentation.md#the-open-emu-cli).
 cd desktop
 npm install
 npm run build        # compile main, typecheck renderer, bundle
-npm test             # 331 tests
+npm test             # 351 tests
 npm run dev          # build and launch
-npm run dist:win     # -> desktop/release/open-emulator-Setup-0.0.1.exe
+npm run dist:win     # -> desktop/release/open-emulator-Setup-<version>.exe
 ```
 
 Set `OPEN_EMULATOR_WSL_DISTRO` if your distro is not named `OpenEmulator`, and

@@ -38,8 +38,17 @@ done
 require_sdk
 
 CSV="$LOG_DIR/bench.csv"
+# Must match bench_ldplayer.ps1, which writes to the same CSV. t3 (first mirrored frame) is not
+# measured yet and stays empty; `note` flags rows that are not a clean measurement.
+CSV_HEADER="timestamp,label,mode,trial,t1_boot_s,t2_usable_s,t3_frame_s,note"
 mkdir -p "$LOG_DIR"
-[[ -f "$CSV" ]] || echo "timestamp,label,mode,trial,t1_boot_s,t2_usable_s,t3_frame_s" > "$CSV"
+if [[ ! -f "$CSV" ]]; then
+  echo "$CSV_HEADER" > "$CSV"
+elif [[ "$(head -n1 "$CSV" | tr -d '\r')" == *",t3_frame_s" ]]; then
+  # Written before the note column existed, when the note went into t3_frame_s instead. Widen the
+  # header so new rows line up with it.
+  sed -i "1s/.*/${CSV_HEADER}/" "$CSV"
+fi
 
 # Recompute so the label reflects what actually ran, not a stale profile file.
 detect_host_profile >/dev/null
@@ -136,7 +145,7 @@ for ((trial = 1; trial <= TRIALS; trial++)); do
     echo "TIMEOUT (no boot_completed within ${TIMEOUT}s)"
   fi
 
-  echo "$(date -u +%Y-%m-%dT%H:%M:%SZ),$LABEL,$MODE,$trial,${t1},${t2},${note}" >> "$CSV"
+  echo "$(date -u +%Y-%m-%dT%H:%M:%SZ),$LABEL,$MODE,$trial,${t1},${t2},,${note}" >> "$CSV"
 
   # The cold-boot retry deletes the snapshot, so every later trial would silently measure a cold
   # boot too. Stop rather than fill the CSV with mislabelled rows.

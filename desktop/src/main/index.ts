@@ -24,6 +24,7 @@ import { addDefenderExclusion, defenderExclusionState, removeDefenderExclusion }
 import { createAccount } from './account';
 import { AppLibrary } from './guest/app-library';
 import { createStore, registerStoreSchemes } from './store';
+import { createUpdates } from './update';
 import type { DeviceState, EmuPhase, ProfileId } from '../shared/device-types';
 import { INITIAL_DEVICE_STATE, isProfileId } from '../shared/device-types';
 import type { CommandResult, DefenderResult, DefenderState, InstalledApp, SetupStepStatus } from '../shared/ipc-types';
@@ -153,6 +154,7 @@ registerStoreSchemes();
 
 let mainWindow: BrowserWindow | null = null;
 let store: ReturnType<typeof createStore> | null = null;
+let updates: ReturnType<typeof createUpdates> | null = null;
 
 function createWindow(): void {
   // No File/Edit/View/Window/Help bar. Electron's default menu is a developer convenience; on a
@@ -664,6 +666,9 @@ app.whenReady().then(() => {
 
   /** Relaunches so a changed download location takes effect without the user hunting for it. */
   ipcMain.handle('settings:restart-app', (): void => {
+    // A downloaded update installs on quit anyway; restarting through it reopens the app too, and
+    // avoids a relaunch racing the installer.
+    if (updates?.installIfReady()) return;
     app.relaunch();
     app.quit();
   });
@@ -706,6 +711,9 @@ app.whenReady().then(() => {
   });
   account.registerIpc();
 
+  updates = createUpdates((line) => console.log(line));
+  updates.registerIpc(() => mainWindow);
+
   createWindow();
 });
 
@@ -724,6 +732,7 @@ app.on('window-all-closed', () => {
   embeddedGuest?.detach();
   mirror.stop();
   store?.dispose();
+  updates?.dispose();
   if (process.platform !== 'darwin') app.quit();
 });
 

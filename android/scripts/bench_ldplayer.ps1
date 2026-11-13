@@ -30,6 +30,8 @@ $ErrorActionPreference = 'Stop'
 
 $console = Join-Path $LdPath 'ldconsole.exe'
 $adb     = Join-Path $LdPath 'adb.exe'
+# Must match bench.sh, which writes to the same CSV.
+$csvHeader = 'timestamp,label,mode,trial,t1_boot_s,t2_usable_s,t3_frame_s,note'
 foreach ($exe in @($console, $adb)) {
   if (-not (Test-Path $exe)) { throw "Not found: $exe  (use -LdPath to point at your LDPlayer install)" }
 }
@@ -98,13 +100,23 @@ for ($trial = 1; $trial -le $Trials; $trial++) {
     Write-Host 'TIMEOUT - no boot_completed'
   }
 
-  $stamp = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
-  $row = '{0},{1},{2},{3},{4},{5},{6}' -f $stamp, $Label, 'ldplayer', $trial,
-         $(if ($t1) { $t1 } else { '' }), $(if ($t2) { $t2 } else { '' }), ''
+  # Invariant culture throughout: `-f` follows the Windows region, and in pl-PL, de-DE and most of
+  # Europe 31.25 formats as "31,25" — which splits one value across two CSV columns.
+  $inv = [cultureinfo]::InvariantCulture
+  $stamp = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ', $inv)
+  # t3 stays empty (no mirror hop to time); the last column is bench.sh's note, unused here.
+  $row = [string]::Format($inv, '{0},{1},{2},{3},{4},{5},{6},{7}', $stamp, $Label, 'ldplayer', $trial,
+         $(if ($t1) { $t1 } else { '' }), $(if ($t2) { $t2 } else { '' }), '', '')
   $dir = Split-Path $Csv -Parent
   if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Force $dir | Out-Null }
   if (-not (Test-Path $Csv)) {
-    Set-Content -Path $Csv -Value 'timestamp,label,mode,trial,t1_boot_s,t2_usable_s,t3_frame_s' -Encoding utf8
+    Set-Content -Path $Csv -Value $csvHeader -Encoding utf8
+  }
+  elseif ((Get-Content -Path $Csv -TotalCount 1) -like '*,t3_frame_s') {
+    # Written before the note column existed: widen the header so new rows line up with it.
+    $lines = @(Get-Content -Path $Csv)
+    $lines[0] = $csvHeader
+    Set-Content -Path $Csv -Value $lines -Encoding utf8
   }
   Add-Content -Path $Csv -Value $row -Encoding utf8
 }

@@ -1,6 +1,6 @@
 {
   "name": "open-emulator-desktop",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "private": true,
   "description": "Windows desktop shell for open-emulator, driving a WSL2-hosted Android backend.",
   "author": "open-emulator contributors",
@@ -15,6 +15,7 @@
     "start": "electron .",
     "icon": "node scripts/make-icon.mjs",
     "dist:win": "npm run build && npm run icon && electron-builder --win --publish never",
+    "release:win": "npm run build && npm run icon && electron-builder --win --publish always",
     "dist:dir": "npm run build && npm run icon && electron-builder --win --dir --publish never",
     "rom:build": "npm run build:main && node scripts/rom-build.mjs",
     "rom:check": "npm run build:main && node scripts/rom-check.mjs",
@@ -25,6 +26,14 @@
     "appId": "com.openemulator.desktop",
     "productName": "open-emulator",
     "copyright": "open-emulator contributors",
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "filipgal16",
+        "repo": "open-emulator",
+        "releaseType": "release"
+      }
+    ],
     "directories": {
       "output": "release",
       "buildResources": "build"
@@ -81,6 +90,7 @@
     ]
   },
   "dependencies": {
+    "electron-updater": "^6.8.9",
     "koffi": "^3.1.6",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"

@@ -4,6 +4,7 @@ import type { DeviceState, ProfileId } from '../shared/device-types';
 import type { Settings } from '../shared/settings-types';
 import type { InstallJob, SourceId, StoreState } from '../shared/store-types';
 import type { LogEvent, OpenEmuApi, SetupStepStatus } from '../shared/ipc-types';
+import type { UpdateState } from '../shared/update-types';
 
 // Whitelisted IPC surface exposed to the renderer. The renderer never gets direct access to
 // ipcRenderer/child_process — only these specific, typed calls.
@@ -96,6 +97,14 @@ const api: OpenEmuApi = {
   settingsRestartApp: () => ipcRenderer.invoke('settings:restart-app'),
   defenderState: () => ipcRenderer.invoke('defender:state'),
   defenderSetExcluded: (enabled: boolean) => ipcRenderer.invoke('defender:set-excluded', enabled),
+
+  updateState: () => ipcRenderer.invoke('update:state'),
+  updateCheck: () => ipcRenderer.invoke('update:check'),
+  updateDownload: () => ipcRenderer.invoke('update:download'),
+  updateInstall: () => ipcRenderer.invoke('update:install'),
+  onUpdateState: (callback) => {
+    ipcRenderer.on('update:state', (_event, state: UpdateState) => callback(state));
+  },
 };
 
 contextBridge.exposeInMainWorld('openEmu', api);
