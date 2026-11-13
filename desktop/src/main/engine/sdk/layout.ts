@@ -96,3 +96,8 @@ export function snapshotDir(layout: SdkLayout, avdName: string, snapshot: string
 export function systemImagePath(layout: SdkLayout, imageTag: string, apiLevel = 30): string {
   return path.join(layout.sdkRoot, 'system-images', `android-${apiLevel}`, imageTag, 'x86_64', 'system.img');
 }
+
+/** The same directory as an AVD's `image.sysdir.1` names it: relative, `/`-separated, trailing slash. */
+export function systemImageDir(imageTag: string, apiLevel = 30): string {
+  return `system-images/android-${apiLevel}/${imageTag}/x86_64/`;
+}

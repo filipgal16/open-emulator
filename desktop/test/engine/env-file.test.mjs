@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { loadDist, REPO_ROOT } from '../helpers.mjs';
+import { loadDist, REPO_ROOT, withTempDir } from '../helpers.mjs';
 
 const { parseEnvFile, isSafeConfigName, loadProfile, loadDevice } = loadDist('engine/env-file.js');
 
@@ -108,4 +109,66 @@ test('a real handset sets the identity apps check', () => {
   assert.equal(pixel.lcdWidth, 1080);
   assert.equal(pixel.lcdHeight, 2340);
   assert.equal(pixel.lcdDensity, 440);
+});
+
+// ── API level and RAM hint ─────────────────────────────────────────────────────────────────────
+
+/** A profile file with the two required keys and whatever else the test adds. */
+async function withProfile(lines, fn) {
+  await withTempDir(async (root) => {
+    mkdirSync(path.join(root, 'profiles'));
+    const body = ['PROFILE_SYSTEM_IMAGE="system-images;android-30;default;x86_64"', 'PROFILE_IMAGE_TAG=default', ...lines];
+    writeFileSync(path.join(root, 'profiles', 'x.env'), body.join('\n'));
+    await fn(root);
+  });
+}
+
+test('a profile that does not state its API level is API 30, with no RAM hint', async () => {
+  await withProfile([], (root) => {
+    const profile = loadProfile(root, 'x');
+    assert.equal(profile.apiLevel, 30);
+    assert.equal(profile.ramMb, null);
+  });
+  await withProfile(['PROFILE_API_LEVEL=', 'PROFILE_RAM_MB='], (root) => {
+    assert.equal(loadProfile(root, 'x').apiLevel, 30, 'empty means not set, as it does for device fields');
+    assert.equal(loadProfile(root, 'x').ramMb, null);
+  });
+});
+
+test('a stated API level and RAM hint are read as numbers', async () => {
+  await withProfile(['PROFILE_API_LEVEL=34', 'PROFILE_RAM_MB=4096'], (root) => {
+    const profile = loadProfile(root, 'x');
+    assert.equal(profile.apiLevel, 34);
+    assert.equal(profile.ramMb, 4096);
+  });
+});
+
+test('an API level or RAM hint that is present but wrong is refused, not defaulted', async () => {
+  for (const line of ['PROFILE_API_LEVEL=3O', 'PROFILE_API_LEVEL=20', 'PROFILE_API_LEVEL=100', 'PROFILE_API_LEVEL=34.5', 'PROFILE_API_LEVEL=-34']) {
+    await withProfile([line], (root) => {
+      assert.throws(() => loadProfile(root, 'x'), /PROFILE_API_LEVEL=.* is not a whole number from 21 to 99/, line);
+    });
+  }
+  for (const line of ['PROFILE_RAM_MB=lots', 'PROFILE_RAM_MB=512', 'PROFILE_RAM_MB=32768']) {
+    await withProfile([line], (root) => {
+      assert.throws(() => loadProfile(root, 'x'), /PROFILE_RAM_MB=.* is not a whole number from 1024 to 16384/, line);
+    });
+  }
+});
+
+test('openemu-compat is an API 34 ROM built from Google APIs, with its own AVD and a RAM hint', () => {
+  const compat = loadProfile(ANDROID_ROOT, 'openemu-compat');
+  assert.equal(compat.imageTag, 'openemu-compat');
+  assert.equal(compat.baseImageTag, 'google_apis');
+  assert.equal(compat.apiLevel, 34);
+  assert.equal(compat.ramMb, 4096);
+  assert.equal(compat.playStore, false);
+  assert.ok(compat.systemImage.startsWith('system-images;android-34;'));
+
+  const others = ['openemu', 'fast', 'full', 'play'].map((n) => loadProfile(ANDROID_ROOT, n));
+  for (const profile of others) {
+    assert.equal(profile.apiLevel, 30, profile.name);
+    assert.equal(profile.ramMb, null, `${profile.name} takes the measured default`);
+  }
+  assert.ok(!others.some((p) => p.avdName === compat.avdName), 'its snapshot must never load against another image');
 });

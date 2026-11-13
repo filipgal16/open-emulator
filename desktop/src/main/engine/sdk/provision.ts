@@ -1,4 +1,5 @@
 import type { GuestProfile } from '../env-file';
+import { recipeById } from '../../rom/recipes';
 import type { EngineLogHandler } from '../types';
 import type { Adb } from './adb';
 import type { CommandResult } from '../../../shared/ipc-types';
@@ -76,15 +77,18 @@ const SETTINGS: Array<{ why: string; commands: string[] }> = [
 const DEXOPT_PACKAGES = ['com.android.settings', 'com.android.systemui'];
 
 /**
- * Extra userdata settings for our own ROM. The debloat and the brand live in the image; these are
- * the things Android keeps in userdata and the snapshot then preserves — they would be pointless
- * in build.prop.
+ * Extra userdata settings for every ROM of ours. The debloat and the brand live in the image; these
+ * are the things Android keeps in userdata and the snapshot then preserves — they would be
+ * pointless in build.prop.
  *
- * Animations off rather than halved: a desktop emulator is driven with a mouse, and transitions
- * read as lag there — the choice LDPlayer and BlueStacks make too. Bluetooth off by default:
- * nothing on a PC pairs with the guest's virtual radio. Both stay changeable in Settings.
+ * Each is about running on a desktop rather than about one recipe, so all of them apply to any
+ * ROM. Animations off rather than halved: a desktop emulator is driven with a mouse, and
+ * transitions read as lag there — the choice LDPlayer and BlueStacks make too. Bluetooth off by
+ * default: nothing on a PC pairs with the guest's virtual radio. The screensaver off: both recipes
+ * remove the stock dreams, and one that started anyway would cover the game. All stay changeable in
+ * Settings.
  */
-const OPENEMU_SETTINGS = [
+const ROM_SETTINGS = [
   'settings put global window_animation_scale 0',
   'settings put global transition_animation_scale 0',
   'settings put global animator_duration_scale 0',
@@ -104,16 +108,17 @@ export async function provisionGuest(input: ProvisionInput): Promise<CommandResu
     }
   }
 
-  if (profile.imageTag === 'openemu') {
+  if (recipeById(profile.imageTag)) {
     log('provisioning: open-emulator image tunings');
-    for (const command of OPENEMU_SETTINGS) {
+    for (const command of ROM_SETTINGS) {
       await adb.shell(serial, command, onLog, 30_000).catch(() => undefined);
     }
   }
 
   // Play and GMS exist only on the Google images. Running these against lean AOSP spends an adb
-  // round trip each to be told the package does not exist.
-  if (profile.imageTag.startsWith('google')) {
+  // round trip each to be told the package does not exist. A ROM built from a Google image counts:
+  // `openemu-compat` keeps Play services, and a game's sign-in goes through it.
+  if ((profile.baseImageTag ?? profile.imageTag).startsWith('google')) {
     log(`enabling Play and GMS (profile ${profile.name})`);
     for (const pkg of ['com.android.vending', 'com.google.android.gms']) {
       await adb.shell(serial, `pm enable ${pkg}`, onLog, 60_000).catch(() => undefined);

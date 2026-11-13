@@ -63,8 +63,19 @@ export interface GuestProfile {
   description: string;
   /** `system-images;android-30;google_apis_playstore;x86_64` */
   systemImage: string;
-  /** `default` | `google_apis` | `google_apis_playstore` | `openemu` */
+  /** `default` | `google_apis` | `google_apis_playstore` | `openemu` | `openemu-compat` */
   imageTag: string;
+  /**
+   * The Android API level of the image, and of its base when it is derived: the one number every
+   * SDK path, package and AVD target is built from. 30 when the file does not say, which is what
+   * every profile was before there was a second.
+   */
+  apiLevel: number;
+  /**
+   * Guest RAM this image needs, in MB, or null to let `tuneForHost` decide. A hint for images the
+   * measured default is too small for, not a preference.
+   */
+  ramMb: number | null;
   /**
    * The stock image this one is built from, or null when the image is downloaded as-is.
    *
@@ -116,10 +127,28 @@ export function loadProfile(androidRoot: string, name: string): GuestProfile {
     description: env.PROFILE_DESC ?? '',
     systemImage,
     imageTag,
+    apiLevel: intField(env, 'PROFILE_API_LEVEL', name, 21, 99) ?? 30,
+    ramMb: intField(env, 'PROFILE_RAM_MB', name, 1024, 16_384),
     baseImageTag: env.PROFILE_BASE_IMAGE_TAG && isSafeConfigName(env.PROFILE_BASE_IMAGE_TAG) ? env.PROFILE_BASE_IMAGE_TAG : null,
     playStore: env.PROFILE_PLAYSTORE === 'true',
     avdName: env.PROFILE_AVD_NAME || 'OpenEmulator_API30',
   };
+}
+
+/**
+ * A whole number within bounds, or null when the key is absent or empty.
+ *
+ * A value that is present but wrong throws, for the reason `loadProfile` does: `PROFILE_API_LEVEL=3O`
+ * read as "not set" would quietly point the guest at the API 30 image of another profile.
+ */
+function intField(env: Record<string, string>, key: string, profile: string, min: number, max: number): number | null {
+  const raw = env[key];
+  if (raw === undefined || raw === '') return null;
+  const value = /^\d+$/.test(raw) ? Number(raw) : Number.NaN;
+  if (!Number.isInteger(value) || value < min || value > max) {
+    throw new Error(`profile '${profile}': ${key}=${raw} is not a whole number from ${min} to ${max}`);
+  }
+  return value;
 }
 
 /** The `ro.product.*` keys `device_prop_args` builds, paired with the file's field names. */

@@ -1,5 +1,7 @@
 import type { DeviceIdentity, GuestProfile } from '../env-file';
+import { recipeById } from '../../rom/recipes';
 import type { GuestTuning } from './host';
+import { systemImageDir } from './layout';
 
 /**
  * Rewrites an AVD's `config.ini`.
@@ -40,7 +42,6 @@ export interface AvdConfigInput {
   profile: GuestProfile;
   device: DeviceIdentity;
   tuning: GuestTuning;
-  apiLevel?: number;
   /** True until `provision` has saved one. Forces the cold-boot path for the first start. */
   hasSnapshot: boolean;
   snapshotName: string;
@@ -56,7 +57,7 @@ export interface AvdConfigInput {
  * see `emulatorArgs`, which reads `tuning.gpuMode` for the flag.
  */
 export function avdConfigOverrides(input: AvdConfigInput): Record<string, string> {
-  const { profile, device, tuning, hasSnapshot, snapshotName, apiLevel = 30 } = input;
+  const { profile, device, tuning, hasSnapshot, snapshotName } = input;
 
   const overrides: Record<string, string> = {
     AvdId: profile.avdName,
@@ -65,7 +66,7 @@ export function avdConfigOverrides(input: AvdConfigInput): Record<string, string
     'hw.ramSize': String(tuning.ramMb),
     'hw.gpu.mode': tuning.gpuMode,
     'hw.gpu.enabled': 'yes',
-    'image.sysdir.1': `system-images/android-${apiLevel}/${profile.imageTag}/x86_64/`,
+    'image.sysdir.1': systemImageDir(profile.imageTag, profile.apiLevel),
     'tag.id': profile.imageTag,
     // Claiming a Play Store the image does not ship is how the old config ended up advertising one
     // on an AOSP image that never had it.
@@ -99,8 +100,9 @@ export function avdConfigOverrides(input: AvdConfigInput): Record<string, string
 }
 
 function displayNameForTag(imageTag: string): string {
+  const recipe = recipeById(imageTag);
+  if (recipe) return recipe.displayName;
   if (imageTag === 'default') return 'AOSP';
-  if (imageTag === 'openemu') return 'open-emulator Android';
   if (imageTag === 'google_apis_playstore') return 'Google Play';
   return 'Google APIs';
 }

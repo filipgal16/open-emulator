@@ -1,6 +1,6 @@
 // Shared between main, preload, and renderer. Type-only content plus plain data constants.
 
-export type ProfileId = 'openemu' | 'fast' | 'full' | 'play';
+export type ProfileId = 'openemu' | 'openemu-compat' | 'fast' | 'full' | 'play';
 
 export interface ProfileSpec {
   id: ProfileId;
@@ -35,6 +35,16 @@ export const PROFILES: Record<ProfileId, ProfileSpec> = {
     // Built from the Fast image, so it costs nothing extra once that is downloaded.
     downloadHint: 'built from Fast, no extra download',
     proprietary: false,
+  },
+  'openemu-compat': {
+    id: 'openemu-compat',
+    label: 'open-emulator Android (Google APIs)',
+    description: 'Our own build of Android 14 that runs ARM games, with Google Play Services for sign-in. No Play Store app.',
+    playStore: false,
+    // Built on this PC from Google's Android 14 image, which is a download of its own.
+    downloadHint: 'Android 14 image, then built on this PC',
+    // Derived from the google_apis image and keeps GMS, so it carries the same conditions as `full`.
+    proprietary: true,
   },
   fast: {
     id: 'fast',

@@ -31,7 +31,6 @@ export interface CreateAvdInput {
   profile: GuestProfile;
   device: DeviceIdentity;
   tuning: GuestTuning;
-  apiLevel?: number;
   snapshotName?: string;
 }
 
@@ -64,7 +63,7 @@ export function avdExists(layout: SdkLayout, avdName: string): boolean {
  * `hw.gpu.mode` in particular has to match the `-gpu` flag or the snapshot becomes unloadable.
  */
 export function createAvd(input: CreateAvdInput): AvdPaths {
-  const { layout, androidRoot, profile, device, tuning, apiLevel = 30, snapshotName = 'booted' } = input;
+  const { layout, androidRoot, profile, device, tuning, snapshotName = 'booted' } = input;
 
   const paths = avdPaths(layout, profile.avdName);
   mkdirSync(paths.dir, { recursive: true });
@@ -73,7 +72,6 @@ export function createAvd(input: CreateAvdInput): AvdPaths {
     profile,
     device,
     tuning,
-    apiLevel,
     hasSnapshot: existsSync(snapshotDir(layout, profile.avdName, snapshotName)),
     snapshotName,
   });
@@ -88,24 +86,47 @@ export function createAvd(input: CreateAvdInput): AvdPaths {
       'avd.ini.encoding=UTF-8',
       `path=${paths.dir}`,
       `path.rel=avd/${profile.avdName}.avd`,
-      `target=android-${apiLevel}`,
+      `target=android-${profile.apiLevel}`,
       '',
     ].join('\n'),
     'utf8',
   );
 
-  /**
-   * Feature flags the guest boots with.
-   *
-   * `Vulkan = off` is not tidying. The emulator's Vulkan path negotiates with the host driver at
-   * startup and hangs on a good number of Windows GPUs when the guest has no window in focus,
-   * which presents as a boot that never completes rather than as a graphics error.
-   */
-  writeFileSync(
-    path.join(paths.dir, 'advancedFeatures.ini'),
-    ['GLDirectMem = on', 'Vulkan = off', 'LogcatPipe = on', ''].join('\n'),
-    'utf8',
-  );
+  syncAdvancedFeatures(layout, profile.avdName);
 
   return paths;
+}
+
+/**
+ * Feature flags the guest boots with.
+ *
+ * `Vulkan = off` is not tidying. The emulator's Vulkan path negotiates with the host driver at
+ * startup and hangs on a good number of Windows GPUs when the guest has no window in focus,
+ * which presents as a boot that never completes rather than as a graphics error.
+ *
+ * `GLESDynamicVersion = on` lets the guest see the OpenGL ES version the host renderer actually
+ * supports. Without it the guest reports ES 2.0 on `-gpu host` (measured; 3.1 with it), and Unity
+ * games refuse to start on anything below 3.
+ */
+export const ADVANCED_FEATURES = ['GLDirectMem = on', 'GLESDynamicVersion = on', 'Vulkan = off', 'LogcatPipe = on', ''].join('\n');
+
+/**
+ * Writes `advancedFeatures.ini` if it differs from `ADVANCED_FEATURES`, and says whether it did.
+ *
+ * Run on every start as well as at creation, so an AVD made by an older build picks up a flag
+ * added since. The caller has to act on `true` for an AVD that has booted: the guest negotiates
+ * these at boot, and a snapshot taken under the old set would bring back the old GL state.
+ */
+export function syncAdvancedFeatures(layout: SdkLayout, avdName: string): boolean {
+  const file = path.join(avdDir(layout, avdName), 'advancedFeatures.ini');
+  let current: string | null = null;
+  try {
+    current = readFileSync(file, 'utf8');
+  } catch {
+    // Absent: written below.
+  }
+  if (current === ADVANCED_FEATURES) return false;
+  mkdirSync(path.dirname(file), { recursive: true });
+  writeFileSync(file, ADVANCED_FEATURES, 'utf8');
+  return true;
 }

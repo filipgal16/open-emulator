@@ -7,12 +7,13 @@ import { ProcessRunner, spawnDetached, type DetachedProcess } from '../process';
 import type { AndroidEngine, EngineLogHandler, StartOptions } from '../types';
 import { Adb } from './adb';
 import { avdConfigOverrides, applyAvdConfig, emulatorArgs } from './avd-config';
-import { avdExists, createAvd } from './avd';
+import { avdExists, createAvd, syncAdvancedFeatures } from './avd';
 import { findQemuPid } from './find-process';
 import { tuneForHost, type GuestTuning } from './host';
 import { avdDir, avdState, snapshotDir, systemImagePath, type SdkLayout } from './layout';
+import { recipeForProfile, romParams } from './rom-profile';
 import { buildRom, readManifest, romKeyDir, romPaths, romState } from '../../rom/builder';
-import { OPENEMU_RECIPE } from '../../rom/recipe';
+import type { RomRecipe } from '../../rom/recipe';
 import type { CommandResult } from '../../../shared/ipc-types';
 
 /**
@@ -92,13 +93,24 @@ export class SdkEngine implements AndroidEngine {
     return loadDevice(this.options.androidRoot, this.options.device?.() ?? 'generic');
   }
 
-  private tuning(): GuestTuning {
-    return tuneForHost({
-      cpus: os.cpus().length,
-      totalRamMb: Math.round(os.totalmem() / (1024 * 1024)),
-      accelerated: this.options.accelerated(),
-      hasWindow: this.options.windowed !== false,
-    });
+  /**
+   * What a start of this profile gives the guest.
+   *
+   * Public because setup builds the ROM before there is any start, and a ROM that rewrites the ARM
+   * translator's cpuinfo has to be told the very core count this hands `hw.cpu.ncore`; deriving it
+   * anywhere else could disagree. The profile's RAM hint replaces the measured default — this
+   * engine takes no user override for RAM.
+   */
+  guestTuning(profile: GuestProfile = this.profile()): GuestTuning {
+    return tuneForHost(
+      {
+        cpus: os.cpus().length,
+        totalRamMb: Math.round(os.totalmem() / (1024 * 1024)),
+        accelerated: this.options.accelerated(),
+        hasWindow: this.options.windowed !== false,
+      },
+      profile.ramMb !== null ? { ramMb: profile.ramMb } : {},
+    );
   }
 
   private stateDir(avdName: string): string {
@@ -198,23 +210,30 @@ export class SdkEngine implements AndroidEngine {
   markProvisioned(avdName: string): void {
     writeFileSync(path.join(this.stateDir(avdName), 'provisioned_at'), new Date().toISOString(), 'utf8');
     const profile = this.profile();
-    if (profile.baseImageTag && profile.avdName === avdName) {
-      const manifest = readManifest(romPaths(this.options.layout.sdkRoot).imageDir);
-      if (manifest) writeFileSync(path.join(this.stateDir(avdName), 'rom_id'), manifest.romId, 'utf8');
+    const recipe = recipeForProfile(profile);
+    if (recipe && profile.avdName === avdName) {
+      const romId = this.currentRomId(recipe);
+      if (romId) writeFileSync(path.join(this.stateDir(avdName), 'rom_id'), romId, 'utf8');
     }
   }
 
   // ── Our own ROM ──────────────────────────────────────────────────────────────────────────────
 
-  /** Builds the ROM if it is missing or was made from another recipe, builder, or base. */
-  private async ensureRom(onLog: EngineLogHandler): Promise<void> {
-    const state = romState(this.options.layout.sdkRoot);
+  /**
+   * Builds the ROM if it is missing, was made from another recipe, builder, or base, or was told a
+   * different core count than this start gives the guest.
+   */
+  private async ensureRom(profile: GuestProfile, recipe: RomRecipe, tuning: GuestTuning, onLog: EngineLogHandler): Promise<void> {
+    const params = romParams(tuning);
+    const state = romState(this.options.layout.sdkRoot, recipe, undefined, params);
     if (state.upToDate) return;
-    this.log(`building ${OPENEMU_RECIPE.displayName}: ${state.reason}`);
+    this.log(`building ${recipe.displayName}: ${state.reason}`);
     await buildRom({
       sdkRoot: this.options.layout.sdkRoot,
       keyDir: romKeyDir(this.options.layout),
-      isRunning: async () => (await this.runningPid(this.profile().avdName)) !== null,
+      recipe,
+      params,
+      isRunning: async () => (await this.runningPid(profile.avdName)) !== null,
       onLog: (line) => onLog('stdout', line),
     });
   }
@@ -230,26 +249,59 @@ export class SdkEngine implements AndroidEngine {
    * Order matters: this runs before `syncAvdConfig`, which would otherwise point the AVD at a
    * snapshot about to be deleted.
    */
-  private forgetStaleRom(avdName: string): boolean {
-    const current = this.currentRomId();
+  private forgetStaleRom(avdName: string, recipe: RomRecipe): boolean {
+    const current = this.currentRomId(recipe);
     if (!current) return false;
     if (this.recordedRomId(avdName) === current) return false;
-
-    const dir = avdDir(this.options.layout, avdName);
-    // A brand-new AVD has nothing to forget; recording starts at its first provision.
-    const booted = ['userdata-qemu.img', 'snapshots', 'system.img.qcow2'].some((name) => existsSync(path.join(dir, name)));
-    if (!booted) return false;
+    if (!this.hasBooted(avdName)) return false;
 
     this.log(`ROM changed since ${avdName} was provisioned — discarding its snapshot and system overlays, keeping userdata`);
-    rmSync(path.join(dir, 'snapshots'), { recursive: true, force: true });
+    const dir = avdDir(this.options.layout, avdName);
     rmSync(path.join(dir, 'system.img.qcow2'), { force: true });
     rmSync(path.join(dir, 'vendor.img.qcow2'), { force: true });
-    rmSync(path.join(this.stateDir(avdName), 'provisioned_at'), { force: true });
+    this.forgetSnapshot(avdName);
     return true;
   }
 
-  private currentRomId(): string | null {
-    return readManifest(romPaths(this.options.layout.sdkRoot).imageDir)?.romId ?? null;
+  /**
+   * Brings `advancedFeatures.ini` up to date, and treats a change on a booted AVD the way a ROM
+   * change is treated, minus the overlays: the snapshot goes and the AVD is provisioned again.
+   *
+   * The feature set is negotiated when the guest boots — GLES version included — so a snapshot
+   * taken under the old one would restore the old GL state onto a guest launched with the new
+   * flags. The cold-retry path does not cover that: it fires only when the emulator *refuses* a
+   * snapshot, and a restore that succeeds with stale state refuses nothing — it would also keep the
+   * snapshot, so every later start would repeat it. Dropping it once costs one cold boot and a
+   * re-provision; userdata and the system overlays do not depend on these flags and are kept.
+   */
+  private syncFeatures(avdName: string): boolean {
+    if (!avdExists(this.options.layout, avdName)) return false;
+    // Checked before the write, which is what makes the AVD look different afterwards.
+    const booted = this.hasBooted(avdName);
+    if (!syncAdvancedFeatures(this.options.layout, avdName) || !booted) return false;
+    this.log(`emulator features changed for ${avdName} — discarding its snapshot, keeping userdata`);
+    this.forgetSnapshot(avdName);
+    return true;
+  }
+
+  /** A brand-new AVD has nothing to forget; recording starts at its first provision. */
+  private hasBooted(avdName: string): boolean {
+    const dir = avdDir(this.options.layout, avdName);
+    return ['userdata-qemu.img', 'snapshots', 'system.img.qcow2'].some((name) => existsSync(path.join(dir, name)));
+  }
+
+  /**
+   * Drops the Quick Boot snapshot and the marker that vouches for it. The marker goes too, so a
+   * re-provision that fails is retried by the next launch's background provisioning instead of the
+   * guest cold-booting forever under a marker that says it is ready.
+   */
+  private forgetSnapshot(avdName: string): void {
+    rmSync(path.join(avdDir(this.options.layout, avdName), 'snapshots'), { recursive: true, force: true });
+    rmSync(path.join(this.stateDir(avdName), 'provisioned_at'), { force: true });
+  }
+
+  private currentRomId(recipe: RomRecipe): string | null {
+    return readManifest(romPaths(this.options.layout.sdkRoot, recipe).imageDir)?.romId ?? null;
   }
 
   private recordedRomId(avdName: string): string | null {
@@ -265,10 +317,10 @@ export class SdkEngine implements AndroidEngine {
    * *this* build: a marker left from an earlier ROM would have the app skip the one provision that
    * brings back a fast start.
    */
-  private isProvisioned(profile: GuestProfile): string | null {
+  private isProvisioned(profile: GuestProfile, recipe: RomRecipe | null): string | null {
     const at = this.provisionedAt(profile.avdName);
-    if (!at || !profile.baseImageTag) return at;
-    return this.recordedRomId(profile.avdName) === this.currentRomId() ? at : null;
+    if (!at || !recipe) return at;
+    return this.recordedRomId(profile.avdName) === this.currentRomId(recipe) ? at : null;
   }
 
   /**
@@ -311,7 +363,13 @@ export class SdkEngine implements AndroidEngine {
 
   async start(onLog: EngineLogHandler = NO_LOG, options: StartOptions = {}): Promise<CommandResult> {
     const profile = this.profile();
-    const tuning = this.tuning();
+    const tuning = this.guestTuning(profile);
+    let recipe: RomRecipe | null;
+    try {
+      recipe = recipeForProfile(profile);
+    } catch (err) {
+      return fail((err as Error).message);
+    }
 
     if (!existsSync(this.options.layout.emulator)) {
       return fail(`emulator not installed — expected ${this.options.layout.emulator}`);
@@ -332,19 +390,22 @@ export class SdkEngine implements AndroidEngine {
     // Our own ROM is built here as well as by setup: this is the one moment the guest is known to
     // be stopped, so an app update that changed the recipe lands at the next start rather than
     // needing Android closed at exactly the time setup happens to run.
-    if (profile.baseImageTag) {
+    if (recipe) {
       try {
-        await this.ensureRom(onLog);
+        await this.ensureRom(profile, recipe, tuning, onLog);
       } catch (err) {
         return fail(`could not build ${profile.name}: ${(err as Error).message}`);
       }
     }
-    if (!existsSync(systemImagePath(this.options.layout, profile.imageTag))) {
+    if (!existsSync(systemImagePath(this.options.layout, profile.imageTag, profile.apiLevel))) {
       return fail(`the ${profile.name} system image is not downloaded yet`);
     }
-    // A start that just threw away a stale ROM's snapshot provisions again once booted, so the
-    // update costs one slow start rather than turning every later one into a cold boot.
-    const reprovision = profile.baseImageTag ? this.forgetStaleRom(profile.avdName) && !this.provisioning : false;
+    // A start that just threw away a stale snapshot provisions again once booted, so the update
+    // costs one slow start rather than turning every later one into a cold boot. Both run before
+    // `syncAvdConfig`, which decides from the snapshot's presence whether to point the AVD at it.
+    const romChanged = recipe ? this.forgetStaleRom(profile.avdName, recipe) : false;
+    const featuresChanged = this.syncFeatures(profile.avdName);
+    const reprovision = (romChanged || featuresChanged) && !this.provisioning;
 
     this.syncAvdConfig(profile, tuning);
 
@@ -404,7 +465,7 @@ export class SdkEngine implements AndroidEngine {
 
     this.log(`booted on ${serial}`);
     if (reprovision) {
-      this.log('provisioning again, against the new ROM');
+      this.log(romChanged ? 'provisioning again, against the new ROM' : 'provisioning again, with the new emulator features');
       const provisioned = await this.provision(onLog);
       // The guest is up either way; a failed re-provision only costs the fast start, and the next
       // launch's background provisioning tries again because the ROM id was not recorded.
@@ -456,8 +517,10 @@ export class SdkEngine implements AndroidEngine {
    */
   async status(_onLog: EngineLogHandler = NO_LOG): Promise<CommandResult> {
     let profile: GuestProfile;
+    let recipe: RomRecipe | null;
     try {
       profile = this.profile();
+      recipe = recipeForProfile(profile);
     } catch (err) {
       return fail((err as Error).message);
     }
@@ -484,11 +547,11 @@ export class SdkEngine implements AndroidEngine {
     }
 
     lines.push(`snapshot=${SNAPSHOT} present=${this.hasSnapshot(profile.avdName) ? 'yes' : 'no'}`);
-    if (profile.baseImageTag) {
-      const manifest = readManifest(romPaths(this.options.layout.sdkRoot).imageDir);
+    if (recipe) {
+      const manifest = readManifest(romPaths(this.options.layout.sdkRoot, recipe).imageDir);
       if (manifest) lines.push(`rom=${manifest.recipeId}/${manifest.recipeVersion} id=${manifest.romId.slice(0, 16)}`);
     }
-    const provisioned = this.isProvisioned(profile);
+    const provisioned = this.isProvisioned(profile, recipe);
     if (provisioned) lines.push(`provisioned_at=${provisioned}`);
 
     return ok(lines);

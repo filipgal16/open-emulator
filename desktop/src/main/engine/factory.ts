@@ -2,6 +2,8 @@ import path from 'path';
 import { repoRootWinPath } from '../platform/win-paths';
 import type { WslBridge } from '../wsl/bridge';
 import { detectAcceleration, type AccelerationState } from './acceleration';
+import type { GuestProfile } from './env-file';
+import type { GuestTuning } from './sdk/host';
 import { createSdkLayout, type SdkLayout } from './sdk/layout';
 import { SdkEngine } from './sdk/sdk-engine';
 import type { AndroidEngine, EngineId } from './types';
@@ -34,6 +36,11 @@ export interface EngineContext {
   layout: SdkLayout;
   /** Resolved once and cached — probing costs a PowerShell round trip. */
   acceleration: () => Promise<AccelerationState>;
+  /**
+   * What the native engine will start a profile with, for setup's ROM build to agree with it; null
+   * for the other runtimes, which build no ROM.
+   */
+  guestTuning: ((profile: GuestProfile) => GuestTuning) | null;
 }
 
 export interface CreateEngineOptions {
@@ -72,21 +79,18 @@ export function createEngine(options: CreateEngineOptions): EngineContext {
   });
 
   if (options.id === 'sdk') {
-    return {
+    const engine = new SdkEngine({
       layout,
-      acceleration,
-      engine: new SdkEngine({
-        layout,
-        androidRoot: path.join(repoRootWinPath(), 'android'),
-        profile: options.profile,
-        device: options.device,
-        accelerated: () => accelerated,
-        windowed: true,
-        onLog: options.onLog,
-      }),
-    };
+      androidRoot: path.join(repoRootWinPath(), 'android'),
+      profile: options.profile,
+      device: options.device,
+      accelerated: () => accelerated,
+      windowed: true,
+      onLog: options.onLog,
+    });
+    return { layout, acceleration, engine, guestTuning: (profile) => engine.guestTuning(profile) };
   }
 
   if (!options.wsl) throw new Error(`the ${options.id} engine needs a WSL bridge`);
-  return { layout, acceleration, engine: new WslEngine(options.wsl.bridge, options.wsl.target) };
+  return { layout, acceleration, engine: new WslEngine(options.wsl.bridge, options.wsl.target), guestTuning: null };
 }

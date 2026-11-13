@@ -7,14 +7,21 @@ import { isRebootPending } from '../elevation';
 import { formatBytes, acquireDependencies, cleanup, resolveDependencies } from './dependencies';
 import type { GuestProfile } from '../env-file';
 import { buildRom, romKeyDir, romState } from '../../rom/builder';
-import { OPENEMU_RECIPE } from '../../rom/recipe';
+import type { RomParams } from '../../rom/recipe';
+import type { GuestTuning } from './host';
 import { systemImagePath, type SdkLayout } from './layout';
+import { recipeForProfile, romParams } from './rom-profile';
 import { isExtractorAvailable } from './unzip';
 
 export interface NativeSetupContext {
   layout: SdkLayout;
   openEmu: OpenEmuClient;
   profile: () => GuestProfile;
+  /**
+   * The tuning the engine will start this profile with — `SdkEngine.guestTuning`, not a second
+   * derivation — or null when the runtime is not the native engine.
+   */
+  tuning: ((profile: GuestProfile) => GuestTuning) | null;
   /** Fires as bytes arrive, so the wizard's single bar tracks the real download. */
   onProgress?: (done: number, total: number) => void;
 }
@@ -32,6 +39,19 @@ export interface NativeSetupContext {
  */
 export function buildNativeSteps(context: NativeSetupContext): Step[] {
   const { layout, openEmu, profile } = context;
+
+  /**
+   * What the ROM is told about the guest, from the facts the engine itself will start with.
+   *
+   * Setup can run before acceleration is enabled — the first step may have just staged it for a
+   * restart — and the core count depends on it. That is fine: at the first start the engine's
+   * `ensureRom` sees params that differ from the build's, rebuilds (it takes seconds), and the new
+   * ROM id drops any snapshot taken against the old one, as it does for any ROM change.
+   *
+   * Without the native engine there are no facts to give, and none are made up: a recipe that
+   * reads none builds as before, and one that needs the core count refuses with its own error.
+   */
+  const paramsFor = (current: GuestProfile): RomParams => (context.tuning ? romParams(context.tuning(current)) : {});
 
   return [
     {
@@ -92,20 +112,21 @@ export function buildNativeSteps(context: NativeSetupContext): Step[] {
        */
       check: async (): Promise<CheckResult> => {
         const current = profile();
+        const recipe = recipeForProfile(current);
         const haveEmulator = existsSync(layout.emulator) && existsSync(layout.adb);
-        const haveImage = existsSync(systemImagePath(layout, current.imageTag));
+        const haveImage = existsSync(systemImagePath(layout, current.imageTag, current.apiLevel));
 
-        if (haveEmulator && haveImage && current.baseImageTag) {
+        if (haveEmulator && haveImage && recipe) {
           // Any build passes. An outdated one is rebuilt by the engine at the next start, the one
           // moment Android is known to be stopped; failing setup over it would lock the user out
           // of an app whose guest may be running right now.
-          const state = romState(layout.sdkRoot);
-          const version = state.manifest ? `${OPENEMU_RECIPE.displayName} ${state.manifest.recipeVersion}` : 'Built';
+          const state = romState(layout.sdkRoot, recipe, undefined, paramsFor(current));
+          const version = state.manifest ? `${recipe.displayName} ${state.manifest.recipeVersion}` : 'Built';
           return { pass: true, detail: state.upToDate ? version : `${version} — an update is ready and applies at the next start` };
         }
         if (haveEmulator && haveImage) return { pass: true, detail: 'Downloaded' };
-        if (haveEmulator && current.baseImageTag && existsSync(systemImagePath(layout, current.baseImageTag))) {
-          return { pass: false, detail: `${OPENEMU_RECIPE.displayName} has not been built yet` };
+        if (haveEmulator && recipe && existsSync(systemImagePath(layout, recipe.baseTag, recipe.apiLevel))) {
+          return { pass: false, detail: `${recipe.displayName} has not been built yet` };
         }
         return {
           pass: false,
@@ -116,8 +137,11 @@ export function buildNativeSteps(context: NativeSetupContext): Step[] {
       },
       fix: async (onLog: LogHandler) => {
         const current = profile();
+        const recipe = recipeForProfile(current);
+        // A ROM's base is at the profile's own API level: `recipeForProfile` has just checked that.
         const baseTag = current.baseImageTag ?? current.imageTag;
-        const haveBase = existsSync(layout.emulator) && existsSync(layout.adb) && existsSync(systemImagePath(layout, baseTag));
+        const haveBase =
+          existsSync(layout.emulator) && existsSync(layout.adb) && existsSync(systemImagePath(layout, baseTag, current.apiLevel));
 
         if (!haveBase) {
           const plan = await resolveDependencies({ profile: current });
@@ -139,11 +163,13 @@ export function buildNativeSteps(context: NativeSetupContext): Step[] {
         }
 
         // Our own ROM is built from the stock image just fetched. See design/openemu-rom.md.
-        if (current.baseImageTag) {
-          onLog('stdout', `building ${OPENEMU_RECIPE.displayName} from the ${current.baseImageTag} image`);
+        if (recipe) {
+          onLog('stdout', `building ${recipe.displayName} from the ${recipe.baseTag} image`);
           await buildRom({
             sdkRoot: layout.sdkRoot,
             keyDir: romKeyDir(layout),
+            recipe,
+            params: paramsFor(current),
             onLog: (line) => onLog('stdout', line),
           });
         }

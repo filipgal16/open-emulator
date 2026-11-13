@@ -72,7 +72,7 @@ const bridge = new WslBridge(target);
 // only one that shows the guest at the emulator's own frame rate. `OPEN_EMULATOR_ENGINE=wsl` keeps
 // the headless, mirrored runtime reachable.
 const engineId = resolveEngineId(process.env.OPEN_EMULATOR_ENGINE);
-const { engine, layout } = createEngine({
+const { engine, layout, guestTuning } = createEngine({
   id: engineId,
   profile: target.profile,
   downloadRoot: settings.get().downloadRoot,
@@ -141,6 +141,7 @@ const setupRunner = new SetupRunner(
         layout,
         openEmu,
         profile: () => loadProfile(path.join(repoRootWinPath(), 'android'), target.profile ?? 'openemu'),
+        tuning: guestTuning,
       }),
 );
 

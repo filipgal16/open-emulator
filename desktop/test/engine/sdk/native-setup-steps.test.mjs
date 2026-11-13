@@ -69,6 +69,8 @@ test('a derived image with its base present still reports as not built', async (
       description: '',
       systemImage: 'system-images;android-30;openemu;x86_64',
       imageTag: 'openemu',
+      apiLevel: 30,
+      ramMb: null,
       baseImageTag: 'default',
       playStore: false,
       avdName: 'OpenEmulator_API30_openemu',

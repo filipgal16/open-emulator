@@ -31,7 +31,6 @@ export interface DependencyPlan {
 
 export interface ResolveOptions {
   profile: GuestProfile;
-  apiLevel?: number;
   fetchImpl?: typeof fetch;
   platform?: NodeJS.Platform;
 }
@@ -44,11 +43,13 @@ export interface ResolveOptions {
  * image tag, which is why two documents are fetched.
  */
 export async function resolveDependencies(options: ResolveOptions): Promise<DependencyPlan> {
-  const { profile, apiLevel = 30, fetchImpl = fetch, platform = process.platform } = options;
+  const { profile, fetchImpl = fetch, platform = process.platform } = options;
   const host = hostOsForPlatform(platform);
   // A derived image (`openemu`) is built here, not downloaded; what the repository has to supply
-  // is the stock image it is built from.
+  // is the stock image it is built from — at the profile's API level, which is also the base's
+  // (`recipeForProfile` refuses a profile where the two differ).
   const imageTag = profile.baseImageTag ?? profile.imageTag;
+  const { apiLevel } = profile;
 
   const [mainXml, sysXml] = await Promise.all([
     fetchImpl(REPOSITORY_URL).then((r) => r.text()),
