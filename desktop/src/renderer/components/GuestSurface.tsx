@@ -138,7 +138,9 @@ export function GuestSurface({
       ) : (
         (placeholder ?? (
           <div className="waiting">
-            <span className="waiting-mark" aria-hidden="true" />
+            <span className="waiting-mark waiting-mark-live" aria-hidden="true">
+              <span className="waiting-screen" />
+            </span>
             <span>{waitingLabel}</span>
           </div>
         ))

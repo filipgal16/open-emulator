@@ -169,7 +169,11 @@ export function AppDetail({ app, job, guestSdk, installed, backLabel = 'Back', o
       )}
 
       {detail === null ? (
-        <p className="store-detail-loading">Loading description…</p>
+        <div className="skeleton-text" role="status" aria-label="Loading description">
+          <span className="skeleton skeleton-line skeleton-line-wide" />
+          <span className="skeleton skeleton-line skeleton-line-wide" />
+          <span className="skeleton skeleton-line" />
+        </div>
       ) : (
         detail.description && (
           <div className="store-description-block">

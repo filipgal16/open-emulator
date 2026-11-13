@@ -29,15 +29,17 @@ export function AndroidScreen({ device, onFirstFrame, embedded }: Props) {
 
 function DevicePlaceholder({ device }: { device: DeviceState }) {
   const kind = placeholderKind(device);
-  const elapsed = useElapsed(kind === 'starting' || kind === 'booting');
+  // The three kinds that are one wait, seen from three points along it. The clock runs across all
+  // of them without restarting, so it reads as how long the start has taken, not the current stage.
+  const stage = STAGE_OF[kind];
+  const coming = stage !== undefined;
+  const elapsed = useElapsed(coming);
+  const failed = kind === 'idle' && Boolean(device.error);
 
   return (
-    <div className={`device-idle device-idle-${kind}`}>
-      <span
-        className={`waiting-mark ${kind === 'starting' || kind === 'booting' ? 'waiting-mark-live' : ''}`}
-        aria-hidden="true"
-      >
-        {(kind === 'starting' || kind === 'booting') && <span className="waiting-screen" />}
+    <div className={`device-idle device-idle-${kind}${failed ? ' device-idle-error' : ''}`}>
+      <span className={`waiting-mark ${coming ? 'waiting-mark-live' : ''}`} aria-hidden="true">
+        <span className="waiting-screen" />
       </span>
 
       <h2 className="device-idle-title" aria-live="polite">
@@ -45,25 +47,36 @@ function DevicePlaceholder({ device }: { device: DeviceState }) {
       </h2>
       <p className="device-idle-copy">{copyFor(kind, device)}</p>
 
-      {(kind === 'starting' || kind === 'booting') && (
-        <p className="device-idle-elapsed" aria-live="polite">
-          {formatElapsed(elapsed)}
-        </p>
+      {coming && (
+        <>
+          <ol className="boot-stages" aria-label="Start progress">
+            {STAGES.map((label, index) => (
+              <li
+                key={label}
+                className={`boot-stage ${index < stage ? 'is-done' : index === stage ? 'is-now' : ''}`}
+                aria-current={index === stage ? 'step' : undefined}
+              >
+                <span className="boot-stage-pip" aria-hidden="true" />
+                {label}
+              </li>
+            ))}
+          </ol>
+          <div
+            className="device-idle-bar setup-bar setup-bar-pulsing"
+            role="progressbar"
+            aria-label={titleFor(kind, device)}
+            aria-valuemin={0}
+            aria-valuemax={100}
+          >
+            <span className="setup-bar-fill" style={{ width: 0 }} />
+          </div>
+          <p className="device-idle-elapsed" aria-live="off">
+            {formatElapsed(elapsed)}
+          </p>
+        </>
       )}
 
-      {(kind === 'starting' || kind === 'booting') && (
-        <div
-          className="device-idle-bar setup-bar setup-bar-pulsing"
-          role="progressbar"
-          aria-label={titleFor(kind, device)}
-          aria-valuemin={0}
-          aria-valuemax={100}
-        >
-          <span className="setup-bar-fill" style={{ width: '100%' }} />
-        </div>
-      )}
-
-      {kind === 'idle' && device.error && <p className="device-idle-error">{device.error}</p>}
+      {failed && <p className="device-idle-error-text">{device.error}</p>}
 
       {kind === 'idle' && (
         <button
@@ -80,6 +93,15 @@ function DevicePlaceholder({ device }: { device: DeviceState }) {
 }
 
 type IdleKind = 'checking' | 'idle' | 'starting' | 'booting' | 'waiting' | 'stopping';
+
+/**
+ * What a start passes through, in the words the screen shows: the emulator comes up, Android boots
+ * inside it, and the first picture arrives. Each is something the device state actually reports —
+ * there is no percentage to give, so this says where the wait is instead of pretending to one.
+ */
+const STAGES = ['Start', 'Boot', 'Display'] as const;
+
+const STAGE_OF: Partial<Record<IdleKind, number>> = { starting: 0, booting: 1, waiting: 2 };
 
 const FIRST_RUN_COPY =
   'First-time setup takes about a minute. You can browse Apps and the Store while this finishes — the device will be ready when you come back.';

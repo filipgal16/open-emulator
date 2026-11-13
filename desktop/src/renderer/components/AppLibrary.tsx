@@ -7,6 +7,9 @@ interface Props {
   onOpenStore: () => void;
 }
 
+/** Two rows at the usual window width — enough to read as a grid, not so many it looks like a result. */
+const SKELETON_TILES = 10;
+
 /** The apps installed in the guest. Click one to launch it. */
 export function AppLibrary({ onOpenStore }: Props) {
   const [apps, setApps] = useState<InstalledApp[] | null>(null);
@@ -33,13 +36,23 @@ export function AppLibrary({ onOpenStore }: Props) {
 
   if (apps === null) {
     return (
-      <div className="library library-loading">
-        <div className="empty-panel">
-          <span className="empty-panel-icon" aria-hidden="true">
-            <Icon name="loader" size={22} />
-          </span>
-          <p className="empty-title">Reading installed apps</p>
-          <p className="empty-copy">Asking the device what it has.</p>
+      // The shape of what is coming, rather than a spinner in an empty room: the head it will
+      // have, and tiles where the apps will be.
+      <div className="library" aria-busy="true">
+        <div className="library-head">
+          <h2>Your apps</h2>
+          <p className="library-sub" role="status">
+            Asking the device what it has…
+          </p>
+        </div>
+        <div className="app-grid" aria-hidden="true">
+          {Array.from({ length: SKELETON_TILES }, (_, index) => (
+            <div key={index} className="app-tile app-tile-skeleton">
+              <span className="skeleton skeleton-icon" />
+              <span className="skeleton skeleton-line" />
+              <span className="skeleton skeleton-line-short" />
+            </div>
+          ))}
         </div>
       </div>
     );

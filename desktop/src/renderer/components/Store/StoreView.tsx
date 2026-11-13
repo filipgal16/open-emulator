@@ -228,9 +228,26 @@ export function StoreView() {
         ) : (
           <>
             {results === null && (
-              <div className="empty-panel">
-                <p className="empty-title">Loading the catalogue</p>
-                <p className="empty-copy">This happens once, then search is local.</p>
+              <div aria-busy="true">
+                <header className="store-home">
+                  <div>
+                    <h2>Browse</h2>
+                    <p className="store-home-copy" role="status">
+                      Loading the catalogue — this happens once, then search is local.
+                    </p>
+                  </div>
+                </header>
+                <div className="store-grid" aria-hidden="true">
+                  {Array.from({ length: 6 }, (_, index) => (
+                    <div key={index} className="store-card store-card-skeleton">
+                      <span className="skeleton skeleton-icon" />
+                      <span className="store-card-skeleton-text">
+                        <span className="skeleton skeleton-line" />
+                        <span className="skeleton skeleton-line-short" />
+                      </span>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
             {results !== null && browsing && (

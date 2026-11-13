@@ -3,6 +3,7 @@ import { SetupWizard } from './components/SetupWizard/SetupWizard';
 import { AndroidScreen } from './components/AndroidScreen';
 import { DeviceBar } from './components/DeviceBar';
 import { AppLibrary } from './components/AppLibrary';
+import { BrandMark } from './components/BrandMark';
 import { StoreView } from './components/Store/StoreView';
 import { AccountChip } from './components/Account/AccountChip';
 import { SignInDialog } from './components/Account/SignInDialog';
@@ -136,7 +137,7 @@ export function App() {
             leading={
               <>
                 <span className="titlebar-brand">
-                  <span className="titlebar-logo" aria-hidden="true" />
+                  <BrandMark size="sm" />
                   <span className="titlebar-word">open-emulator</span>
                 </span>
                 <NavRail active={tab} onSelect={selectWorkspace} />

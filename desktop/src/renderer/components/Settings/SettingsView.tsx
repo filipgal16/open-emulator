@@ -106,15 +106,23 @@ export function SettingsView() {
 
   if (!state) {
     return (
-      <div className="settings settings-loading">
-        <div className="empty-panel">
-          <span className="empty-panel-icon" aria-hidden="true">
-            <Icon name="loader" size={22} />
-          </span>
-          <p className="empty-title">Reading settings</p>
-          <p className="empty-copy">What this machine is using, and what you can change.</p>
+      <section className="settings" aria-labelledby="settings-title" aria-busy="true">
+        <div className="settings-sheet">
+          <header className="settings-head">
+            <h2 id="settings-title">Settings</h2>
+            <p className="settings-lead" role="status">
+              Reading what this machine is using, and what you can change…
+            </p>
+          </header>
+          <div className="skeleton-stack" aria-hidden="true">
+            <span className="skeleton skeleton-title" />
+            <span className="skeleton skeleton-block" />
+            <span className="skeleton skeleton-block" />
+            <span className="skeleton skeleton-title" />
+            <span className="skeleton skeleton-block" />
+          </div>
         </div>
-      </div>
+      </section>
     );
   }
 

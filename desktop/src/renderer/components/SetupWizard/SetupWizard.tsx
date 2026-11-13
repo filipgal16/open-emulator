@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { LogEvent, SetupStepStatus } from '../../../shared/ipc-types';
+import { BrandMark } from '../BrandMark';
 import { Icon, type IconName } from '../Icon';
 
 const STEP_ICONS: Record<SetupStepStatus['status'], IconName> = {
@@ -145,7 +146,8 @@ export function SetupWizard({ steps, onContinue }: Props) {
         : (running?.detail ?? 'Checking what this PC already has…');
 
   const barPulsing = compact ? !ready && !failed : Boolean(running && subPercent === null && !failed);
-  const barWidth = compact && !ready ? 100 : percent;
+  // The splash knows nothing yet, so it shows no fill at all — only the sweep crossing the track.
+  const barWidth = compact && !ready ? 0 : percent;
 
   async function retry() {
     setRetrying(true);
@@ -160,13 +162,7 @@ export function SetupWizard({ steps, onContinue }: Props) {
     <div className={`setup ${compact ? 'is-compact' : 'is-held'} ${failed ? 'is-failed' : ''} ${ready ? 'is-ready' : ''}`}>
       <div className="setup-frame">
         <div className="setup-brand">
-          <span className="setup-logo" aria-hidden="true">
-            <svg viewBox="0 0 32 32" width="26" height="26">
-              <rect x="9" y="5" width="14" height="22" rx="3.5" fill="none" stroke="currentColor" strokeWidth="2" />
-              <rect x="13" y="8" width="6" height="1.5" rx="0.75" fill="currentColor" />
-              <circle cx="16" cy="23.5" r="1.4" fill="currentColor" />
-            </svg>
-          </span>
+          <BrandMark size="lg" live={!failed && !ready} />
           <div>
             <h1>open-emulator</h1>
             {compact && <p className="setup-tagline">Android on your PC</p>}

@@ -89,72 +89,84 @@
 
         --scrollbar-size: 10px;
 
-        /* Dark is the default. Existing token names stay; new ones extend the set. */
-        --bg: #15171c;
-        --bg-deep: #0e1014;
-        --chrome: #1a1c22;
-        --nav-track: #12141a;
-        --surface: #21242c;
-        --surface-hover: #2a2e38;
-        --surface-active: #323744;
-        --raised: #292d36;
-        --border: #6d7486;
-        --border-strong: #8a91a3;
-        --border-subtle: #3a3f4c;
-        --text: #f1f3f7;
-        --text-dim: #cdd2dc;
-        --muted: #b0b6c3;
-        --faint: #9aa1b0;
-        --accent: #8ec0ff;
-        --accent-strong: #e8f2ff;
-        --accent-hover: #c5ddff;
-        --accent-fill: #2a4a75;
-        --accent-fill-hover: #335888;
-        --accent-fill-active: #244066;
-        --accent-border: #4a6d99;
-        --accent-glow: rgba(142, 192, 255, 0.22);
-        --accent-soft: rgba(42, 74, 117, 0.45);
-        --ok: #6fca7a;
-        --ok-fill: #3d8a48;
-        --ok-bg: #1a2e1e;
-        --ok-ring: rgba(111, 202, 122, 0.24);
-        --warn: #e6b422;
-        --warn-bg: #2a2412;
-        --warn-border: #7a6418;
-        --warn-ring: rgba(230, 180, 34, 0.22);
-        --danger: #f09595;
+        /* Dark is the default: ink, paper and one mint. The neutrals carry no hue of their
+           own, so the mint is the only colour on screen until something goes wrong. */
+        --bg: #0b0b0c;
+        --bg-deep: #050506;
+        --chrome: #101011;
+        --nav-track: #08080a;
+        --surface: #161618;
+        --surface-hover: #1e1e21;
+        --surface-active: #27272b;
+        --raised: #1a1a1d;
+        --border: #62636a;
+        --border-strong: #8e8f96;
+        --border-subtle: #2b2b30;
+        --text: #f6f6f4;
+        --text-dim: #d6d6d3;
+        --muted: #a6a7ab;
+        --faint: #8b8c91;
+        --mint: #8ff2cc;
+        --accent: #8ff2cc;
+        --accent-strong: #03140d;
+        --accent-hover: #b9f8e1;
+        --accent-fill: #8ff2cc;
+        --accent-fill-hover: #a9f6d9;
+        --accent-fill-active: #74e0b6;
+        --accent-border: #5fcfa5;
+        --accent-glow: rgba(143, 242, 204, 0.2);
+        --accent-soft: rgba(143, 242, 204, 0.11);
+        --ok: #8ff2cc;
+        --ok-fill: #2f9f77;
+        --ok-bg: #10241c;
+        --ok-ring: rgba(143, 242, 204, 0.22);
+        --warn: #e9bd4a;
+        --warn-bg: #251f0e;
+        --warn-border: #6f5b1c;
+        --warn-ring: rgba(233, 189, 74, 0.22);
+        --danger: #f29a9a;
         --danger-fill: #8a3e3e;
-        --danger-bg: #322222;
-        --danger-bg-hover: #3d2828;
-        --danger-border: #5a3a3a;
-        --danger-fg: #ffd0d0;
-        --idle: #6a7180;
-        --idle-ring: rgba(106, 113, 128, 0.22);
-        --hover-overlay: rgba(255, 255, 255, 0.04);
-        --dismiss-hover: rgba(255, 255, 255, 0.06);
+        --danger-bg: #2a1717;
+        --danger-bg-hover: #351d1d;
+        --danger-border: #5a3030;
+        --danger-fg: #ffd3d3;
+        --idle: #6b6c72;
+        --idle-ring: rgba(107, 108, 114, 0.22);
+        --hover-overlay: rgba(255, 255, 255, 0.045);
+        --dismiss-hover: rgba(255, 255, 255, 0.07);
         --shadow-inset: inset 0 1px 0 rgba(255, 255, 255, 0.05);
-        --shadow-sm: 0 4px 16px rgba(0, 0, 0, 0.32);
-        --shadow: 0 12px 40px rgba(0, 0, 0, 0.48);
-        --shadow-lg: 0 20px 56px rgba(0, 0, 0, 0.55);
+        --shadow-sm: 0 4px 16px rgba(0, 0, 0, 0.4);
+        --shadow: 0 12px 40px rgba(0, 0, 0, 0.55);
+        --shadow-lg: 0 24px 64px rgba(0, 0, 0, 0.62);
         --focus: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent);
-        --scrim: rgba(8, 10, 14, 0.72);
-        --selection-bg: #3a5470;
+        --scrim: rgba(0, 0, 0, 0.72);
+        --selection-bg: #2c6b55;
         --selection-fg: #ffffff;
-        --scrollbar-thumb: #5a6170;
-        --scrollbar-thumb-hover: #6e7586;
-        --icon-well: #3a4a5c;
-        --waiting-stroke: #6d7486;
-        --log-fg: #7dce7d;
-        --brand-from: #6aa9ff;
-        --brand-mid: #4d7db5;
-        --brand-to: #355a86;
-        --brand-fg: #eef5ff;
-        --progress-from: #4d7db5;
-        --progress-to: #7eb4ff;
+        --scrollbar-thumb: #4a4a50;
+        --scrollbar-thumb-hover: #63636a;
+        --icon-well: #1b201e;
+        --log-fg: #8ff2cc;
+        --brand-from: #2c2c30;
+        --brand-mid: #151517;
+        --brand-to: #050506;
+        --brand-fg: #f6f6f4;
+        --progress-from: #f6f6f4;
+        --progress-to: #8ff2cc;
         --progress-fail-from: #7d3b3b;
-        --progress-fail-to: #c06060;
-        --screen-spot: #1a1c24;
-        --setup-wash: rgba(77, 125, 181, 0.18);
+        --progress-fail-to: #d97070;
+        --screen-spot: #151517;
+        --setup-wash: rgba(143, 242, 204, 0.1);
+        /* The page's own gradients: a lit top edge fading into ink, and the hairlines over it. */
+        --wash-top: rgba(255, 255, 255, 0.07);
+        --wash-edge: rgba(255, 255, 255, 0);
+        --hairline: rgba(255, 255, 255, 0.09);
+        --hairline-strong: rgba(255, 255, 255, 0.2);
+        --skeleton-from: #232327;
+        --skeleton-to: #37373c;
+        --brand-edge: rgba(255, 255, 255, 0.16);
+        --brand-sheen: rgba(255, 255, 255, 0.14);
+        --device-body-top: #1d1d20;
+        --device-body-bottom: #0b0b0c;
       }
 
       /* Explicit dark wins over a light OS preference. */
@@ -164,34 +176,35 @@
 
       :root[data-theme="light"] {
         color-scheme: light;
-        --bg: #eef0f4;
-        --bg-deep: #e2e5ec;
+        --bg: #f7f7f5;
+        --bg-deep: #ededea;
         --chrome: #ffffff;
-        --nav-track: #e2e5ec;
+        --nav-track: #ededea;
         --surface: #ffffff;
-        --surface-hover: #f3f5f8;
-        --surface-active: #e8ebf1;
-        --raised: #f6f7fa;
-        --border: #767c8c;
-        --border-strong: #5c6373;
-        --border-subtle: #c5cad4;
-        --text: #1a1d24;
-        --text-dim: #3a4050;
-        --muted: #4e5565;
-        --faint: #5a6170;
-        --accent: #155ab8;
-        --accent-strong: #ffffff;
-        --accent-hover: #0d3d80;
-        --accent-fill: #155ab8;
-        --accent-fill-hover: #124a9a;
-        --accent-fill-active: #0e3d80;
-        --accent-border: #155ab8;
-        --accent-glow: rgba(21, 90, 184, 0.2);
-        --accent-soft: rgba(21, 90, 184, 0.1);
-        --ok: #1b7a3a;
-        --ok-fill: #1b7a3a;
-        --ok-bg: #e6f5ea;
-        --ok-ring: rgba(27, 122, 58, 0.2);
+        --surface-hover: #f4f4f2;
+        --surface-active: #e9e9e6;
+        --raised: #fafaf9;
+        --border: #797a7e;
+        --border-strong: #55565a;
+        --border-subtle: #d8d8d4;
+        --text: #0b0b0c;
+        --text-dim: #2d2e31;
+        --muted: #505156;
+        --faint: #5e5f64;
+        --mint: #8ff2cc;
+        --accent: #0a6e51;
+        --accent-strong: #03140d;
+        --accent-hover: #075640;
+        --accent-fill: #8ff2cc;
+        --accent-fill-hover: #a9f6d9;
+        --accent-fill-active: #74e0b6;
+        --accent-border: #0a6e51;
+        --accent-glow: rgba(16, 150, 110, 0.22);
+        --accent-soft: rgba(16, 150, 110, 0.1);
+        --ok: #0a6e51;
+        --ok-fill: #0a6e51;
+        --ok-bg: #e3f7ef;
+        --ok-ring: rgba(10, 110, 81, 0.2);
         --warn: #8a5b00;
         --warn-bg: #fbf3dc;
         --warn-border: #c4a04a;
@@ -202,66 +215,76 @@
         --danger-bg-hover: #f8d4d4;
         --danger-border: #e0a0a0;
         --danger-fg: #8a1c1c;
-        --idle: #767c8c;
-        --idle-ring: rgba(118, 124, 140, 0.22);
-        --hover-overlay: rgba(16, 18, 28, 0.04);
-        --dismiss-hover: rgba(16, 18, 28, 0.06);
+        --idle: #797a7e;
+        --idle-ring: rgba(121, 122, 126, 0.22);
+        --hover-overlay: rgba(0, 0, 0, 0.04);
+        --dismiss-hover: rgba(0, 0, 0, 0.06);
         --shadow-inset: inset 0 1px 0 rgba(255, 255, 255, 0.9);
-        --shadow-sm: 0 2px 8px rgba(22, 24, 32, 0.08), 0 1px 2px rgba(22, 24, 32, 0.06);
-        --shadow: 0 12px 32px rgba(22, 24, 32, 0.14), 0 2px 6px rgba(22, 24, 32, 0.06);
-        --shadow-lg: 0 24px 48px rgba(22, 24, 32, 0.16);
+        --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.07), 0 1px 2px rgba(0, 0, 0, 0.05);
+        --shadow: 0 12px 32px rgba(0, 0, 0, 0.12), 0 2px 6px rgba(0, 0, 0, 0.05);
+        --shadow-lg: 0 24px 48px rgba(0, 0, 0, 0.14);
         --focus: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent);
-        --scrim: rgba(16, 18, 28, 0.48);
-        --selection-bg: #c5dbf7;
-        --selection-fg: #1a1d24;
-        --scrollbar-thumb: #b4bac8;
-        --scrollbar-thumb-hover: #9aa1b0;
-        --icon-well: #d6e4f7;
-        --waiting-stroke: #767c8c;
-        --log-fg: #1b7a3a;
-        --brand-from: #6aa9ff;
-        --brand-mid: #4d7db5;
-        --brand-to: #355a86;
-        --brand-fg: #eef5ff;
-        --progress-from: #155ab8;
-        --progress-to: #4d8fe8;
+        --scrim: rgba(10, 10, 12, 0.48);
+        --selection-bg: #bff3e0;
+        --selection-fg: #0b0b0c;
+        --scrollbar-thumb: #b9b9b5;
+        --scrollbar-thumb-hover: #9c9c98;
+        --icon-well: #e6f6ef;
+        --log-fg: #0a6e51;
+        --brand-from: #2e2e31;
+        --brand-mid: #141415;
+        --brand-to: #000000;
+        --brand-fg: #ffffff;
+        --progress-from: #0b0b0c;
+        --progress-to: #17a67c;
         --progress-fail-from: #b42323;
         --progress-fail-to: #e05c5c;
-        --screen-spot: #e8ebf2;
-        --setup-wash: rgba(21, 90, 184, 0.1);
+        --screen-spot: #ffffff;
+        --setup-wash: rgba(16, 150, 110, 0.1);
+        --wash-top: rgba(255, 255, 255, 0.9);
+        --wash-edge: rgba(255, 255, 255, 0);
+        --hairline: rgba(0, 0, 0, 0.09);
+        --hairline-strong: rgba(0, 0, 0, 0.22);
+        --skeleton-from: #e5e5e1;
+        --skeleton-to: #f8f8f6;
+        --brand-edge: rgba(255, 255, 255, 0.1);
+        --brand-sheen: rgba(255, 255, 255, 0.18);
+        --device-body-top: #ffffff;
+        --device-body-bottom: #e2e2de;
       }
 
       @media (prefers-color-scheme: light) {
         :root:not([data-theme]) {
           color-scheme: light;
-          --bg: #eef0f4;
-          --bg-deep: #e2e5ec;
+          --bg: #f7f7f5;
+          --bg-deep: #ededea;
           --chrome: #ffffff;
-          --nav-track: #e2e5ec;
+          --nav-track: #ededea;
           --surface: #ffffff;
-          --surface-hover: #f3f5f8;
-          --surface-active: #e8ebf1;
-          --raised: #f6f7fa;
-          --border: #767c8c;
-          --border-strong: #5c6373;
-          --border-subtle: #c5cad4;
-          --text: #1a1d24;
-          --text-dim: #3a4050;
-          --muted: #4e5565;
-          --faint: #5a6170;
-          --accent: #155ab8;
-          --accent-strong: #ffffff;
-          --accent-hover: #0d3d80;
-          --accent-fill: #155ab8;
-          --accent-fill-hover: #124a9a;
-          --accent-fill-active: #0e3d80;
-          --accent-border: #155ab8;
-          --accent-glow: rgba(21, 90, 184, 0.2);
-          --accent-soft: rgba(21, 90, 184, 0.1);
-          --ok: #1b7a3a;
-          --ok-fill: #1b7a3a;
-          --ok-bg: #e6f5ea;
-          --ok-ring: rgba(27, 122, 58, 0.2);
+          --surface-hover: #f4f4f2;
+          --surface-active: #e9e9e6;
+          --raised: #fafaf9;
+          --border: #797a7e;
+          --border-strong: #55565a;
+          --border-subtle: #d8d8d4;
+          --text: #0b0b0c;
+          --text-dim: #2d2e31;
+          --muted: #505156;
+          --faint: #5e5f64;
+          --mint: #8ff2cc;
+          --accent: #0a6e51;
+          --accent-strong: #03140d;
+          --accent-hover: #075640;
+          --accent-fill: #8ff2cc;
+          --accent-fill-hover: #a9f6d9;
+          --accent-fill-active: #74e0b6;
+          --accent-border: #0a6e51;
+          --accent-glow: rgba(16, 150, 110, 0.22);
+          --accent-soft: rgba(16, 150, 110, 0.1);
+          --ok: #0a6e51;
+          --ok-fill: #0a6e51;
+          --ok-bg: #e3f7ef;
+          --ok-ring: rgba(10, 110, 81, 0.2);
           --warn: #8a5b00;
           --warn-bg: #fbf3dc;
           --warn-border: #c4a04a;
@@ -272,33 +295,42 @@
           --danger-bg-hover: #f8d4d4;
           --danger-border: #e0a0a0;
           --danger-fg: #8a1c1c;
-          --idle: #767c8c;
-          --idle-ring: rgba(118, 124, 140, 0.22);
-          --hover-overlay: rgba(16, 18, 28, 0.04);
-          --dismiss-hover: rgba(16, 18, 28, 0.06);
+          --idle: #797a7e;
+          --idle-ring: rgba(121, 122, 126, 0.22);
+          --hover-overlay: rgba(0, 0, 0, 0.04);
+          --dismiss-hover: rgba(0, 0, 0, 0.06);
           --shadow-inset: inset 0 1px 0 rgba(255, 255, 255, 0.9);
-          --shadow-sm: 0 2px 8px rgba(22, 24, 32, 0.08), 0 1px 2px rgba(22, 24, 32, 0.06);
-          --shadow: 0 12px 32px rgba(22, 24, 32, 0.14), 0 2px 6px rgba(22, 24, 32, 0.06);
-          --shadow-lg: 0 24px 48px rgba(22, 24, 32, 0.16);
+          --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.07), 0 1px 2px rgba(0, 0, 0, 0.05);
+          --shadow: 0 12px 32px rgba(0, 0, 0, 0.12), 0 2px 6px rgba(0, 0, 0, 0.05);
+          --shadow-lg: 0 24px 48px rgba(0, 0, 0, 0.14);
           --focus: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent);
-          --scrim: rgba(16, 18, 28, 0.48);
-          --selection-bg: #c5dbf7;
-          --selection-fg: #1a1d24;
-          --scrollbar-thumb: #b4bac8;
-          --scrollbar-thumb-hover: #9aa1b0;
-          --icon-well: #d6e4f7;
-          --waiting-stroke: #767c8c;
-          --log-fg: #1b7a3a;
-          --brand-from: #6aa9ff;
-          --brand-mid: #4d7db5;
-          --brand-to: #355a86;
-          --brand-fg: #eef5ff;
-          --progress-from: #155ab8;
-          --progress-to: #4d8fe8;
+          --scrim: rgba(10, 10, 12, 0.48);
+          --selection-bg: #bff3e0;
+          --selection-fg: #0b0b0c;
+          --scrollbar-thumb: #b9b9b5;
+          --scrollbar-thumb-hover: #9c9c98;
+          --icon-well: #e6f6ef;
+          --log-fg: #0a6e51;
+          --brand-from: #2e2e31;
+          --brand-mid: #141415;
+          --brand-to: #000000;
+          --brand-fg: #ffffff;
+          --progress-from: #0b0b0c;
+          --progress-to: #17a67c;
           --progress-fail-from: #b42323;
           --progress-fail-to: #e05c5c;
-          --screen-spot: #e8ebf2;
-          --setup-wash: rgba(21, 90, 184, 0.1);
+          --screen-spot: #ffffff;
+          --setup-wash: rgba(16, 150, 110, 0.1);
+          --wash-top: rgba(255, 255, 255, 0.9);
+          --wash-edge: rgba(255, 255, 255, 0);
+          --hairline: rgba(0, 0, 0, 0.09);
+          --hairline-strong: rgba(0, 0, 0, 0.22);
+          --skeleton-from: #e5e5e1;
+          --skeleton-to: #f8f8f6;
+          --brand-edge: rgba(255, 255, 255, 0.1);
+          --brand-sheen: rgba(255, 255, 255, 0.18);
+          --device-body-top: #ffffff;
+          --device-body-bottom: #e2e2de;
         }
       }
 
@@ -388,21 +420,39 @@
          stays a splash — no card, no percent reel, no reserved empty copy. The log still lives
          behind Details. */
       .setup {
+        position: relative;
         width: 100%;
         display: flex;
         align-items: center;
         justify-content: center;
         padding: var(--space-10) var(--space-7);
         overflow-y: auto;
+        /* Ink lit from above: a pale wash at the top edge falling off into the page, and the page
+           falling off into its deepest tone at the bottom. The one colour is in ::before. */
         background:
-          radial-gradient(ellipse 70% 55% at 50% -10%, var(--setup-wash), transparent 58%),
-          var(--bg);
+          radial-gradient(ellipse 85% 60% at 50% -18%, var(--wash-top), var(--wash-edge) 62%),
+          linear-gradient(180deg, var(--bg) 40%, var(--bg-deep) 100%);
+        isolation: isolate;
       }
+      .setup::before {
+        content: "";
+        position: absolute; inset: 0; z-index: -1; pointer-events: none;
+        background: radial-gradient(ellipse 46% 34% at 50% 0%, var(--setup-wash), transparent 70%);
+        animation: wash-breathe 7s var(--ease-in-out) infinite;
+      }
+      /* A failure is not something to breathe at. */
+      .setup.is-failed::before { animation: none; opacity: 0.3; }
+      @keyframes wash-breathe {
+        0%, 100% { opacity: 0.5; }
+        50% { opacity: 1; }
+      }
+
       .setup-frame {
         width: 100%;
         max-width: 26rem;
         display: flex;
         flex-direction: column;
+        animation: panel-in var(--duration-slow) var(--ease-emphasized);
       }
       .setup.is-compact .setup-frame {
         max-width: 22rem;
@@ -410,35 +460,77 @@
         text-align: center;
       }
       .setup.is-held .setup-frame { max-width: 28rem; }
+      /* Beside a headline the mark is a signature, not the subject. */
+      .setup.is-held .brand-mark-lg { width: 44px; height: 44px; border-radius: 12px; box-shadow: inset 0 0 0 1px var(--brand-edge), inset 0 1px 0 var(--brand-sheen); }
+      .setup.is-held .brand-mark-lg .brand-dot { width: 7px; height: 7px; margin: -3.5px 0 0 -3.5px; }
 
       .setup-brand { display: flex; align-items: center; gap: var(--space-3-5); margin-bottom: var(--space-7); }
       .setup.is-compact .setup-brand {
         flex-direction: column;
-        gap: var(--space-4);
+        gap: var(--space-5);
         margin-bottom: var(--space-8);
       }
-      .setup.is-held .setup-brand { margin-bottom: var(--space-6); }
-      .setup-logo {
-        width: var(--space-12); height: var(--space-12); flex: none; border-radius: var(--space-3);
-        background: linear-gradient(160deg, var(--brand-from) 0%, var(--brand-mid) 55%, var(--brand-to) 100%);
-        box-shadow: 0 0 0 1px var(--accent-border) inset, 0 var(--space-2) var(--space-5) var(--accent-glow);
-        display: grid; place-items: center; color: var(--brand-fg);
-      }
-      .setup.is-compact .setup-logo {
-        width: 56px; height: 56px; border-radius: var(--radius-lg);
-      }
-      .setup-logo svg { display: block; }
       .setup-brand h1 {
         font-size: var(--text-2xl); line-height: var(--leading-tight); margin: 0;
-        color: var(--text); font-weight: var(--weight-semibold); letter-spacing: var(--tracking-tight);
+        font-weight: var(--weight-semibold); letter-spacing: var(--tracking-tight);
+        /* The wordmark is the page's gradient in miniature: full ink at the top, softer below. */
+        color: var(--text);
+        background: linear-gradient(180deg, var(--text) 30%, var(--muted) 130%);
+        -webkit-background-clip: text; background-clip: text;
+        -webkit-text-fill-color: transparent;
       }
-      .setup-tagline { margin: var(--space-1) 0 0; font-size: var(--text-sm); line-height: var(--leading-snug); color: var(--faint); }
+      .setup.is-compact .setup-brand h1 { font-size: var(--text-3xl); }
+      .setup-tagline {
+        margin: var(--space-1-5) 0 0; font-size: var(--text-2xs); line-height: var(--leading-snug);
+        color: var(--faint); letter-spacing: var(--tracking-wider); text-transform: uppercase;
+        font-weight: var(--weight-semibold);
+      }
 
-      .setup-bar {
-        height: var(--space-1-5); border-radius: var(--radius-full); background: var(--bg-deep);
-        overflow: hidden; box-shadow: inset 0 1px var(--space-0-5) rgba(0, 0, 0, 0.35);
+      /* ── The mark ────────────────────────────────────────────────────────────────────────────
+         An ink tile in both themes, a phone drawn in one stroke, and a mint dot: the only colour
+         the brand owns. While something is being waited for, the dot breathes. */
+      .brand-mark {
+        position: relative; flex: none;
+        display: grid; place-items: center;
+        background: linear-gradient(155deg, var(--brand-from) 0%, var(--brand-mid) 52%, var(--brand-to) 100%);
+        color: var(--brand-fg);
+        box-shadow: inset 0 0 0 1px var(--brand-edge), inset 0 1px 0 var(--brand-sheen);
       }
-      .setup.is-compact .setup-bar { width: 180px; }
+      .brand-mark svg { display: block; width: 62%; height: 62%; }
+      .brand-mark-sm { width: 22px; height: 22px; border-radius: var(--radius-sm); }
+      .brand-mark-lg {
+        width: 68px; height: 68px; border-radius: 18px;
+        box-shadow:
+          inset 0 0 0 1px var(--brand-edge), inset 0 1px 0 var(--brand-sheen),
+          0 18px 44px rgba(0, 0, 0, 0.38);
+      }
+      .brand-dot {
+        position: absolute; left: 50%; top: 50%;
+        width: 6px; height: 6px; margin: -3px 0 0 -3px;
+        border-radius: var(--radius-full);
+        background: var(--mint);
+        box-shadow: 0 0 0 3px rgba(143, 242, 204, 0.14), 0 0 12px rgba(143, 242, 204, 0.5);
+      }
+      .brand-mark-lg .brand-dot {
+        width: 9px; height: 9px; margin: -4.5px 0 0 -4.5px;
+        box-shadow: 0 0 0 5px rgba(143, 242, 204, 0.12), 0 0 22px rgba(143, 242, 204, 0.6);
+      }
+      .brand-mark.is-live .brand-dot { animation: dot-breathe 1.8s var(--ease-in-out) infinite; }
+      @keyframes dot-breathe {
+        0%, 100% { transform: scale(0.78); opacity: 0.7; }
+        50% { transform: scale(1.14); opacity: 1; }
+      }
+
+      /* ── The bar ─────────────────────────────────────────────────────────────────────────────
+         A hairline. What is known fills from ink to mint; what is not known is a short run of
+         the same gradient crossing the whole track, over whatever fill is already there. */
+      .setup-bar {
+        position: relative;
+        height: 3px; border-radius: var(--radius-full);
+        background: var(--hairline);
+        overflow: hidden;
+      }
+      .setup.is-compact .setup-bar { width: 200px; }
       .setup-bar-fill {
         display: block; height: 100%;
         background: linear-gradient(90deg, var(--progress-from), var(--progress-to));
@@ -446,13 +538,32 @@
         transition: width var(--duration-slow) var(--ease-standard);
       }
       .setup-bar-failed { background: linear-gradient(90deg, var(--progress-fail-from), var(--progress-fail-to)); }
-      .setup-bar-pulsing .setup-bar-fill { animation: install-pulse var(--duration-pulse) var(--ease-in-out) infinite; }
+      .setup-bar-pulsing::after {
+        content: "";
+        position: absolute; inset: 0;
+        background: linear-gradient(90deg, transparent, var(--progress-from) 45%, var(--progress-to) 72%, transparent);
+        background-size: 42% 100%; background-repeat: no-repeat;
+        animation: bar-sweep 1.5s var(--ease-in-out) infinite;
+      }
+      /* A 42%-wide run is fully off the left edge at -72% and off the right at 172%. */
+      @keyframes bar-sweep {
+        from { background-position: -75% 0; }
+        to { background-position: 175% 0; }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        /* The sweep would otherwise stop off-screen and leave an empty track that says nothing. */
+        .setup-bar-pulsing::after { background-size: 100% 100%; background-position: 0 0; opacity: 0.45; }
+      }
 
-      .setup-status { display: flex; align-items: baseline; justify-content: space-between; margin-top: var(--space-4); gap: var(--space-3); }
-      .setup.is-compact .setup-status { justify-content: center; margin-top: var(--space-5); }
+      .setup-status { display: flex; align-items: flex-end; justify-content: space-between; margin-top: var(--space-5); gap: var(--space-3); }
+      .setup.is-compact .setup-status { justify-content: center; }
       .setup-headline {
         font-size: var(--text-lg); line-height: var(--leading-tight); color: var(--text);
         font-weight: var(--weight-semibold); letter-spacing: var(--tracking-tight);
+      }
+      .setup.is-compact .setup-headline {
+        font-size: var(--text-sm); font-weight: var(--weight-regular);
+        color: var(--muted); letter-spacing: var(--tracking-normal);
       }
       .setup.is-held .setup-headline { font-size: var(--text-2xl); }
       .setup-metrics {
@@ -460,10 +571,13 @@
         font-variant-numeric: tabular-nums; flex: none;
       }
       .setup-elapsed {
-        font-size: var(--text-sm); line-height: var(--leading-snug); color: var(--faint);
-        font-weight: var(--weight-semibold);
+        font-family: var(--font-mono); font-size: var(--text-xs); line-height: var(--leading-snug);
+        color: var(--faint);
       }
-      .setup-percent { font-size: var(--text-xs); line-height: var(--leading-snug); color: var(--faint); font-variant-numeric: tabular-nums; }
+      .setup-percent {
+        font-size: var(--text-2xl); line-height: var(--leading-none); color: var(--text);
+        letter-spacing: var(--tracking-tight); font-variant-numeric: tabular-nums;
+      }
       .setup-note {
         margin: var(--space-2) 0 0; font-size: var(--text-sm); color: var(--muted);
         line-height: var(--leading-relaxed);
@@ -474,12 +588,21 @@
         line-height: var(--leading-snug);
       }
 
+      /* The steps, as a line with a pip per step: ink once done, mint while it is the one being
+         waited on, hollow until then. */
       .setup-track {
+        position: relative;
         list-style: none; margin: var(--space-7) 0 0; padding: 0;
         display: flex; flex-direction: column;
       }
+      .setup-track::before {
+        content: "";
+        position: absolute; left: 3.5px; top: 14px; bottom: 14px; width: 1px;
+        background: var(--hairline-strong);
+      }
       .setup-track-item {
-        display: flex; align-items: center; gap: var(--space-3);
+        position: relative;
+        display: flex; align-items: center; gap: var(--space-3-5);
         padding: var(--space-1-5) 0;
         font-size: var(--text-sm); line-height: var(--leading-snug);
         color: var(--faint);
@@ -489,16 +612,24 @@
       .setup-track-item.is-fail { color: var(--danger); font-weight: var(--weight-semibold); }
       .setup-track-item.is-warn { color: var(--warn); }
       .setup-track-pip {
+        position: relative;
         width: 8px; height: 8px; flex: none; border-radius: var(--radius-full);
-        background: var(--border-subtle);
+        /* Filled with the page so the line does not show through a step not yet reached. */
+        background: var(--bg);
+        box-shadow: inset 0 0 0 1.5px var(--border);
       }
-      .setup-track-item.is-done .setup-track-pip { background: var(--ok); }
+      .setup-track-item.is-done .setup-track-pip { background: var(--text); box-shadow: none; }
       .setup-track-item.is-now .setup-track-pip {
         background: var(--accent);
-        box-shadow: 0 0 0 3px var(--accent-glow);
+        box-shadow: 0 0 0 4px var(--accent-glow);
+        animation: pip-pulse 1.6s var(--ease-in-out) infinite;
       }
-      .setup-track-item.is-fail .setup-track-pip { background: var(--danger); }
-      .setup-track-item.is-warn .setup-track-pip { background: var(--warn); }
+      .setup-track-item.is-fail .setup-track-pip { background: var(--danger); box-shadow: none; }
+      .setup-track-item.is-warn .setup-track-pip { background: var(--warn); box-shadow: none; }
+      @keyframes pip-pulse {
+        0%, 100% { box-shadow: 0 0 0 2px var(--accent-glow); }
+        50% { box-shadow: 0 0 0 6px var(--accent-glow); }
+      }
 
       .setup-fail {
         margin-top: var(--space-5);
@@ -530,15 +661,21 @@
         font: inherit; font-size: var(--text-sm); font-weight: var(--weight-semibold);
         padding: var(--space-2-5) var(--space-5); cursor: pointer;
         background: var(--accent-fill); color: var(--accent-strong); border: 1px solid var(--accent-border);
-        border-radius: var(--radius-sm); transition: background var(--ease), border-color var(--ease);
+        border-radius: var(--radius);
+        transition: background var(--ease), border-color var(--ease), box-shadow var(--ease), transform var(--ease);
       }
-      .setup-primary:hover:not(:disabled) { background: var(--accent-fill-hover); }
+      .setup-primary:hover:not(:disabled) {
+        background: var(--accent-fill-hover);
+        box-shadow: 0 6px 22px var(--accent-glow);
+        transform: translateY(-1px);
+      }
+      .setup-primary:active:not(:disabled) { transform: none; box-shadow: none; }
       .setup-primary:active:not(:disabled) { background: var(--accent-fill-active); }
       .setup-primary:disabled { opacity: 0.5; cursor: default; }
       .setup-secondary {
         font: inherit; font-size: var(--text-sm); padding: var(--space-2-5) var(--space-4); cursor: pointer;
         background: transparent; color: var(--muted); border: 1px solid var(--border);
-        border-radius: var(--radius-sm); transition: color var(--ease), border-color var(--ease), background var(--ease);
+        border-radius: var(--radius); transition: color var(--ease), border-color var(--ease), background var(--ease);
       }
       .setup-secondary:hover:not(:disabled) { color: var(--text); border-color: var(--border-strong); background: var(--hover-overlay); }
       .setup-secondary:disabled { opacity: 0.5; cursor: default; }
@@ -632,12 +769,6 @@
         font-size: var(--text-sm); font-weight: var(--weight-semibold);
         letter-spacing: var(--tracking-tight); color: var(--text); line-height: var(--leading-none);
         flex: none;
-      }
-      .titlebar-logo {
-        width: 22px; height: 22px; flex: none;
-        border-radius: var(--radius-sm);
-        background: linear-gradient(160deg, var(--brand-from), var(--brand-mid));
-        box-shadow: 0 0 0 1px var(--accent-border) inset;
       }
       .titlebar-word { white-space: nowrap; }
       .titlebar-spacer { flex: 1; min-width: var(--space-3); }
@@ -815,7 +946,8 @@
         flex: 1; min-width: 0; min-height: 0;
         display: flex; align-items: center; justify-content: center;
         background:
-          radial-gradient(ellipse 60% 50% at 50% 50%, var(--screen-spot) 0%, var(--bg-deep) 70%);
+          radial-gradient(ellipse 85% 60% at 50% -18%, var(--wash-top), var(--wash-edge) 62%),
+          radial-gradient(ellipse 60% 50% at 50% 50%, var(--screen-spot) 0%, var(--bg-deep) 72%);
         padding: var(--space-4);
       }
       .viewport {
@@ -841,53 +973,165 @@
         display: flex; flex-direction: column; align-items: center; gap: var(--space-3-5);
         text-align: center; font-size: var(--text-sm); line-height: var(--leading-normal);
       }
+      /* The device, drawn: a body whose edge runs from a lit top to nothing, an ink screen in both
+         themes, and — only while Android is on its way — a mint line reading down the glass. */
       .waiting-mark {
-        width: 52px; height: 90px;
-        border: 2px solid var(--waiting-stroke);
-        border-radius: var(--space-3);
-        position: relative;
-        box-shadow: inset 0 0 0 1px var(--border-subtle);
+        position: relative; flex: none;
+        width: 64px; height: 114px;
+        border: 1.5px solid transparent;
+        border-radius: 17px;
+        background:
+          linear-gradient(180deg, var(--device-body-top), var(--device-body-bottom)) padding-box,
+          linear-gradient(180deg, var(--hairline-strong), var(--hairline)) border-box;
+        box-shadow: var(--shadow-lg);
       }
+      /* The earpiece. */
       .waiting-mark::before {
         content: "";
-        position: absolute; top: var(--space-2); left: 50%; transform: translateX(-50%);
-        width: 18px; height: 3px; border-radius: var(--space-0-5); background: var(--waiting-stroke);
+        position: absolute; top: 6px; left: 50%; transform: translateX(-50%);
+        width: 16px; height: 3px; border-radius: var(--radius-full);
+        background: var(--hairline-strong);
       }
+      /* The pool of light it stands in, there only while it is live. */
       .waiting-mark::after {
         content: "";
-        position: absolute; bottom: var(--space-2); left: 50%; transform: translateX(-50%);
-        width: var(--space-2-5); height: var(--space-2-5); border-radius: var(--radius-full); border: 1.5px solid var(--waiting-stroke);
+        position: absolute; left: 50%; bottom: -22px; transform: translateX(-50%);
+        width: 120px; height: 18px; border-radius: 50%;
+        background: radial-gradient(closest-side, var(--accent-glow), transparent);
+        opacity: 0;
+        transition: opacity var(--duration-slow) var(--ease-standard);
       }
-      .waiting-mark-live { border-color: var(--accent-border); }
-      .waiting-mark-live::before { background: var(--accent); }
-      .waiting-mark-live::after { border-color: var(--accent); }
+      .waiting-mark-live {
+        background:
+          linear-gradient(180deg, var(--device-body-top), var(--device-body-bottom)) padding-box,
+          linear-gradient(180deg, var(--accent-border), var(--hairline)) border-box;
+      }
+      .waiting-mark-live::after { opacity: 1; }
       .waiting-screen {
-        position: absolute; top: 14px; left: 6px; right: 6px; bottom: 18px;
-        border-radius: 2px; background: var(--accent-fill);
-        animation: install-pulse var(--duration-pulse) var(--ease-in-out) infinite;
+        position: absolute; top: 14px; left: 4px; right: 4px; bottom: 6px;
+        border-radius: 10px; overflow: hidden;
+        background: linear-gradient(180deg, #141416 0%, #050506 60%);
+      }
+      /* Off: one standing light. */
+      .waiting-screen::after {
+        content: "";
+        position: absolute; left: 50%; top: 50%;
+        width: 5px; height: 5px; margin: -2.5px 0 0 -2.5px;
+        border-radius: var(--radius-full);
+        background: var(--mint);
+        box-shadow: 0 0 10px rgba(143, 242, 204, 0.55);
+        opacity: 0.85;
+      }
+      .device-idle-checking .waiting-screen::after,
+      .device-idle-stopping .waiting-screen::after { animation: dot-breathe 1.4s var(--ease-in-out) infinite; }
+      .device-idle-error .waiting-screen::after { background: var(--danger); box-shadow: none; }
+      /* On its way: the light becomes a line that reads down the glass. */
+      .waiting-mark-live .waiting-screen::after { display: none; }
+      .waiting-mark-live .waiting-screen::before {
+        content: "";
+        position: absolute; left: 0; right: 0; top: -40%; height: 38%;
+        background: linear-gradient(180deg, transparent, rgba(143, 242, 204, 0.16) 72%, var(--mint) 100%);
+        animation: screen-scan 2.2s var(--ease-in-out) infinite;
+      }
+      /* 370% of its own height is 140% of the screen: from above the glass to below it. */
+      @keyframes screen-scan {
+        from { transform: translateY(0); }
+        to { transform: translateY(370%); }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .waiting-mark-live .waiting-screen::before { top: 31%; }
       }
 
       .device-idle {
         display: flex; flex-direction: column; align-items: center; text-align: center;
-        gap: var(--space-3); max-width: 380px; padding: var(--space-4);
+        gap: var(--space-3); max-width: 400px; padding: var(--space-4);
+        animation: panel-in var(--duration-slow) var(--ease-emphasized);
       }
       .device-idle-title {
-        margin: var(--space-2) 0 0; font-size: var(--text-2xl); font-weight: var(--weight-semibold);
-        color: var(--text); letter-spacing: var(--tracking-tight); line-height: var(--leading-tight);
+        margin: var(--space-6) 0 0; font-size: var(--text-2xl); font-weight: var(--weight-semibold);
+        letter-spacing: var(--tracking-tight); line-height: var(--leading-tight);
+        color: var(--text);
+        background: linear-gradient(180deg, var(--text) 30%, var(--muted) 130%);
+        -webkit-background-clip: text; background-clip: text;
+        -webkit-text-fill-color: transparent;
       }
       .device-idle-copy {
         margin: 0; font-size: var(--text-sm); color: var(--muted); line-height: var(--leading-relaxed);
       }
       .device-idle-elapsed {
-        margin: 0; font-size: var(--text-sm); color: var(--faint); font-variant-numeric: tabular-nums;
-        font-weight: var(--weight-semibold);
+        margin: 0; font-family: var(--font-mono); font-size: var(--text-xs); color: var(--faint);
+        font-variant-numeric: tabular-nums;
       }
-      .device-idle-error {
+      .device-idle-error-text {
         margin: 0; font-size: var(--text-xs); color: var(--danger); line-height: var(--leading-normal);
         max-width: 32em;
       }
-      .device-idle-bar { width: 180px; margin-top: var(--space-1); }
-      .device-idle .setup-primary { margin-top: var(--space-2); }
+      .device-idle-bar { width: 200px; margin-top: var(--space-1); }
+      .device-idle .setup-primary { margin-top: var(--space-3); }
+
+      /* Where the wait is: three words, and a pip for each. */
+      .boot-stages {
+        list-style: none; margin: var(--space-2) 0 var(--space-1); padding: 0;
+        display: flex; align-items: center; gap: var(--space-2);
+        font-size: var(--text-2xs); font-weight: var(--weight-semibold);
+        letter-spacing: var(--tracking-wider); text-transform: uppercase;
+        color: var(--faint); line-height: var(--leading-none);
+      }
+      .boot-stage { display: flex; align-items: center; gap: var(--space-1-5); }
+      .boot-stage + .boot-stage::before {
+        content: "";
+        width: 22px; height: 1px; margin-right: var(--space-0-5);
+        background: var(--hairline-strong);
+      }
+      .boot-stage-pip {
+        width: 6px; height: 6px; flex: none; border-radius: var(--radius-full);
+        box-shadow: inset 0 0 0 1.5px var(--border);
+      }
+      .boot-stage.is-done { color: var(--text-dim); }
+      .boot-stage.is-done .boot-stage-pip { background: var(--text); box-shadow: none; }
+      .boot-stage.is-now { color: var(--text); }
+      .boot-stage.is-now .boot-stage-pip {
+        background: var(--accent);
+        animation: pip-pulse 1.6s var(--ease-in-out) infinite;
+      }
+
+      /* ── Skeletons ───────────────────────────────────────────────────────────────────────────
+         A list that is on its way is shown as the shape of the list, with one slow band of
+         light crossing it — not as a spinner in an empty room. */
+      .skeleton {
+        display: block; border-radius: var(--radius-sm);
+        background: linear-gradient(100deg, var(--skeleton-from) 30%, var(--skeleton-to) 50%, var(--skeleton-from) 70%);
+        background-size: 220% 100%;
+        animation: skeleton-sweep 1.7s var(--ease-linear) infinite;
+      }
+      @keyframes skeleton-sweep {
+        from { background-position: 120% 0; }
+        to { background-position: -120% 0; }
+      }
+      .skeleton-icon { width: var(--space-12); height: var(--space-12); border-radius: var(--space-3); }
+      .skeleton-line { width: 72%; height: 10px; }
+      .skeleton-line-short { width: 46%; height: 8px; }
+      .skeleton-line-wide { width: 100%; }
+      .skeleton-title { width: 9rem; height: 18px; }
+      .skeleton-block { width: 100%; height: 64px; border-radius: var(--radius-md); }
+      /* Quieter than a real tile: it is a promise of one, and should not draw the eye first. */
+      .app-tile-skeleton, .store-card-skeleton { border-color: var(--border-subtle); box-shadow: none; }
+      .app-tile-skeleton { cursor: default; pointer-events: none; }
+      .app-tile-skeleton:hover { transform: none; }
+      /* Each tile's band starts a little after the one before, so the light crosses the grid
+         rather than every tile blinking together. */
+      .app-tile-skeleton:nth-child(4n + 2) .skeleton { animation-delay: 0.12s; }
+      .app-tile-skeleton:nth-child(4n + 3) .skeleton { animation-delay: 0.24s; }
+      .app-tile-skeleton:nth-child(4n + 4) .skeleton { animation-delay: 0.36s; }
+      .skeleton-stack { display: flex; flex-direction: column; gap: var(--space-3); }
+      .skeleton-text { display: flex; flex-direction: column; gap: var(--space-2); max-width: 36rem; }
+      .store-card.store-card-skeleton {
+        flex-direction: row; align-items: center; gap: var(--space-3-5);
+        padding: var(--space-4); pointer-events: none;
+      }
+      .store-card-skeleton-text { flex: 1; display: flex; flex-direction: column; gap: var(--space-2); }
+      .store-card-skeleton:nth-child(3n + 2) .skeleton { animation-delay: 0.14s; }
+      .store-card-skeleton:nth-child(3n + 3) .skeleton { animation-delay: 0.28s; }
 
       .library {
         flex: 1; min-width: 0; overflow-y: auto; padding: var(--space-6) var(--space-7);
@@ -899,7 +1143,6 @@
         color: var(--text); letter-spacing: var(--tracking-tight); line-height: var(--leading-tight);
       }
       .library-sub { margin: var(--space-1) 0 0; font-size: var(--text-sm); line-height: var(--leading-snug); color: var(--faint); }
-      .library-loading { display: flex; align-items: center; justify-content: center; }
 
       .empty-state {
         display: flex; flex-direction: column; align-items: flex-start;
@@ -921,7 +1164,6 @@
         box-shadow: var(--shadow-inset);
       }
       .empty-panel .setup-primary { margin-top: var(--space-2); }
-      .library-loading .empty-panel { margin: 0; }
       .store-body > .empty-panel { margin-top: var(--space-8); }
 
       .app-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(148px, 1fr)); gap: var(--space-3); align-items: stretch; }
@@ -1118,7 +1360,6 @@
       .store-detail-package { margin: 0; font-size: var(--text-2xs); color: var(--faint); word-break: break-all; }
       .store-detail-blocked { margin: var(--space-3-5) 0 0; font-size: var(--text-xs); color: var(--warn); }
       .store-detail-error { margin: var(--space-3) 0 0; font-size: var(--text-xs); color: var(--danger); line-height: var(--leading-normal); }
-      .store-detail-loading { color: var(--faint); font-size: var(--text-sm); }
       .store-compat {
         margin: var(--space-4) 0 0; padding: var(--space-2-5) var(--space-3-5);
         font-size: var(--text-xs); line-height: var(--leading-normal); color: var(--text-dim);
@@ -1420,7 +1661,6 @@
         flex: 1; min-width: 0; min-height: 0; overflow-y: auto; padding: var(--space-6) var(--space-7); background: var(--bg);
         animation: panel-in var(--duration-normal) var(--ease-emphasized);
       }
-      .settings-loading { display: flex; align-items: center; justify-content: center; }
       .settings-sheet { max-width: 38rem; padding-bottom: var(--space-10); }
 
       .settings-head { margin: 0 0 var(--space-6); }
