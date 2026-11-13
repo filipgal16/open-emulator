@@ -1,5 +1,5 @@
 import { createHash } from 'crypto';
-import { closeSync, cpSync, existsSync, mkdirSync, openSync, readFileSync, readSync, renameSync, rmSync, writeFileSync, writeSync } from 'fs';
+import { closeSync, cpSync, existsSync, mkdirSync, openSync, readFileSync, readSync, renameSync, rmSync, statSync, writeFileSync, writeSync } from 'fs';
 import path from 'path';
 import {
   AVB_FLAG_HASHTREE_DISABLED,
@@ -10,17 +10,29 @@ import {
   upsertVerifiedBootParams,
   vbmetaDigest,
 } from './avb';
+import { expandArmCpuinfo } from './arm-cpuinfo';
 import { rewriteIdentity, upsertProps } from './build-prop';
 import { Ext4Volume, FileDisk, type RemoveReport } from './ext4';
 import { findPartition, readGpt } from './gpt';
 import { findLogical, readLpMetadata } from './lp';
-import { BUILDER_REVISION, OPENEMU_RECIPE, recipeHash, validateRecipe, type RomRecipe, type VolumeName } from './recipe';
+import {
+  BUILDER_REVISION,
+  OPENEMU_RECIPE,
+  recipeHash,
+  usedParams,
+  validateRecipe,
+  type RomEdit,
+  type RomParams,
+  type RomRecipe,
+  type VolumeName,
+} from './recipe';
 import { renderWallpaper } from './wallpaper';
 
 /**
- * Builds the `openemu` ROM from the stock AOSP image, on the user's machine, in TypeScript.
+ * Builds a ROM from one of Google's stock images, on the user's machine, in TypeScript: `openemu`
+ * from the AOSP image, `openemu-compat` from the Google APIs one.
  *
- * See `design/openemu-rom.md`. The short version: copy Google's `default` image aside, edit the
+ * See `design/openemu-rom.md`. The short version: copy the base image aside, edit the
  * four ext4 volumes inside its `super` partition (debloat, identity, our own files), re-sign the
  * top-level vbmeta with our key and `HASHTREE_DISABLED` so the guest mounts `/system` without
  * dm-verity putting Google's bytes back, and swap the result into place. Nothing here needs WSL,
@@ -63,6 +75,8 @@ export interface VolumeReport {
   inodesFreed: number;
   blocksStillShared: number;
   propsChanged: string[];
+  /** Stock files rewritten in place. Absent from a manifest written before edits existed. */
+  edited?: string[];
   created: string[];
   freeBlocks: number;
   freeInodes: number;
@@ -88,6 +102,8 @@ export interface RomManifest {
    * recipe, the builder revision and the base, which are what the content is made from.
    */
   romId: string;
+  /** The params the recipe read, as built — already part of `recipeHash`. Absent if it reads none. */
+  params?: RomParams;
   volumes: Record<VolumeName, VolumeReport>;
   /** Informational. Not part of the image, so it does not affect reproducibility. */
   builtAt: string;
@@ -98,6 +114,8 @@ export interface BuildOptions {
   /** Where the per-machine signing key lives. See `loadOrCreateSigningKey`. */
   keyDir: string;
   recipe?: RomRecipe;
+  /** Facts about this machine's guest the image must agree with. See `RomParams`. */
+  params?: RomParams;
   force?: boolean;
   /** Whether the ROM's emulator is running. A running guest has `system.img` open. */
   isRunning?: () => boolean | Promise<boolean>;
@@ -247,7 +265,12 @@ function contentsFor(recipe: RomRecipe): Record<string, Buffer> {
  * Whether the ROM on disk is the one this build of the app would produce: written by this builder,
  * from this recipe, over this base. Anything else — including the old builder's image — rebuilds.
  */
-export function romState(sdkRoot: string, recipe: RomRecipe = OPENEMU_RECIPE, contents?: Record<string, Buffer>): RomState {
+export function romState(
+  sdkRoot: string,
+  recipe: RomRecipe = OPENEMU_RECIPE,
+  contents?: Record<string, Buffer>,
+  params: RomParams = {},
+): RomState {
   const paths = romPaths(sdkRoot, recipe);
   recoverInterruptedSwap(paths);
   if (!existsSync(path.join(paths.imageDir, 'system.img'))) {
@@ -256,8 +279,12 @@ export function romState(sdkRoot: string, recipe: RomRecipe = OPENEMU_RECIPE, co
   const manifest = readManifest(paths.imageDir);
   if (!manifest) return { built: true, upToDate: false, reason: 'built by an older builder', manifest: null };
   if (manifest.builderRevision !== BUILDER_REVISION) return { built: true, upToDate: false, reason: 'builder changed', manifest };
-  const hash = recipeHash(recipe, contents ?? contentsFor(recipe));
-  if (manifest.recipeHash !== hash) return { built: true, upToDate: false, reason: 'recipe changed', manifest };
+  const hash = recipeHash(recipe, contents ?? contentsFor(recipe), BUILDER_REVISION, params);
+  if (manifest.recipeHash !== hash) {
+    // Told apart because the fix differs: a new app version for one, a settings change for the other.
+    const sameParams = JSON.stringify(manifest.params ?? null) === JSON.stringify(usedParams(recipe, params) ?? null);
+    return { built: true, upToDate: false, reason: sameParams ? 'recipe changed' : 'guest settings changed', manifest };
+  }
   if (!existsSync(path.join(paths.baseDir, 'system.img'))) {
     // The base may be cleaned up later; the ROM stands on its own once built.
     return { built: true, upToDate: true, reason: 'up to date (base not present to compare)', manifest };
@@ -280,7 +307,8 @@ export async function buildRom(options: BuildOptions): Promise<BuildResult> {
   }
 
   const contents = contentsFor(recipe);
-  const hash = recipeHash(recipe, contents);
+  const romParams = usedParams(recipe, options.params ?? {});
+  const hash = recipeHash(recipe, contents, BUILDER_REVISION, options.params ?? {});
   const base = baseDigest(paths.baseDir);
 
   const existing = readManifest(paths.imageDir);
@@ -300,7 +328,8 @@ export async function buildRom(options: BuildOptions): Promise<BuildResult> {
     throw new Error(`${recipe.displayName} is running — stop Android before its system image is rebuilt`);
   }
 
-  log(`copying the ${recipe.baseTag} image (about 3 GB, once per build)`);
+  const gigabytes = (statSync(path.join(paths.baseDir, 'system.img')).size / 1e9).toFixed(1);
+  log(`copying the ${recipe.baseTag} image (${gigabytes} GB, once per build)`);
   rmSync(paths.stagingDir, { recursive: true, force: true });
   mkdirSync(path.dirname(paths.stagingDir), { recursive: true });
   cpSync(paths.baseDir, paths.stagingDir, { recursive: true });
@@ -318,7 +347,7 @@ export async function buildRom(options: BuildOptions): Promise<BuildResult> {
     if (vbmetaDigest([before.top, before.chained]) !== base) throw new Error('the staged copy does not match the base image');
 
     for (const name of VOLUMES) {
-      volumes[name] = editVolume(fd, layout, name, recipe, contents, log);
+      volumes[name] = editVolume(fd, layout, name, recipe, contents, romParams ?? {}, log);
     }
 
     // The chained `system` vbmeta sits past the filesystem, in the part of the partition the ext4
@@ -355,7 +384,8 @@ export async function buildRom(options: BuildOptions): Promise<BuildResult> {
   // The SDK keeps a copy of /system/build.prop beside the image for tools that never boot it.
   const sideProp = path.join(paths.stagingDir, 'build.prop');
   if (existsSync(sideProp)) {
-    const rewritten = rewriteIdentity(readFileSync(sideProp, 'utf8'), recipe.identity).text;
+    const stock = readFileSync(sideProp, 'utf8');
+    const rewritten = recipe.identity ? rewriteIdentity(stock, recipe.identity).text : stock;
     writeFileSync(sideProp, upsertProps(rewritten, recipe.systemProps), 'utf8');
   }
 
@@ -377,6 +407,8 @@ export async function buildRom(options: BuildOptions): Promise<BuildResult> {
     baseDigest: base,
     vbmetaDigest: digest,
     romId: createHash('sha256').update([BUILDER_REVISION, hash, base, digest].join('\n')).digest('hex'),
+    // Omitted, not null, when the recipe reads none: JSON.stringify drops an undefined member.
+    params: romParams,
     volumes,
     builtAt: new Date().toISOString(),
   };
@@ -392,6 +424,17 @@ export async function buildRom(options: BuildOptions): Promise<BuildResult> {
   return { manifest, imageDir: paths.imageDir, skipped: false };
 }
 
+/** The new bytes of a stock file. Pure: the same stock bytes and params always give the same result. */
+function applyTransform(edit: RomEdit, stock: Buffer, params: RomParams): Buffer {
+  switch (edit.transform) {
+    case 'arm-cpuinfo': {
+      // `usedParams` has already refused a build without it; this is for the type.
+      if (params.armCpuCores === undefined) throw new Error(`${edit.path}: no core count was given`);
+      return expandArmCpuinfo(stock, params.armCpuCores);
+    }
+  }
+}
+
 function writeAll(fd: number, data: Buffer, offset: number): void {
   let done = 0;
   while (done < data.length) {
@@ -403,8 +446,8 @@ function writeAll(fd: number, data: Buffer, offset: number): void {
 
 /**
  * One volume, in the order the plan fixes: removals first (they return inodes and blocks), then
- * identity, then our own files. Verified through a fresh reader afterwards, and every file this
- * wrote is read back.
+ * identity, then stock files rewritten in place, then our own files. Verified through a fresh
+ * reader afterwards, and every file this wrote is read back.
  */
 function editVolume(
   fd: number,
@@ -412,6 +455,7 @@ function editVolume(
   name: VolumeName,
   recipe: RomRecipe,
   contents: Record<string, Buffer>,
+  params: RomParams,
   log: (line: string) => void,
 ): VolumeReport {
   const window = layout.volumes[name];
@@ -423,6 +467,7 @@ function editVolume(
     inodesFreed: 0,
     blocksStillShared: 0,
     propsChanged: [],
+    edited: [],
     created: [],
     freeBlocks: 0,
     freeInodes: 0,
@@ -448,7 +493,8 @@ function editVolume(
   const propPath = recipe.buildPropPath[name];
   if (volume.exists(propPath)) {
     const original = volume.readFile(propPath).toString('utf8');
-    const identity = rewriteIdentity(original, recipe.identity);
+    // A recipe with no identity of its own leaves the base's — see `RomRecipe.identity`.
+    const identity = recipe.identity ? rewriteIdentity(original, recipe.identity) : { text: original, changed: [] };
     let text = identity.text;
     report.propsChanged.push(...identity.changed);
     if (name === 'system') {
@@ -464,6 +510,20 @@ function editVolume(
   } else {
     log(`${name}: no ${propPath}`);
   }
+
+  for (const edit of (recipe.edits ?? []).filter((e) => e.volume === name)) {
+    if (!volume.exists(edit.path)) {
+      throw new Error(`${name}:${edit.path} is not in the ${recipe.baseTag} image — ${recipe.id} cannot be built from this base`);
+    }
+    const stock = volume.readFile(edit.path);
+    const data = applyTransform(edit, stock, params);
+    if (!data.equals(stock)) {
+      volume.replaceFile(edit.path, data);
+      written.set(edit.path, data);
+    }
+    report.edited?.push(edit.path);
+  }
+  if (report.edited && report.edited.length > 0) log(`${name}: rewrote ${report.edited.join(', ')}`);
 
   for (const file of recipe.files.filter((f) => f.volume === name)) {
     if (file.kind === 'dir') {

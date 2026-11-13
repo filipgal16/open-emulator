@@ -305,11 +305,116 @@ On this machine, from the real `default` image:
 | Snapshot restored onto a changed ROM | ROM id check and ordered invalidation, above |
 | Space | Frees reclaim what debloat removes; additions go in after them. Growing a partition (LP + resize) is later work |
 
+## openemu-compat — the ROM that runs ARM games
+
+Built 2026-11-13, measured on the ROG G513RM (Ryzen 7 6800H, RTX 3060, WHPX, emulator 37.1.11).
+Recipe: `desktop/src/main/rom/recipe-compat.ts`. Profile: `android/profiles/openemu-compat.env`.
+
+### Why a second ROM, and why from Google's image
+
+`openemu` cannot run the thing people install emulators for. The test case was a Unity game that
+ships `arm64-v8a` and `armeabi-v7a` libraries and nothing else: on `openemu` (`abilist=x86_64,x86`)
+it does not install. An x86 guest needs an ARM translator, and two exist — Google's
+`libndk_translation`, inside its **Google APIs** images, and Intel's `libhoudini`.
+
+Grafting Google's translator into the AOSP-derived image was the plan's phase C. It is not what
+this does, for a practical reason on top of the legal one: the translator is several hundred files
+(`/system/lib64/arm64`, `/system/bin/arm64`, the `libndk_translation*` set), `openemu`'s `/system`
+has 88 MB and 174 inodes free, and the ext4 editor neither grows a volume nor copies between
+images. Going the other way needs nothing new: start from the image that already has the
+translator and **remove**, which is what the editor is good at.
+
+So `openemu-compat` is `system-images;android-34;google_apis;x86_64` (rev 14), edited. The
+toolchain reads it unchanged — same GPT, same `super` with the same four ext4 volumes and feature
+set (plus an erofs `system_dlkm`, which is left alone), same two-level vbmeta (4992 + 1664 bytes
+here), and the stock digest reproduces Google's `451e57ed…`.
+
+### What it changes
+
+| | Stock `google_apis` 34 | `openemu-compat` 1 |
+|---|---|---|
+| ABIs | `x86_64,arm64-v8a` | the same — that is the point |
+| What an ARM app is told about the CPU | **1 core** (`/system/etc/cpuinfo.arm64.txt` lists one processor, numbered 1) | **every guest core**: both cpuinfo files list processors 0…N−1 |
+| Identity | Google's `sdk_gphone64_x86_64` fingerprint | **unchanged** — only `ro.build.display.id` is ours |
+| Apps | 223 packages | 181: 42 removed across `system`, `system_ext`, `product` |
+| `/system` verity | dm-verity | off, by the same re-sign as `openemu`; `verifiedbootstate` and `device_state` stay empty |
+| Play services, WebView, Chrome, keyboard | present | present, on the recipe's kept list with a reason each |
+
+**The one-core bug** is the finding that matters most. `libndk_translation` does not show
+translated code the real `/proc/cpuinfo`; it serves a static file, and Google ships that file
+describing a single processor. Unity counts cores from it. On a 6-core guest the stock image gave
+`SystemInfo CPU = x86-64, Cores = 1`, `1 big (mask: 0x2)`, no `Job.Worker` threads and no
+`UnityGfxDeviceWorker` — the whole game on one translated thread. With the file listing six
+processors: `Cores = 6`, `6 big (mask: 0x3f)`, five workers and the render thread. Fixing it at
+run time takes `adb root` and a bind mount that is lost on reboot; in the image it takes neither
+(`arm-cpuinfo.ts`, checked with the game running as uid 2000).
+
+The count has to equal the guest's `hw.cpu.ncore`, so it is a build **param**
+(`RomParams.armCpuCores`), hashed with the recipe. The engine passes the same number it writes to
+`config.ini`; if it changes, the ROM rebuilds (seconds) and its new id drops the snapshot.
+
+**Identity is left alone on purpose.** Play services decides from the build fingerprint whether a
+device may sign in to Google, and a game's "Sign in with Google" goes through it. Rebranding the
+way `openemu` does would trade that for a name in Settings.
+
+**Debloat** is in the recipe with the reasoning beside each group. The heavy removals are in
+`product`: the Google app (Assistant, hotword, the launcher feed), Digital Wellbeing, Android
+System Intelligence and Private Compute services, the dialer, Messages, and the bundled user apps
+(YouTube, Maps, Gmail, Photos, Drive…). 1.29 GB of blocks are freed inside `product`; the image
+file does not shrink, because the partitions do not.
+
+### Measured
+
+Same AVD settings for both (6 cores, 4096 MB, 1920×1080, `-gpu host`), cold boot, read 100 s after
+the launcher was focused, two boots each:
+
+| | Stock `google_apis` 34 | `openemu-compat` 1 |
+|---|---|---|
+| Used RAM (`dumpsys meminfo`) | 1.81 – 1.88 GB | **1.30 – 1.31 GB** |
+| `MemAvailable` | 2.30 – 2.32 GB | **2.67 – 2.68 GB** |
+| Processes / packages | 357 – 360 / 223 | 330 – 334 / 181 |
+| Fatal exceptions in the crash log | — | 0; `system_server` started once |
+
+Start times on `openemu-compat` (time from launching `emulator.exe` to `sys.boot_completed=1`):
+
+| Start | Time |
+|---|---|
+| Quick Boot snapshot (the normal start) | **6.9 – 9.0 s** over eleven starts |
+| First start after a new snapshot is saved | ≈ 15 s (two runs) |
+| Cold boot | 47 – 50 s |
+| First boot of a brand-new AVD | 106 – 145 s |
+
+Cold-boot times for the two images were taken while other work ran on the machine and are not a
+fair comparison; they are left out rather than quoted. `e2fsck -fn` passes on all four volumes
+(`npm run rom:check -- --recipe openemu-compat`). The build itself takes 6 – 7 s.
+
+Not measured: a game in a match. The test game's installed version is refused by its own server
+until updated, so the furthest it got is its title screen — a steady 30 fps, which looks like the
+game's own cap (its main thread used under 20 % of a core).
+
+### What it costs
+
+- **It contains Google Mobile Services and is a modified Google image.** `openemu` was designed so
+  that nothing in it carried a redistribution condition; this is the opposite. It is built on the
+  user's machine from their own download and never hosted by us, like the `full` profile — but
+  `full` boots Google's image as shipped and this edits it, which SDK Terms §3.3 speak to
+  directly. `LICENSING.md` has the row. It is an option to build and measure with, not a default
+  to ship, until that has a legal answer.
+- **64-bit only.** Android 14 images dropped 32-bit: `armeabi-v7a`-only apps do not install. The
+  Android 11 Google APIs image translates both; the recipe mechanism takes it as a third recipe
+  once that image is downloaded, and it is the better base for old games.
+- **No Play Store app.** Google APIs has Play services but not `com.android.vending`; apps arrive
+  as APK files. A Play Store base is a `user` build with no root, which the in-image cpuinfo fix no
+  longer needs — also a candidate third recipe.
+- **Emulator tells remain** (`ranchu`, `qemu`, the `sdk_gphone` model), as on `openemu`.
+
 ## Phase C — written down, not built
 
-- **ARM translation** — the biggest compatibility gap for games. `libndk_translation` ships only in
-  Google's GMS images and `libhoudini` is Intel's; neither is redistributable, and grafting one into
-  our image is the SDK-licence question in its sharpest form. Needs a legal answer first.
+- **ARM translation in `openemu` itself** — `libndk_translation` ships only in Google's GMS images
+  and `libhoudini` is Intel's; neither is redistributable, and grafting one into the AOSP-derived
+  image is the SDK-licence question in its sharpest form. Still needs a legal answer.
+  `openemu-compat` (above) is the route that exists today: it does not graft, it starts from the
+  Google image, and it carries the same open question in the open.
 - **In-guest agent** (priv-app): persistent input, clipboard, shared folder, virtual GPS — the
   roadmap's 1.2 and 2.4 inside the ROM. Needs an APK toolchain at dev time.
 - **Our launcher, store, and static RROs** in `/product/overlay` for framework and SettingsProvider

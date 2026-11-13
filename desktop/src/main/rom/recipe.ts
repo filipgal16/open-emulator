@@ -3,9 +3,11 @@ import { checkIdentity, checkProp } from './build-prop';
 import type { RomIdentity } from './build-prop';
 
 /**
- * The openemu ROM, as data: what the builder removes, renames and adds on top of Google's AOSP
- * `default` API 30 image. `design/openemu-rom.md` ("Recipe v1") is where each choice is argued;
- * this file is where it is pinned.
+ * A ROM, as data: what the builder removes, renames, rewrites and adds on top of one of Google's
+ * emulator images. This file holds the shape, the rules every recipe must meet, and the first
+ * recipe — `openemu`, built from the AOSP `default` API 30 image; `design/openemu-rom.md`
+ * ("Recipe v1") is where each of its choices is argued. `recipe-compat.ts` holds the second, and
+ * `recipes.ts` is where a recipe is looked up by id.
  *
  * Paths are **in-volume**: each logical partition is its own ext4, opened on its own. The system
  * volume is system-as-root — its tree starts at `/` with the content under `/system/...` — while
@@ -31,19 +33,57 @@ export interface RomFile {
   source?: 'wallpaper';
 }
 
+/**
+ * A stock file whose bytes are rewritten from its own content. The inode is kept, so its mode,
+ * owner and label are whatever Google gave it — which is why an edit names no label, and why the
+ * file must already exist: a recipe that edits a file its base does not have fails the build
+ * rather than inventing one.
+ */
+export interface RomEdit {
+  volume: VolumeName;
+  /** In-volume path; see the module comment. */
+  path: string;
+  transform: RomTransform;
+}
+
+/**
+ * `arm-cpuinfo`: the `/proc/cpuinfo` the ARM translator shows translated apps, repeated once per
+ * guest core. See `arm-cpuinfo.ts`. Needs `RomParams.armCpuCores`.
+ */
+export type RomTransform = 'arm-cpuinfo';
+
+/**
+ * What a build is given beyond the recipe: facts about this machine's guest that the image has to
+ * agree with. They are hashed with the recipe, so a changed value rebuilds the image and gives it
+ * a new ROM id, which is what drops a snapshot taken with the old one.
+ */
+export interface RomParams {
+  /** How many CPU cores the guest is started with. */
+  armCpuCores?: number;
+}
+
 export interface RomRecipe {
-  id: 'openemu';
+  /** Names the image directory and the SDK tag, so it is held to what a profile name may be. */
+  id: string;
   /** Bumped for any change to what the image contains; it shows in the build number. */
   version: number;
   displayName: string;
-  baseTag: 'default';
-  apiLevel: 30;
-  identity: RomIdentity;
+  /** The SDK tag of the image this is built from: `default`, `google_apis`. */
+  baseTag: string;
+  apiLevel: number;
+  /**
+   * The brand, model and fingerprints written into every `build.prop`, or null to leave the
+   * base's own. Null is not a shortcut: Google Play services decides from the fingerprint
+   * whether a device may sign in, so a recipe built on a Google image keeps Google's.
+   */
+  identity: RomIdentity | null;
   buildPropPath: Record<VolumeName, string>;
   /** In-volume directories to remove, whole. Run first, so the space is there for `files`. */
   debloat: Record<VolumeName, string[]>;
   /** Upserted into the system volume's `build.prop`. */
   systemProps: Record<string, string>;
+  /** Stock files rewritten in place, after debloat. */
+  edits?: RomEdit[];
   /** Created in order, after debloat — a directory before anything inside it. */
   files: RomFile[];
 }
@@ -205,6 +245,7 @@ export function recipeHash(
   recipe: RomRecipe,
   contents: Record<string, Buffer>,
   builderRevision: number = BUILDER_REVISION,
+  params: RomParams = {},
 ): string {
   const sources: Record<string, string> = {};
   for (const file of recipe.files) {
@@ -215,7 +256,28 @@ export function recipeHash(
     }
     sources[file.source] = sha256(content);
   }
-  return sha256(Buffer.from(canonical({ builderRevision, recipe, sources }), 'utf8'));
+  // `params` is undefined for a recipe that reads none, and `canonical` drops undefined members:
+  // such a recipe hashes exactly as it did before params existed, so its built image stays current.
+  return sha256(Buffer.from(canonical({ builderRevision, recipe, sources, params: usedParams(recipe, params) }), 'utf8'));
+}
+
+/** The emulator's own ceiling for `hw.cpu.ncore`. */
+export const MAX_ARM_CPU_CORES = 64;
+
+/**
+ * The params this recipe's edits actually read, checked — or undefined if it reads none. A param
+ * the recipe does not use is left out, so it cannot force a rebuild.
+ */
+export function usedParams(recipe: RomRecipe, params: RomParams): RomParams | undefined {
+  if (!recipe.edits?.some((edit) => edit.transform === 'arm-cpuinfo')) return undefined;
+  const cores = params.armCpuCores;
+  if (cores === undefined) {
+    throw new Error(`${recipe.id} rewrites the ARM translator's cpuinfo and has to be told how many cores the guest has`);
+  }
+  if (!Number.isInteger(cores) || cores < 1 || cores > MAX_ARM_CPU_CORES) {
+    throw new Error(`armCpuCores ${cores} is not a whole number from 1 to ${MAX_ARM_CPU_CORES}`);
+  }
+  return { armCpuCores: cores };
 }
 
 function sha256(data: Buffer): string {
@@ -258,8 +320,18 @@ const STOCK_DIRS: Record<VolumeName, readonly string[]> = {
  * touches anything, so a bad recipe costs no 3 GB copy.
  */
 export function validateRecipe(recipe: RomRecipe): void {
+  // The id becomes a directory under system-images and the AVD's `tag.id`; the base tag and the
+  // API level become the directory the base is read from.
+  if (typeof recipe.id !== 'string' || !SAFE_NAME.test(recipe.id)) throw new Error(`recipe id '${String(recipe.id)}' is not a safe name`);
+  if (typeof recipe.baseTag !== 'string' || !SAFE_NAME.test(recipe.baseTag)) {
+    throw new Error(`${recipe.id}: base tag '${String(recipe.baseTag)}' is not a safe name`);
+  }
+  if (recipe.baseTag === recipe.id) throw new Error(`${recipe.id} cannot be built from itself`);
+  if (!Number.isInteger(recipe.apiLevel) || recipe.apiLevel < 21 || recipe.apiLevel > 99) {
+    throw new Error(`${recipe.id}: API level ${recipe.apiLevel} is not one an emulator image has`);
+  }
   if (!Number.isInteger(recipe.version) || recipe.version < 1) throw new Error(`recipe version ${recipe.version} is not a positive integer`);
-  checkIdentity(recipe.identity);
+  if (recipe.identity !== null) checkIdentity(recipe.identity);
   for (const [key, value] of Object.entries(recipe.systemProps)) checkProp(key, value);
 
   const removed = new Set<string>();
@@ -289,12 +361,27 @@ export function validateRecipe(recipe: RomRecipe): void {
     if (gone !== null) throw new Error(`${volume}:${recipe.buildPropPath[volume]} is rewritten, but debloat removes ${gone}`);
   }
 
+  const edited = new Set<string>();
+  for (const edit of recipe.edits ?? []) {
+    if (!VOLUMES.includes(edit.volume)) throw new Error(`edit ${edit.path} is on unknown volume '${edit.volume}'`);
+    checkPath(edit.volume, edit.path, 'edit');
+    const id = `${edit.volume}:${edit.path}`;
+    if (edited.has(id)) throw new Error(`edit ${id} is listed twice`);
+    if (edit.transform !== 'arm-cpuinfo') throw new Error(`${id}: unknown transform '${String(edit.transform)}'`);
+    const gone = removedAncestor(edit.volume, edit.path);
+    if (gone !== null) throw new Error(`${id} is edited, but debloat removes ${gone}`);
+    // Both rewrite the whole file from the stock bytes, so the second would undo the first.
+    if (recipe.buildPropPath[edit.volume] === edit.path) throw new Error(`${id} is the volume's build.prop, which is rewritten on its own`);
+    edited.add(id);
+  }
+
   const created = new Map<string, RomFile>();
   for (const file of recipe.files) {
     if (!VOLUMES.includes(file.volume)) throw new Error(`file ${file.path} is on unknown volume '${file.volume}'`);
     checkPath(file.volume, file.path, 'file');
     const id = `${file.volume}:${file.path}`;
     if (created.has(id)) throw new Error(`file ${id} is listed twice`);
+    if (edited.has(id)) throw new Error(`${id} is both edited in place and created as a file`);
 
     const gone = removedAncestor(file.volume, file.path);
     if (gone !== null) {
@@ -320,6 +407,9 @@ export function validateRecipe(recipe: RomRecipe): void {
     created.set(id, file);
   }
 }
+
+/** What a profile name may be (`env-file.ts`); the id and the base tag are each used as one. */
+const SAFE_NAME = /^[a-z0-9_-]{1,32}$/;
 
 /**
  * An in-volume path must be absolute and normalised — the ext4 editor looks names up one
@@ -347,7 +437,7 @@ function checkPath(volume: VolumeName, target: string, what: string): void {
  * rebuild happens. Frozen, a caller that sorts or pushes onto one of its lists fails at that line
  * instead of silently changing the hash for every later caller.
  */
-function deepFreeze<T>(value: T): T {
+export function deepFreeze<T>(value: T): T {
   if (value !== null && typeof value === 'object') {
     for (const member of Object.values(value)) deepFreeze(member);
     Object.freeze(value);

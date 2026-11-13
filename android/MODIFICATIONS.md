@@ -36,6 +36,11 @@ The rest of this file is the runtime configuration every profile shares.
 
 - `openemu` — our own ROM, built from AOSP `default` on the user's machine. The default on the
   native runtime. See the table above and `design/openemu-rom.md`.
+- `openemu-compat` — our second ROM, built from `google_apis` (Android 14) on the user's machine,
+  for ARM games: the Google image is the one with an ARM translator. Google apps an emulator
+  does not need are removed, Play services and Google's device identity are left as shipped, and
+  ARM apps are shown every guest core instead of one. Contains Google software; see
+  `design/openemu-rom.md` ("openemu-compat") and `LICENSING.md` before shipping it.
 - `fast` — stock AOSP, no GMS. Untouched Google image.
 - `full` — `google_apis`. GMS, but no Play Store app.
 - `play` — `google_apis_playstore`. Google's own Play-enabled image; the only one that ships

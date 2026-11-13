@@ -4,6 +4,8 @@
 //
 //   npm run rom:check               the built ROM: e2fsck -fn on all four volumes, fsck-lite,
 //                                   the vbmeta flags, and the digest the guest will be told
+//   npm run rom:check -- --recipe openemu-compat
+//                                   the same, for another recipe's image
 //   npm run rom:check -- --fixtures the ext4 editor's test edits, each through e2fsck -fn
 //
 // `e2fsck` runs in WSL, which is a development requirement only: the app itself never needs it.
@@ -105,8 +107,18 @@ function checkRom() {
   const { parseVbmetaHeader, parseAvbFooter, vbmetaDigest } = dist('rom/avb.js');
   const { romPaths, readManifest } = dist('rom/builder.js');
 
+  const { ROM_RECIPES, recipeById } = dist('rom/recipes.js');
+
+  const at = process.argv.indexOf('--recipe');
+  const recipeId = at === -1 ? 'openemu' : process.argv[at + 1];
+  const recipe = recipeById(recipeId ?? '');
+  if (!recipe) {
+    fail(`unknown recipe '${recipeId}' — this build knows: ${Object.keys(ROM_RECIPES).join(', ')}`);
+    return;
+  }
+
   const layout = createSdkLayout(nativeRoot(process.env.OPEN_EMULATOR_DOWNLOAD_ROOT ?? null));
-  const { imageDir } = romPaths(layout.sdkRoot);
+  const { imageDir } = romPaths(layout.sdkRoot, recipe);
   const manifest = readManifest(imageDir);
   if (!manifest) {
     fail(`no ROM built by this builder at ${imageDir} — run npm run rom:build`);
