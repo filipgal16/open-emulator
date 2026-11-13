@@ -11,7 +11,7 @@ you charge anyone money.
 ## The short version
 
 **Your own code and everything in the installer is clean.** 321 npm packages, zero copyleft, and
-only React ships. The Windows installer contains nothing you cannot sell.
+only a handful ship — React, koffi, and the auto-updater with its dependencies. The Windows installer contains nothing you cannot sell.
 
 **The problem is not in the installer — it is what the app downloads on first run.** The Android
 runtime is Google's SDK emulator and Google's system images, and the Android SDK Terms say
@@ -39,6 +39,8 @@ can be coded around.
 |---|---|---|
 | Your code (`src/`, `android/`, `desktop/src/`) | none declared → all rights reserved | Yes — you own it |
 | React, React-DOM | MIT | Yes, with attribution |
+| koffi | MIT | Yes, with attribution |
+| electron-updater and its dependencies | MIT, ISC, Blue Oak 1.0.0 (sax), PSF-2.0 (argparse) | Yes, with attribution — all permissive |
 | Electron runtime | MIT | Yes, with attribution |
 | Chromium (inside Electron) | BSD-3-Clause + many | Yes — notices already shipped |
 | `ffmpeg.dll` (inside Electron) | LGPL/GPL build, **patented codecs** | See note below |

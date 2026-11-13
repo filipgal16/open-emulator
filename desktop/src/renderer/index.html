@@ -790,6 +790,7 @@
         gap: 2px;
       }
       .nav-rail-item {
+        position: relative;
         display: flex; flex-direction: row; align-items: center; justify-content: center;
         gap: var(--space-1-5);
         padding: var(--space-1) var(--space-2-5);
@@ -812,6 +813,12 @@
         position: absolute; width: 1px; height: 1px;
         padding: 0; margin: -1px; overflow: hidden;
         clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+      }
+      /* Something is waiting behind this item: an update, today. */
+      .nav-rail-dot {
+        position: absolute; top: 3px; right: 3px;
+        width: 7px; height: 7px; border-radius: var(--radius-full);
+        background: var(--accent); box-shadow: 0 0 0 2px var(--chrome);
       }
 
       .tool-rail {
@@ -1824,6 +1831,9 @@
       .settings-apply.is-warn { background: var(--warn-bg); border-color: var(--warn-border); }
       .settings-apply.is-warn p { color: var(--warn); }
       .settings-apply .setup-primary { margin-top: var(--space-3); }
+      .settings-update-card { margin-bottom: 0; }
+      .settings-update-bar { margin-top: var(--space-3); }
+      .settings-update-action { margin-top: var(--space-3); }
 
       .settings-quiet {
         padding: var(--space-3-5);
