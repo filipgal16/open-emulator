@@ -18,7 +18,7 @@
 
 .EXAMPLE
   powershell -ExecutionPolicy Bypass -File android\scripts\start_game_avd.ps1
-  powershell -ExecutionPolicy Bypass -File android\scripts\start_game_avd.ps1 -Launch com.haifura.cyoujp.gp
+  powershell -ExecutionPolicy Bypass -File android\scripts\start_game_avd.ps1 -Launch com.example.game
   powershell -ExecutionPolicy Bypass -File android\scripts\start_game_avd.ps1 -Cold
 #>
 param(
