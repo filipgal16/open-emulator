@@ -1,0 +1,13 @@
+[package]
+name = "oe-win"
+description = "Every Win32 call open-emulator makes: window embedding, processes, elevation, services, DPAPI"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { workspace = true }
+wmi = { workspace = true }
+serde = { workspace = true }

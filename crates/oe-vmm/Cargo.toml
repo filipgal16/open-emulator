@@ -1,0 +1,19 @@
+[package]
+name = "oe-vmm"
+description = "A minimal virtual machine monitor: a KVM backend on Linux and a software x86 interpreter everywhere"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[lib]
+name = "oe_vmm"
+
+[[bin]]
+name = "open-vmm"
+path = "src/main.rs"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+kvm-bindings = "0.12"
+kvm-ioctls = "0.22"

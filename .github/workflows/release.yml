@@ -2,14 +2,14 @@ name: Release
 
 # Builds the Windows installer on Windows, after the test suite passes.
 #
-#   - Pushing a version tag (v0.1.0) also publishes it as a GitHub release: the installer, its
-#     .blockmap, and latest.yml. That release is where installed copies look for updates — the
-#     `publish` block in desktop/package.json tells electron-builder, and through it the app, where.
+#   - Pushing a version tag (v0.3.0) also publishes it as a GitHub release: the installer and
+#     latest.yml. That release is where installed copies look for updates — this app's updater and
+#     the Electron version's alike read latest.yml from the latest release.
 #   - Running it by hand (Actions → Release → Run workflow) builds without publishing, and keeps
 #     the installer as a workflow artifact for a week.
 #
-# The tag has to match desktop/package.json's version. An installed copy compares its own version
-# with latest.yml's, so a release built from an un-bumped package.json would never be offered.
+# The tag has to match the workspace version in Cargo.toml. An installed copy compares its own
+# version with latest.yml's, so a release built from an un-bumped Cargo.toml would never be offered.
 on:
   push:
     tags: ['v*']
@@ -21,48 +21,52 @@ permissions:
 jobs:
   windows:
     runs-on: windows-latest
-    defaults:
-      run:
-        working-directory: desktop
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          cache: npm
-          cache-dependency-path: desktop/package-lock.json
+      - uses: dtolnay/rust-toolchain@stable
 
-      - run: npm ci
+      - uses: Swatinem/rust-cache@v2
 
-      - run: npm test
-
-      - name: Tag matches package.json
+      - name: Tag matches Cargo.toml
         if: startsWith(github.ref, 'refs/tags/v')
         shell: bash
         run: |
-          expected="v$(node -p "require('./package.json').version")"
+          expected="v$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[] | select(.name == "oe-ui") | .version')"
           if [ "$expected" != "$GITHUB_REF_NAME" ]; then
-            echo "::error::tag $GITHUB_REF_NAME does not match desktop/package.json ($expected)"
+            echo "::error::tag $GITHUB_REF_NAME does not match the workspace version ($expected)"
             exit 1
           fi
 
-      - name: Build
-        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
-        run: npm run dist:win
+      - run: cargo test --workspace
 
-      - name: Build and publish the release
+      # The runner images have carried NSIS; install it if this one does not.
+      - name: NSIS
+        shell: pwsh
+        run: |
+          if (-not (Get-Command makensis -ErrorAction SilentlyContinue) -and -not (Test-Path "${env:ProgramFiles(x86)}\NSIS\makensis.exe")) {
+            choco install nsis -y --no-progress
+          }
+
+      - run: cargo xtask dist
+
+      - name: Publish the release
         if: startsWith(github.ref, 'refs/tags/v')
-        run: npm run release:win
+        shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            target/dist/open-emulator-Setup-*.exe \
+            target/dist/latest.yml \
+            --title "$GITHUB_REF_NAME" \
+            --generate-notes
 
       - uses: actions/upload-artifact@v4
         with:
           name: open-emulator-windows
           path: |
-            desktop/release/*.exe
-            desktop/release/*.blockmap
-            desktop/release/latest.yml
+            target/dist/*.exe
+            target/dist/latest.yml
           if-no-files-found: error
           retention-days: 7

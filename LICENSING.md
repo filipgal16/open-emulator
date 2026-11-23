@@ -10,8 +10,12 @@ you charge anyone money.
 
 ## The short version
 
-**Your own code and everything in the installer is clean.** 321 npm packages, zero copyleft, and
-only a handful ship — React, koffi, and the auto-updater with its dependencies. The Windows installer contains nothing you cannot sell.
+**Your own code and everything in the installer is clean.** The app is Rust, built from crates whose
+declared licences are all permissive or offer a permissive choice (MIT, Apache-2.0, BSD, ISC, Zlib,
+Unicode, and similar). They are listed, with versions, in
+[`THIRD-PARTY-NOTICES.md`](THIRD-PARTY-NOTICES.md). The installer contains the app's one executable,
+a few data files from `android/`, and the licence files. There is no bundled browser engine, media
+codec library or JavaScript runtime.
 
 **The problem is not in the installer — it is what the app downloads on first run.** The Android
 runtime is Google's SDK emulator and Google's system images, and the Android SDK Terms say
@@ -37,24 +41,17 @@ can be coded around.
 
 | Component | Licence | Sellable? |
 |---|---|---|
-| Your code (`src/`, `android/`, `desktop/src/`) | none declared → all rights reserved | Yes — you own it |
-| React, React-DOM | MIT | Yes, with attribution |
-| koffi | MIT | Yes, with attribution |
-| electron-updater and its dependencies | MIT, ISC, Blue Oak 1.0.0 (sax), PSF-2.0 (argparse) | Yes, with attribution — all permissive |
-| Electron runtime | MIT | Yes, with attribution |
-| Chromium (inside Electron) | BSD-3-Clause + many | Yes — notices already shipped |
-| `ffmpeg.dll` (inside Electron) | LGPL/GPL build, **patented codecs** | See note below |
-| Dev toolchain (TypeScript, esbuild, electron-builder) | Apache-2.0 / MIT | Not distributed |
+| Your code (`crates/`, `xtask/`, `android/`) | none declared → all rights reserved | Yes — you own it |
+| Rust crates compiled into `open-emulator.exe` (iced, wgpu, tokio, reqwest, windows-sys, RustCrypto and the rest) | MIT, Apache-2.0, BSD, ISC, Zlib, Unicode-3.0 and similar | Yes, with attribution |
+| Dev tools (`xtask`, `open-vmm`) | same | Not distributed in the installer |
 
-Full dependency scan: **252 MIT, 40 ISC, 8 Apache-2.0, 6 BSD-2, 5 BSD-3, 5 BlueOak, 1 Python-2.0**,
-plus a few WTFPL/CC0 dual-licensed. **No GPL, LGPL, AGPL, MPL, SSPL, or non-commercial licences
-anywhere.** electron-builder already ships `LICENSE.electron.txt` and `LICENSES.chromium.html` into
-the output, which covers the attribution obligation for those.
+The full list, generated from `cargo metadata`, is in [`THIRD-PARTY-NOTICES.md`](THIRD-PARTY-NOTICES.md).
+A few crates are dual-licensed with a copyleft option (`MIT OR Apache-2.0 OR LGPL-2.1-or-later`,
+`Apache-2.0 OR GPL-2.0-only`); the project uses those under the permissive option, so no copyleft
+obligation attaches. Re-check the list when `Cargo.lock` changes.
 
-> **ffmpeg**: Electron bundles a full FFmpeg with H.264/AAC. That is a *patent* question rather
-> than a copyright one — commercial distribution of H.264 decoders has historically wanted an
-> MPEG-LA/Via licence. If you never decode video in the shell UI, you can ship Electron's
-> `ffmpeg.dll` built without proprietary codecs and remove the question entirely.
+The installer does not ship `ffmpeg` or any other codec library, so the patent question that comes
+with bundling H.264 decoders does not arise. Android's own video, inside the guest, is Google's.
 
 ---
 
@@ -65,10 +62,10 @@ Measured from the licence manifests in the fetched SDK (`emulator/NOTICE.csv`):
 | Component | Licence | Monetization impact |
 |---|---|---|
 | **Android SDK emulator** | Apache-2.0 for Google's QEMU fork, but the package also contains **GPL-2.0-only** (`qemu`, `e2fs`), **GPL-2.0-or-later** (`ffmpeg`, `dtc`), **LGPL-3.0** (Qt 6 Core/Gui/Widgets/Svg), **LGPL-2.1** (glib), **LGPL-2.0** (bios) | You never redistribute it, so the copyleft obligations do not attach to you. The **SDK Terms** are the real constraint. |
-| **`default` system image** (the `fast` profile) | AOSP, Apache-2.0 upstream — but distributed by Google under `android-sdk-license` | Cleanest of the three. Apache-2.0 is fully sellable *if you build the image yourself*. |
+| **`default` system image** (the `fast` profile, and the base of `openemu`) | AOSP, Apache-2.0 upstream — but distributed by Google under `android-sdk-license` | Cleanest of the three. Apache-2.0 is fully sellable *if you build the image yourself*. |
 | **`google_apis` image** (the `full` profile) | `android-sdk-license` + **Google Mobile Services, proprietary** | Not redistributable. Commercial use needs an agreement with Google. |
 | **`google_apis_playstore`** (the `play` profile) | same, plus the Play Store | Same, and Play certification is explicitly a per-vendor agreement. |
-| **`openemu-compat`** (our ROM built *from* `google_apis`) | everything the `google_apis` row says, **plus** it is a modified copy of that image: apps removed, two files rewritten, vbmeta re-signed | The hardest case here, and **unresolved**. SDK Terms §3.3 forbid modifying or making derivative works of the SDK; this ROM is one, made on the user's machine from their own download and never redistributed. Fine to develop and measure with. Do not make it a shipped default, or sell a build that produces it, before a lawyer has read §3.3 against it. |
+| **`openemu-compat`** (our ROM built *from* `google_apis`; `openemu` is the same recipe applied to the AOSP `default` image, which is a smaller version of the same question) | everything the `google_apis` row says, **plus** it is a modified copy of that image: apps removed, two files rewritten, vbmeta re-signed | The hardest case here, and **unresolved**. SDK Terms §3.3 forbid modifying or making derivative works of the SDK; this ROM is one, made on the user's machine from their own download and never redistributed. Fine to develop and measure with. Do not make it a shipped default, or sell a build that produces it, before a lawyer has read §3.3 against it. |
 | **F-Droid catalogue** | `fdroiddata` metadata is **AGPL-3.0**; the client code here is yours | You consume a public API and cache it locally; you do not run a modified F-Droid server, so AGPL §13 does not bite. Low risk, worth confirming. |
 | **The APKs users install** | whatever each app is under | Not your problem — you are a delivery mechanism, like any store. F-Droid's own `NonFreeAssets` flag already surfaces restricted ones, and the Store shows anti-features. |
 
@@ -76,7 +73,7 @@ Measured from the licence manifests in the fetched SDK (`emulator/NOTICE.csv`):
 
 ## What you can sell today, honestly
 
-- **The desktop shell on its own** — yes, unambiguously. It is your code plus MIT/BSD libraries.
+- **The desktop app on its own** — yes, unambiguously. It is your code plus permissively licensed Rust crates.
 - **The shell + the `fast` (AOSP) profile, with the user's machine fetching Google's SDK** — this
   is the grey area. Legally you distribute nothing of Google's; practically your product does not
   function without it, and §3.3 is written broadly.
@@ -96,17 +93,17 @@ entirely and leave you with an Apache-2.0/BSD stack you own outright.
 |---|---|---|
 | **crosvm** | **BSD-3-Clause** | Google's own VMM, written in Rust, and the thing that actually runs Android on ChromeOS (ARCVM). Permissive, so no source-offer obligation. Best fit. |
 | **Upstream QEMU** | GPL-2.0 | Sellable — invoking it as a separate process does not make your app a derivative — but you must offer QEMU's source if you ship its binaries. |
-| **`open-vmm`** (this repo) | yours | The stated long-term goal. Needs long mode + virtio/goldfish before it can boot Android. |
+| **`open-vmm`** (`crates/oe-vmm`) | yours | The stated long-term goal. A real-mode interpreter and a Linux KVM backend today; it needs long mode + virtio/goldfish before it can boot Android. |
 
-The repo is already structured for this: everything goes through `android/bin/open-emu`, so the
-backend can be swapped without touching the store, the account, or any UI.
+The repo is already structured for this: the app drives the guest through one engine interface in
+`oe-engine`, so the backend can be swapped without touching the store, the account, or the UI.
 
 ### 2. Replace the system image — weeks
 
 Build your own from **AOSP** (Apache-2.0) or start from **Android-x86** (Apache-2.0 userspace,
-GPL-2.0 kernel — redistributable with a source offer). `android/scripts/build_custom_image.sh`
-already does in-place image surgery, so the tooling exists; what is missing is producing the base
-image rather than consuming Google's.
+GPL-2.0 kernel — redistributable with a source offer). `oe-formats` already does in-place image
+surgery (an ext4 editor, AVB re-signing, super-partition editing) for the `openemu` ROM, so the
+tooling exists; what is missing is producing the base image rather than consuming Google's.
 
 This is the step that took BlueStacks and LDPlayer years, and it is the one that actually buys you
 the right to sell.
@@ -127,7 +124,7 @@ the right to sell.
 - Your own code has **no licence file**, which means all rights reserved. That is the right default
   for something you intend to sell, and adding an open-source licence would be hard to walk back —
   so nothing was added. Decide deliberately, and if the repo is public, decide soon.
-- `THIRD-PARTY-NOTICES.md` records the attribution the MIT/BSD dependencies require.
+- `THIRD-PARTY-NOTICES.md` records every Rust crate the app is built from, with its declared licence.
 - The `full` and `play` profiles now say plainly that they carry Google proprietary components and
   are not for commercial distribution.
 

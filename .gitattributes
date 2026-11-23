@@ -20,3 +20,4 @@ Makefile       text eol=lf
 # shipped.
 *.img.gz                            binary
 desktop/test/fixtures/rom/build.prop.* -text
+crates/oe-formats/testdata/build.prop.* -text

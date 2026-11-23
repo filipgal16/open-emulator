@@ -1,0 +1,3 @@
+[alias]
+# `cargo xtask <command>`: packaging and developer tools, in Rust like the rest. See xtask/src/main.rs.
+xtask = "run --package xtask --"

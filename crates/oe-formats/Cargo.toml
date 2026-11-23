@@ -1,0 +1,21 @@
+[package]
+name = "oe-formats"
+description = "Pure codecs for the disk images, archives and file formats open-emulator reads and writes"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[dependencies]
+crc32fast.workspace = true
+flate2.workspace = true
+getrandom.workspace = true
+num-bigint.workspace = true
+rsa.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

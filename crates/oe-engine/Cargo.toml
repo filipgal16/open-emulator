@@ -1,0 +1,26 @@
+[package]
+name = "oe-engine"
+description = "Drives Google's Android emulator: the SDK, AVDs, adb, downloads, and the guest itself"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[features]
+# The stand-in engine, for tests in the crates above this one.
+testing = []
+
+[dependencies]
+oe-formats = { workspace = true }
+oe-win = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+sha1 = { workspace = true }
+sha2 = { workspace = true }
+reqwest = { workspace = true }
+tokio = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+tokio = { workspace = true, features = ["test-util"] }

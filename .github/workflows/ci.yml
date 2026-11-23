@@ -1,0 +1,26 @@
+name: CI
+
+# Every push and pull request: the whole test suite on Windows, where the app runs, and the VMM on
+# Linux, the one place its KVM backend compiles.
+on:
+  push:
+    branches: ['**']
+  pull_request: {}
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test --workspace
+
+  vmm-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      # The KVM tests skip themselves where /dev/kvm is not available to the runner.
+      - run: cargo test -p oe-vmm

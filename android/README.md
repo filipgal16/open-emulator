@@ -1,73 +1,41 @@
-# Android guest runtime (API 30 / Android 11)
+# Android guest data
 
-Production-oriented guest bring-up for open-emulator: host-aware performance,
-warm-daemon reuse, working network, APK install/launch, and a real CLI.
-
-## Quick start
-
-```bash
-make android-fetch          # once (~4 GiB)
-make android-setup
-make android-provision      # cold boot + tune (+ snapshot on KVM hosts)
-make android-start          # subsequent calls reuse a running emulator
-./android/bin/open-emu doctor
-./android/bin/open-emu install path/to/app.apk
-./android/bin/open-emu launch com.android.settings/.Settings
-```
-
-## CLI (`android/bin/open-emu`)
-
-| Command | Purpose |
-|---------|---------|
-| `profile` | Detect KVM/cores/RAM → write performance profile |
-| `start [--cold]` | Boot Android (**warm** if already running) |
-| `stop` | Clean shutdown |
-| `provision` | Real-workload tuning + snapshot save |
-| `install <apk>` | `adb install -r -g` with timeout safety |
-| `launch <comp>` | Start an activity |
-| `shell` / `push` / `pull` / `logcat` / `screenshot` | Device I/O |
-| `doctor` | Network, storage, package manager checks |
-| `demo` | End-to-end verify path |
-
-## Performance model
-
-| Host | Accel | Boot strategy |
-|------|-------|---------------|
-| `/dev/kvm` present | KVM | Named snapshot `booted` after provision (fast relaunch) |
-| no KVM (TCG) | off | Optimized cold boot (~3 min here) + **keep emulator running** for warm reuse |
-
-Measured on this agent host (TCG, no KVM):
-
-- Cold boot to `sys.boot_completed`: **~175–180s** (down from ~310s)
-- Warm `start` while running: **immediate** (no reboot)
-- Guest network: **ok**
-- F-Droid APK install + Settings launch: **verified**
-
-TCG cannot reliably load Emulator named snapshots (rejects / segfaults). That is
-an upstream Emulator limitation without KVM — not papered over. On KVM hosts,
-`provision` + snapshot load is the fast path.
-
-## Real-world defaults
-
-- Google APIs image (Play Store / GMS available)
-- 8 GiB `/data` + 512 MB sdcard
-- Full-speed network (`netdelay none`, `netspeed full`)
-- Audio / keyboard / GPS / cameras enabled for app compatibility
-- Setup wizard completed; third-party APK installs allowed
-- Animations reduced for smoother interaction under software rendering
-- Drop APKs in `android/apps/` for auto-install during provision
+What the app reads to describe and configure an Android guest. The code that drives the guest —
+downloading the SDK, creating the AVD, starting, provisioning and stopping the emulator — is in
+`crates/oe-engine`; this folder is the data it works from, shipped beside `open-emulator.exe`.
 
 ## Layout
 
 ```text
 android/
-  bin/open-emu           Control plane CLI
-  lib/common.sh          Shared helpers
-  scripts/               fetch / setup / provision / bench
-  config/avd_config.ini  AVD hardware profile
-  apps/                  Drop APKs here
-  sdk/                   Local SDK + system image (gitignored)
-  avd/                   AVD + snapshots (gitignored)
-  state/                 pid, profile, provision markers
-  imported/              Image identity + last verified results
+  profiles/*.env         The Android versions a user can choose (image, API level, RAM hint)
+  devices/*.env          The identities a guest can report as (brand, model, panel, density)
+  config/avd_config.ini  The AVD hardware template every AVD starts from
+  apps/                  App files dropped here appear in the Store under "On this PC"
+  imported/              Image identity and last verified results, kept for reference
+  MODIFICATIONS.md       What the open-emulator ROM changes in Google's stock image
+  VERSION.txt            The image versions these profiles were verified against
 ```
+
+The SDK, AVDs, snapshots and per-guest state are not here: they live under
+`%LOCALAPPDATA%\open-emulator` (or the folder chosen in Settings), because they are gigabytes and
+belong to the machine, not to the app.
+
+## Profiles and devices
+
+A profile names a system image (`PROFILE_SYSTEM_IMAGE`, `PROFILE_IMAGE_TAG`), its API level, and
+optionally the stock image a ROM of ours is built from (`PROFILE_BASE_IMAGE_TAG`) and a RAM hint.
+The file name is the profile's id, which is what Settings stores and what the Android version menu
+lists. A device file sets the build properties and panel the guest reports, so apps that refuse to
+run on an emulator see a real handset.
+
+## Performance model
+
+| Host | Acceleration | Start |
+|------|--------------|-------|
+| Windows Hypervisor Platform (or AEHD) available | on | Quick Boot snapshot after the first provision: a warm start resumes in seconds |
+| No hypervisor | off | A cold boot every time, on a software CPU, and much slower |
+
+Cores and memory are measured defaults for the machine (see `crates/oe-engine/src/host.rs`) and can
+be overridden in Settings. A change of hardware discards the snapshot, because the emulator refuses
+to restore one onto different hardware, and the next start provisions again.

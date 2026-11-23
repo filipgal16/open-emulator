@@ -1,0 +1,70 @@
+[workspace]
+resolver = "3"
+members = ["crates/*", "xtask"]
+
+[workspace.package]
+version = "0.3.0"
+edition = "2024"
+rust-version = "1.90"
+authors = ["open-emulator contributors"]
+publish = false
+
+[workspace.dependencies]
+oe-formats = { path = "crates/oe-formats" }
+oe-win = { path = "crates/oe-win" }
+oe-engine = { path = "crates/oe-engine" }
+oe-core = { path = "crates/oe-core" }
+oe-store = { path = "crates/oe-store" }
+
+crc32fast = "1.5"
+flate2 = "1.1"
+getrandom = { version = "0.4", features = ["sys_rng"] }
+iced = { version = "0.14", default-features = false, features = ["wgpu", "tiny-skia", "crisp", "thread-pool", "tokio", "image", "svg", "canvas", "advanced"] }
+windows-sys = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Gdi",
+    "Win32_Security",
+    "Win32_Security_Cryptography",
+    "Win32_Storage_FileSystem",
+    "Win32_System_Diagnostics_ToolHelp",
+    "Win32_System_Registry",
+    "Win32_System_Services",
+    "Win32_System_SystemInformation",
+    "Win32_System_Threading",
+    "Win32_UI_Shell",
+    "Win32_UI_WindowsAndMessaging",
+] }
+num-bigint = "0.5"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "process", "io-util", "time", "sync", "fs", "net"] }
+raw-window-handle = "0.6"
+reqwest = { version = "0.13", default-features = false, features = ["native-tls", "http2", "system-proxy", "charset"] }
+wmi = { version = "0.18", default-features = false }
+rsa = { version = "0.10", features = ["pkcs1v15"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+futures-util = { version = "0.3", default-features = false, features = ["alloc"] }
+aes-gcm = { version = "0.10", default-features = false, features = ["aes", "alloc"] }
+rfd = "0.15"
+sha1 = "0.11"
+sha2 = "0.11"
+tempfile = "3.27"
+
+[profile.dev]
+# Our own code builds fast and debugs well; dependencies are built optimised, because RSA key
+# generation, ext4 checksums and image decoding are unusably slow at opt-level 0 and the tests
+# run them.
+opt-level = 0
+
+[profile.dev.package."*"]
+opt-level = 2
+
+# Pixel loops and filesystem checksums over megabytes: unoptimised, the tests that run them take
+# minutes instead of seconds.
+[profile.dev.package.oe-formats]
+opt-level = 2
+
+[profile.release]
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = "symbols"
