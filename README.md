@@ -6,40 +6,45 @@ store, and stays out of your way.
 
 No terminal. No configuration. Double-click, wait once, use Android.
 
-Written in Rust. Version 0.3.0.
+> **Status: this is 0.3.0, the Rust rewrite, and it is not released yet.** It lives on the
+> `rust-rewrite` branch. The [latest release](https://github.com/filipgal16/open-emulator/releases/latest)
+> is still 0.2.0, the Electron app.
+>
+> CI runs the whole test suite on Windows and the `oe-vmm` tests on Linux, and both pass. Not yet
+> done with this build: booting Android end to end on real hardware, building the installer, and
+> upgrading an Electron install to it.
 
 ---
 
 ## Download
 
-### [Download open-emulator for Windows](https://github.com/filipgal16/open-emulator/releases/latest)
+0.3.0 has no installer yet. To try it, [build it from source](#building-from-source).
 
-**`open-emulator-Setup-<version>.exe`**, on the
-[latest release](https://github.com/filipgal16/open-emulator/releases/latest). Per-user install, no
-administrator prompt. The installer asks where to put the app, and the app asks where to put
-Android. After that, the app tells you when a newer version is out — see [Updates](#updates).
+From 0.3.0 on, each [release](https://github.com/filipgal16/open-emulator/releases) carries
+**`open-emulator-Setup-<version>.exe`**:
+
+- It installs for your Windows user only, so there is no administrator prompt. The app goes to
+  `%LOCALAPPDATA%\Programs\open-emulator` unless you pick another folder in the installer.
+- Run over the Electron version (0.2.x or older), it removes the old files and the old Apps &
+  features entry and keeps your data. The Electron app's own updater is meant to install it as well.
+  See [`PACKAGING.md`](PACKAGING.md#updating-from-the-electron-version).
+- From then on the app tells you when a newer version is out. See [Updates](#updates).
 
 > **The installer is unsigned.** Windows SmartScreen will show *"Windows protected your PC"*.
-> Click **More info → Run anyway**. Removing that warning requires a code-signing certificate —
-> see [Code signing](PACKAGING.md#code-signing).
-
-Prefer to build it yourself? See [Building from source](#building-from-source).
-
-If you have the Electron version (0.2.x or older) installed, run this installer over it. It removes
-the old files and the old Apps & features entry, keeps your shortcuts and your data, and the old
-app's own updater can install it too. See [`PACKAGING.md`](PACKAGING.md#updating-from-the-electron-version).
+> Click **More info → Run anyway**. Removing that warning requires a code-signing certificate.
+> See [Code signing](PACKAGING.md#code-signing).
 
 ### What you need
 
 | | |
 |---|---|
 | **OS** | Windows 10 or 11, x64 |
-| **Virtualization** | Enabled in BIOS, and the **Windows Hypervisor Platform** turned on in *Windows Features*. Without it the emulator runs in software and is far too slow to use |
-| **Disk** | About 10 GB free, and you choose the drive. The installer is small; Android is the rest |
-| **Network** | Required for the first run only |
+| **Virtualization** | Turned on in the PC's firmware (BIOS/UEFI). If the **Windows Hypervisor Platform** is off, setup turns it on; Windows asks for permission, then needs a restart. Without acceleration the emulator falls back to running in software, which is very slow |
+| **Disk** | About 10 GB free. The app itself is about 15 MB; Android takes the rest |
+| **Network** | Needed for the first run and to download apps |
 
-No Linux, WSL, JDK or Android Studio is involved. The app downloads the Android SDK pieces it needs
-(about 1.1 GB) itself.
+No Linux, WSL, JDK or Android Studio is involved. The app downloads the Android SDK parts it needs
+(about 1.2 GB) by itself.
 
 ---
 
@@ -47,112 +52,161 @@ No Linux, WSL, JDK or Android Studio is involved. The app downloads the Android 
 
 Double-click and wait. There is nothing to configure and no terminal involved.
 
-The app works out what this PC already has, downloads the emulator and a system image (resumable,
-and checked against Google's published digests), creates a device, and, where needed, builds the
-open-emulator ROM from Google's stock image on your machine.
+Setup checks three things and fixes what it can:
 
-**You are not made to wait on the first boot.** Once the download is banked, the app opens straight
-away and Android's one-time preparation — the single cold boot it ever does — runs in the background
-while you browse Apps and the Store. The Device tab shows "Starting Android" until it is ready.
-Every start after that resumes from a snapshot in about five seconds.
+1. **Hardware acceleration.** If the Windows Hypervisor Platform is off but this PC can run it,
+   setup turns it on, and Windows asks for permission. Windows needs a restart to finish turning it
+   on, and setup tells you so. Setup carries on without acceleration, because the emulator can fall
+   back to running in software, only much more slowly.
+2. **Android system image.** Downloads the emulator and the system image. The download resumes
+   after an interruption, and each file is checked against the digest Google publishes. For an
+   open-emulator version of Android, setup also builds that ROM from Google's stock image on your
+   PC. This is the only step setup waits for.
+3. **Preparing your device.** Setup creates the device, and Android boots once from cold and saves
+   a snapshot. Every later start resumes from that snapshot.
 
-**Where Android is downloaded is up to you.** It is by far the largest thing here, so if your system
-drive is small, point it at another one — Settings → Storage. Moving it later relocates what has
-already been downloaded rather than fetching it again.
+**You don't have to wait for the first boot.** Once the download is done, the app opens. Android's
+first boot runs in the background while you browse Apps and the Store, and the Device tab says
+"Preparing your device" until it is ready. Without hardware acceleration the first boot does not
+start on its own; press **Prepare device** in the title bar to start it anyway.
 
-**Setup does not require a restart.** If Windows needs one before hardware acceleration is
-available, that is the last step rather than a gate at the beginning.
+**Setup never stops for a restart.** If Windows needs one to finish turning on acceleration, the
+download goes ahead anyway, and only the first boot waits until acceleration works.
 
-If something fails, the setup screen says what failed and offers **Try again**; **Details** shows
+**You choose where Android is stored.** It is by far the largest thing the app downloads. It goes
+to `%LOCALAPPDATA%\open-emulator` at first. If your system drive is small, choose another folder in
+Settings → Storage. What is already downloaded moves to the new folder instead of being downloaded
+again, and the change takes effect when the app restarts.
+
+If something fails, the setup screen says what failed and offers **Try again**. **Details** shows
 the step list and the full log. Nothing already downloaded is fetched twice.
 
 ---
 
 ## Using it
 
+### The title bar
+
+The title bar holds:
+
+- The **Device / Apps / Store / Settings** tabs.
+- The device's state. Once Android is running, this includes its version and API level.
+- **Start** and **Stop**.
+- The Android version menu.
+- The **Account** chip.
+
 ### Device
 
-The Android display. This is the emulator's own GPU-rendered window, embedded directly in the app,
-so it runs at the emulator's frame rate and mouse and keyboard reach Android without a round trip.
-The device keeps its own aspect ratio and is centred in the pane, the way a phone sits on a desk.
-Where there is no such window to embed, the screen is mirrored frame by frame instead.
+The Android display is the emulator's own GPU-rendered window, embedded in the app. So it runs at
+the emulator's frame rate, and your mouse and keyboard go straight to Android. The display keeps
+its own aspect ratio and is centred in the pane, the way a phone sits on a desk. When it rotates,
+the app fits it to the pane again.
 
-A tool rail beside it holds back, home and recents, fullscreen, rotate, screenshot, volume and
-power. The title bar holds the **Device / Apps / Store / Settings** tabs and the Android version
-menu, with start and stop.
+If the app can't embed the emulator's window, it mirrors the screen frame by frame instead, and
+resizes Android's display to fit the pane.
+
+A tool rail beside the display holds Back, Home, Recents, Fullscreen, Rotate, Screenshot,
+Volume down and up, and Power.
 
 ### Apps
 
-Everything installed in the guest. Click one to launch it.
+Everything installed on the device, as tiles. Click one to launch it.
 
 ### Store
 
-Three sources behind one search box:
+One search box covers three sources. Pick one with the chips above the results, or leave it on
+**All**:
 
 | Source | What it is |
 |---|---|
-| **F-Droid** | About 4,300 open-source apps. The catalogue is downloaded once and searched locally, so results are instant and work offline. Every download is checked against the SHA-256 F-Droid publishes before it reaches the guest. |
-| **Play** | The real Google Play Store, running inside the guest and steered with `market://` intents. Needs a Google guest version — the tab offers a switch. |
-| **Local** | Press **Install from file…**, or drag a file onto the window. Takes `.apk`, and the `.xapk` / `.apks` bundles games are usually shipped as — the app picks the right split parts for the device's ABI and installs them together, including OBB data. |
+| **F-Droid** | About 5,000 open-source apps. The catalogue is downloaded once and searched on your PC, so results are instant and work offline. An app's page lists F-Droid's warnings about it, such as ads, tracking or non-free parts. Every download is checked against the SHA-256 F-Droid publishes before it reaches the device. |
+| **Play** | The real Google Play Store, running on the device and controlled with `market://` intents. Search results show on the device screen. Needs the **Play Store** Android version; if the current one has no Play Store, the Play tab tells you to switch. |
+| **On this PC** | Press **Install from file**, or drag a file onto the window. It takes `.apk`, plus the `.xapk` and `.apks` bundles that games usually come in. For a bundle, the app picks the parts that match the device's processor and installs them together, OBB game data included. |
 
-Apps needing a newer Android than the guest are shown with the reason rather than hidden, so an
-install never fails after a long download.
+An app that needs a newer Android than the device runs is still listed, marked **Unavailable**, and
+its page says why. So you never wait through a long download only to have the install fail.
 
 ### Account
 
-The account chip holds one account across every guest. It notices when a guest is already signed in
-to Google, and can fill your address and password into Google's own sign-in screen — the same job a
-password manager does. You complete the flow, including two-factor.
+The **Account** chip opens one account that every Android version shares: your name, your Google
+address and, if you choose, your password.
 
-The password is optional, off by default, and sealed with Windows DPAPI for your Windows user. If
-that fails the app stores nothing rather than falling back to a plain file. A password saved by the
-old Electron version is migrated automatically.
+The page shows whether the device is signed in to Google, and as whom. **Sign in on the device**
+opens Google's own sign-in screen on the device. Tap a field there, then press **Type my address**
+or **Type my password**, and the app types it in for you, the way a password manager would. You
+finish signing in yourself, two-factor included.
+
+Storing a password is optional and off by default. A stored password is typed only into the
+device, and only when **Let assisted sign-in type it** is on. It is encrypted with Windows' DPAPI,
+so only your Windows user can read it. If DPAPI isn't available, the app doesn't store the password
+at all; it never saves it as plain text. A password saved by the Electron version is moved over
+automatically.
 
 ### Settings
 
-Everything is set in the app; there is no file to edit.
+Everything is set in the app; there is no file to edit. If hardware acceleration is missing, a
+banner at the top says what is left to do.
 
-- **Appearance** — light, dark, or follow Windows.
-- **Device identity** — which handset the guest reports as.
-- **Display** — the screen follows the window, so its size is the resolution. A slider sets how
-  large Android draws things inside it.
-- **Performance** — processor cores and memory, each with an **Automatic** switch, a slider and a
-  box to type a number into. Changes apply at the next start.
-- **Storage** — where Android is downloaded, with a folder picker that moves what is already there.
-- **Windows Defender** — an opt-in exclusion for the emulator's folder. Real-time scanning of the
-  guest's disk writes slows boots; the exclusion is added only when you ask, with one UAC prompt.
-- **Updates** — see below.
+- **Appearance**: System (follows Windows), Light or Dark.
+- **Device identity**: which phone model the device reports itself as.
+- **Display**: **Interface size**, which sets how large Android draws things (its density, in dpi).
+- **Performance**: sliders for **Processor** cores and **Memory**. Next to them are this PC's
+  processors and memory, the graphics mode, and whether acceleration is working.
+- **Storage**: where Android is stored.
+  - **Change folder** moves what is already there.
+  - **Free** deletes downloaded archives and temporary files. It never touches the installed SDK
+    or a device.
+- **Antivirus**: an optional Windows Defender exclusion for the emulator's folder. Defender scans
+  everything the device writes to disk, which slows starts down. The exclusion is added only when
+  you turn it on, and Windows asks for permission.
+- **Updates**: see [Updates](#updates).
+- **Keyboard**: the shortcuts, as in the table below.
+
+The Interface size, Processor and Memory sliders each have an **Automatic** switch, which picks the
+value for this PC. Changes to them and to Device identity take effect the next time the device
+starts.
+
+### Keyboard
+
+| Keys | Does |
+|---|---|
+| Alt+1 to Alt+4 | Device, Apps, Store, Settings |
+| Alt+S | Starts or stops the device |
+| Alt+← | Android Back |
+| Esc | Closes the open panel or menu, or leaves fullscreen |
 
 ### Updates
 
-The app looks for a newer version in the background by reading `latest.yml` on the latest GitHub
-release, and when there is one puts a dot on **Settings**. Nothing downloads until you press
-**Download** in Settings → Updates, the download is verified against the SHA-512 in `latest.yml`,
-and nothing installs until you press **Restart to update** — or close the app, which installs it
-then. It never offers an older version than the one you have.
+The app checks for a newer version 30 seconds after it starts, then every six hours. It reads
+`latest.yml` from the latest GitHub release, and it never offers a version older than yours.
+
+Nothing downloads until you press **Download** in Settings → Updates. The download is checked
+against the SHA-512 in `latest.yml`. Nothing installs until you press **Restart to update**, or
+until you close the app, which installs it then.
 
 ### Android versions
 
-The version menu switches guests. Each keeps its own device, apps, and snapshot, so switching never
-disturbs the others. The guests are defined by `android/profiles/*.env`.
+The version menu switches between Android versions; the device must be stopped first. Each version
+keeps its own device, apps and snapshot, so switching never disturbs the others. The versions are
+defined in `android/profiles/*.env`.
 
-| Version | Profile | What it is | Ships? |
-|---|---|---|---|
-| **open-emulator Android** | `openemu` | Our own ROM, built on your PC from Google's stock AOSP image: debloated and rebranded. The default. | Derived from Apache-2.0 AOSP — see [`LICENSING.md`](LICENSING.md) |
-| **open-emulator Android (Google APIs)** | `openemu-compat` | The same recipe applied to the Google APIs image, for games: runs apps made for ARM phones, with Google Play Services. | Built from Google's image on your PC — personal use |
-| **Fast** | `fast` | Plain stock Android (AOSP). Boots quickest, no Google Play. | Apache-2.0 upstream |
-| **Google apps** | `full` | Adds Google Play Services for apps that need them. | Google proprietary — personal use |
-| **Play Store** | `play` | Google Play built in. | Google proprietary — personal use |
+| Version | Profile | Android | What it is | Ships? |
+|---|---|---|---|---|
+| **open-emulator** | `openemu` | 11 | Our own ROM, built on your PC from Google's stock AOSP image: debloated, tuned and rebranded. No Google Play. The default. | Derived from Apache-2.0 AOSP; see [`LICENSING.md`](LICENSING.md) |
+| **open-emulator Android (Google APIs)** | `openemu-compat` | 14 | The same recipe applied to the Google APIs image, for games. It runs apps made for ARM phones, and has Google Play Services for signing in, but no Play Store app. | Built from Google's image on your PC; personal use only |
+| **Fast** | `fast` | 11 | Plain stock Android (AOSP). Boots quickest. No Google Play. | Apache-2.0 upstream |
+| **Google apps** | `full` | 11 | Adds Google Play Services for apps that need them. No Play Store app. | Google proprietary; personal use only |
+| **Play Store** | `play` | 11 | Google Play built in. Slowest to start. | Google proprietary; personal use only |
 
-Everything marked personal use contains Google Mobile Services, which cannot be redistributed. Read
-[`LICENSING.md`](LICENSING.md) before shipping anything based on them.
+Every version marked "personal use only" contains Google Mobile Services, which cannot be
+redistributed. Read [`LICENSING.md`](LICENSING.md) before shipping anything based on one of them.
 
 ---
 
 ## Building from source
 
-You need Rust 1.90 or newer with the **MSVC** toolchain (Visual Studio Build Tools with the C++
-workload) on Windows.
+You need Rust 1.90 or newer with the **MSVC** toolchain on Windows. The MSVC toolchain needs Visual
+Studio Build Tools with the C++ workload.
 
 ```bash
 cargo build --release -p oe-ui      # target/release/open-emulator.exe
@@ -161,12 +215,11 @@ cargo test --workspace              # the whole test suite
 cargo xtask dist                    # release build + installer + latest.yml in target/dist/
 ```
 
-`cargo xtask dist` needs [NSIS](https://nsis.sourceforge.io/)'s `makensis`; without it, use
-`cargo xtask dist --stage-only` to produce the staged app folder only. Details are in
-[`PACKAGING.md`](PACKAGING.md).
+`cargo xtask dist` needs `makensis` from [NSIS](https://nsis.sourceforge.io/). Without it, run
+`cargo xtask dist --stage-only`, which builds only the folder the installer would be made from.
+[`PACKAGING.md`](PACKAGING.md) has the details.
 
-`oe-vmm` builds and tests on Linux and macOS too (its KVM backend is Linux only):
-`cargo test -p oe-vmm`.
+`oe-vmm` also builds and tests on Linux, where its KVM backend runs: `cargo test -p oe-vmm`.
 
 ### Developer tasks
 
@@ -185,15 +238,15 @@ cargo xtask dist                    # release build + installer + latest.yml in 
 
 ### Developer switches
 
-Environment variables read by the app:
+Environment variables the app reads:
 
 | Variable | Effect |
 |---|---|
 | `OPEN_EMULATOR_USER_DATA` | Use this folder instead of `%APPDATA%\open-emulator` |
-| `OPEN_EMULATOR_SETUP` | `check`: setup only checks what is there. `skip`: go straight to the app, with no multi-gigabyte download |
+| `OPEN_EMULATOR_SETUP` | `check`: setup only checks what is there. `skip`: go straight to the app, without the multi-gigabyte download |
 | `OPEN_EMULATOR_VIEW` | Open on a screen: `apps`, `store`, `settings`, `account`, `setup` or `menu` |
 | `OPEN_EMULATOR_ANDROID_ROOT` | Where `android/` (profiles, devices, AVD config) is, when running from a checkout |
-| `ICED_BACKEND` | `tiny-skia` selects the software renderer instead of the GPU one |
+| `ICED_BACKEND` | `tiny-skia` makes iced use its software renderer instead of the GPU one |
 | `ANDROID_ADB_SERVER_PORT` | The port of the adb server to use |
 
 ---
@@ -212,13 +265,15 @@ Environment variables read by the app:
         └── oe-win ───── every Win32 call: window embedding, UAC, registry, DPAPI, WMI
 ```
 
-The app starts `emulator.exe` from the Android SDK as an ordinary Windows process and reparents its
-window into the app's window (`SetParent`). The app talks to the guest through an adb client that
-speaks adb's socket protocol directly; `adb.exe` is used only to start the server and for installs
-and pushes. A persistent guest shell carries taps and key events.
+The app starts `emulator.exe` from the Android SDK as an ordinary Windows process. It then moves the
+emulator's window inside its own (`SetParent`). The app talks to the guest through its own adb
+client, which speaks adb's socket protocol directly. It starts `adb.exe` only to start the adb
+server, to install apps and to copy files to the device. Taps and key presses go through one shell
+session on the guest that stays open.
 
-Everything the interface shows, including app icons, is fetched by the Rust side. Images go through
-an https-only cache that checks their magic bytes before they are drawn.
+Everything the interface shows, app icons included, is downloaded by the Rust code. Images come
+only over https, through a size-capped cache. The cache checks each file's first bytes to make sure
+it really is an image before it is drawn.
 
 ## Layout
 
@@ -239,6 +294,7 @@ xtask/              cargo xtask: dist, rom-build, rom-check, wallpaper, icon, be
 packaging/windows/  installer.nsi, the NSIS installer script
 android/            data the app reads: profiles/, devices/, config/avd_config.ini, apps/
 design/             design notes, including the ROM (design/openemu-rom.md)
+docs/               the 60 fps display plan and its review
 .github/workflows/  ci.yml (tests) and release.yml (installer and GitHub release)
 ```
 
@@ -250,7 +306,7 @@ Unchanged from the Electron version, so an upgrade finds everything where it was
 |---|---|
 | `%LOCALAPPDATA%\Programs\open-emulator` | The installed app |
 | `%APPDATA%\open-emulator` | `settings.json`, `device.json`, `account.json`, store caches |
-| `%LOCALAPPDATA%\open-emulator`, or the folder chosen in Settings | The Android SDK, AVDs, state and ROMs |
+| `%LOCALAPPDATA%\open-emulator`, or `open-emulator` in the folder chosen in Settings | The Android SDK, AVDs, state and ROMs |
 
 Uninstalling removes the app and leaves all of the data.
 
@@ -263,10 +319,11 @@ Uninstalling removes the app and leaves all of the data.
 | [`LICENSING.md`](LICENSING.md) | What every dependency means if you sell this |
 | [`THIRD-PARTY-NOTICES.md`](THIRD-PARTY-NOTICES.md) | The Rust crates the app is built from, and their licences |
 | [`android/MODIFICATIONS.md`](android/MODIFICATIONS.md) | What the guest is tuned for |
-| [`design/`](design/) | Design notes: the ROM, the 60 fps display, the roadmap |
+| [`design/`](design/) | Design notes: the ROM, the 60 fps display, the shell redesign, the roadmap |
+| [`docs/`](docs/) | The 60 fps display plan and its review |
 
 ## Licence
 
 No licence file is present, which means **all rights reserved**. This is deliberate while the
-monetization path is open — see [`LICENSING.md`](LICENSING.md). Third-party attribution is recorded
+monetization path is open; see [`LICENSING.md`](LICENSING.md). Third-party attribution is recorded
 in [`THIRD-PARTY-NOTICES.md`](THIRD-PARTY-NOTICES.md).
