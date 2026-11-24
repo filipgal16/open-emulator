@@ -67,9 +67,11 @@ fn soft_backend_prints_the_greeting() {
 }
 
 #[test]
-fn kvm_backend_when_dev_kvm_exists() {
-    if !(cfg!(target_os = "linux") && std::path::Path::new("/dev/kvm").exists()) {
-        eprintln!("kvm backend skipped (/dev/kvm missing)");
+fn kvm_backend_when_dev_kvm_opens() {
+    // The same test the monitor makes: `/dev/kvm` has to open, not merely exist. CI runners have
+    // the device without permission to use it, and the binary then rightly falls back to soft.
+    if !oe_vmm::vmm::kvm_available() {
+        eprintln!("kvm backend skipped (/dev/kvm missing or not permitted)");
         return;
     }
     let (stdout, stderr, success) = run_binary("kvm");
