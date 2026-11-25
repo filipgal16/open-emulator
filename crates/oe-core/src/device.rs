@@ -26,7 +26,7 @@ pub struct DeviceState {
     /// Whether this profile's AVD has been prepared, and so can boot from a snapshot.
     pub provisioned: bool,
     pub snapshot: bool,
-    /// True while a start, stop or prepare is in flight — the UI disables its buttons on this.
+    /// True while a start, stop or prepare is in flight: the UI disables its buttons on this.
     pub busy: bool,
     /// Set when the last action failed, so the UI can say what went wrong.
     pub error: Option<String>,
@@ -50,7 +50,7 @@ impl Default for DeviceState {
 }
 
 /// What a status report said. A line that is absent leaves its field unknown rather than
-/// reporting "not provisioned" for a guest that was merely quiet — that would send someone through
+/// reporting "not provisioned" for a guest that was merely quiet; that would send someone through
 /// a re-provision they did not need.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct StatusReport {

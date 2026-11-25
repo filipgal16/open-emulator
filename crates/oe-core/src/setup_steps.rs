@@ -2,7 +2,7 @@
 //!
 //! Installing a Linux distribution, apt-getting a JDK, syncing a shell backend into it, and
 //! checking for `tar.exe` are all gone: archives are unpacked here, natively. What is left is the
-//! work that was always the real cost — acceleration, the download, and the first boot.
+//! work that was always the real cost: acceleration, the download, and the first boot.
 
 use std::sync::Arc;
 
@@ -30,7 +30,7 @@ pub struct NativeSetupContext {
     pub client: OpenEmuClient,
     /// The profile setup is for, read live: switching profile changes what "downloaded" means.
     pub profile: ProfileSource,
-    /// The tuning the engine will start a profile with — the engine's own, not a second
+    /// The tuning the engine will start a profile with: the engine's own, not a second
     /// derivation. `None` gives the ROM no facts rather than made-up ones.
     pub tuning: Option<TuningSource>,
     /// Fires as bytes arrive, so the wizard's single bar tracks the real download.
@@ -155,7 +155,7 @@ async fn sdk_check(context: &NativeSetupContext) -> Result<CheckResult> {
         return Ok(CheckResult::pass(if state.up_to_date {
             version
         } else {
-            format!("{version} — an update is ready and applies at the next start")
+            format!("{version}: an update is ready and applies at the next start")
         }));
     }
     if let Some(recipe) = recipe.filter(|recipe| have_emulator && system_image_path(layout, &recipe.base_tag, recipe.api_level).exists()) {
@@ -230,7 +230,7 @@ fn provisioned_step(context: Arc<NativeSetupContext>) -> Step {
                     return Ok(CheckResult::pass("Ready"));
                 }
                 // Preparing means booting, and on Windows the emulator will not boot without a
-                // hypervisor — it starts and then sits there. Say what is needed instead.
+                // hypervisor; it starts and then sits there. Say what is needed instead.
                 let acceleration = detect_acceleration().await;
                 if !acceleration.available {
                     return Ok(CheckResult::warn(format!("Everything is downloaded. {}", acceleration.detail)));

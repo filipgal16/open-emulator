@@ -18,7 +18,7 @@ pub struct SdkLayout {
     pub avd_manager: PathBuf,
     pub emulator: PathBuf,
     pub adb: PathBuf,
-    /// Fetched only when the host has no usable `java` — `sdkmanager` is a Java program.
+    /// Fetched only when the host has no usable `java`: `sdkmanager` is a Java program.
     pub jre_root: PathBuf,
     /// `ANDROID_AVD_HOME`. One `.avd` directory and `.ini` per profile.
     pub avd_home: PathBuf,

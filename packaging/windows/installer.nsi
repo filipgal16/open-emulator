@@ -6,13 +6,14 @@
 ;   /DICON=<path>        optional: the app icon (.ico)
 ;
 ; Per-user, like the Electron installer it replaces: no administrator rights, installed under
-; %LOCALAPPDATA%\Programs\open-emulator, the folder changeable. App data — settings, the account,
-; the downloaded Android — is never touched by installing or uninstalling.
+; %LOCALAPPDATA%\Programs\open-emulator, the folder changeable. App data (settings, the account,
+; the downloaded Android) is never touched by installing or uninstalling.
 ;
 ; It also takes over from the Electron version. That version's updater runs the newest release's
-; installer with `--updated /S --force-run`, into the folder it is installed in; this installer
-; removes the Electron files it finds there, and that version's entry in Apps & features, then
-; puts itself in their place. Shortcuts keep their paths, so the ones the user has keep working.
+; installer with `--updated /S --force-run` and no folder; this installer finds the folder in the
+; Electron version's own record of it, removes the Electron files there, that version's entry in
+; Apps & features and its record, then puts itself in their place. Shortcuts keep their paths, so
+; the ones the user has keep working.
 
 Unicode true
 SetCompressor /SOLID lzma
@@ -36,6 +37,9 @@ RequestExecutionLevel user
 !define EXE "open-emulator.exe"
 !define UNINSTALL_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP}"
 !define SETTINGS_KEY "Software\${APP}"
+; Where the Electron version recorded its folder: under its app GUID, which electron-builder
+; derives from the appId, com.openemulator.desktop. v0.2.0 is the only Electron release.
+!define ELECTRON_KEY "Software\1e45ca69-6354-5adb-b55f-edb5c830d549"
 
 Name "${APP}"
 OutFile "${OUTFILE}"
@@ -90,8 +94,8 @@ Function StrContains
   Pop $R3
 FunctionEnd
 
-; Asks a running copy to close — the same request as its close button, so it lets the emulator's
-; window go before it exits — and gives it a moment to do so.
+; Asks a running copy to close (the same request as its close button, so it lets the emulator's
+; window go before it exits) and gives it a moment to do so.
 !macro CloseRunningApp
   nsExec::Exec '"$SYSDIR\taskkill.exe" /IM ${EXE}'
   Pop $0
@@ -100,30 +104,47 @@ FunctionEnd
   ${EndIf}
 !macroend
 
-; Removes what the Electron version installed, file by file: never the folder as a whole, which
-; the user may have chosen to be somewhere that holds other things.
-Function RemoveElectron
-  ${If} ${FileExists} "$INSTDIR\resources\app.asar"
-    RMDir /r "$INSTDIR\resources"
-    RMDir /r "$INSTDIR\locales"
-    Delete "$INSTDIR\*.pak"
-    Delete "$INSTDIR\*.dll"
-    Delete "$INSTDIR\*.bin"
-    Delete "$INSTDIR\*.dat"
-    Delete "$INSTDIR\vk_swiftshader_icd.json"
-    Delete "$INSTDIR\LICENSE.electron.txt"
-    Delete "$INSTDIR\LICENSES.chromium.html"
-    Delete "$INSTDIR\Uninstall ${APP}.exe"
-    Delete "$INSTDIR\${EXE}"
+; With no folder given (/D=), the installer goes where this app already is (InstallDirRegKey found
+; that) or else where the Electron version is, so an update from it lands in the same folder.
+Function .onInit
+  ReadRegStr $0 HKCU "${SETTINGS_KEY}" "InstallLocation"
+  ${If} $0 == ""
+  ${AndIf} $INSTDIR == "$LOCALAPPDATA\Programs\${APP}"
+    ReadRegStr $0 HKCU "${ELECTRON_KEY}" "InstallLocation"
+    ${If} $0 != ""
+    ${AndIf} ${FileExists} "$0\resources\app.asar"
+      StrCpy $INSTDIR $0
+    ${EndIf}
   ${EndIf}
+FunctionEnd
 
-  ; Its entry in Apps & features, recognised by the name of its uninstaller.
+; Removes the Electron version from the folder this one goes into, file by file: never the folder
+; as a whole, which the user may have chosen to be somewhere that holds other things. Then its
+; entry in Apps & features and its record of the folder. A copy in another folder is left alone,
+; entry and all: it is still installed, and can still be uninstalled.
+Function RemoveElectron
+  ${IfNot} ${FileExists} "$INSTDIR\resources\app.asar"
+    Return
+  ${EndIf}
+  RMDir /r "$INSTDIR\resources"
+  RMDir /r "$INSTDIR\locales"
+  Delete "$INSTDIR\*.pak"
+  Delete "$INSTDIR\*.dll"
+  Delete "$INSTDIR\*.bin"
+  Delete "$INSTDIR\*.dat"
+  Delete "$INSTDIR\vk_swiftshader_icd.json"
+  Delete "$INSTDIR\LICENSE.electron.txt"
+  Delete "$INSTDIR\LICENSES.chromium.html"
+  Delete "$INSTDIR\Uninstall ${APP}.exe"
+  Delete "$INSTDIR\${EXE}"
+
+  ; Its entry in Apps & features, recognised by its uninstaller being the one in this folder.
   StrCpy $3 0
   next_key:
     EnumRegKey $1 HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall" $3
     StrCmp $1 "" keys_done
     ReadRegStr $R0 HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\$1" "UninstallString"
-    StrCpy $R1 "Uninstall ${APP}.exe"
+    StrCpy $R1 "$INSTDIR\Uninstall ${APP}.exe"
     Call StrContains
     ${If} $R2 == 1
     ${AndIf} $1 != "${APP}"
@@ -133,6 +154,11 @@ Function RemoveElectron
     IntOp $3 $3 + 1
     Goto next_key
   keys_done:
+
+  ReadRegStr $0 HKCU "${ELECTRON_KEY}" "InstallLocation"
+  ${If} $0 == $INSTDIR
+    DeleteRegKey HKCU "${ELECTRON_KEY}"
+  ${EndIf}
 FunctionEnd
 
 Section "${APP}"
@@ -158,7 +184,7 @@ Section "${APP}"
   CreateShortCut "$SMPROGRAMS\${APP}.lnk" "$INSTDIR\${EXE}"
   CreateShortCut "$DESKTOP\${APP}.lnk" "$INSTDIR\${EXE}"
 
-  ; An update — from the Electron updater or this app's own — asks for the app to come back.
+  ; An update, from the Electron updater or this app's own, asks for the app to come back.
   ${GetParameters} $R0
   ClearErrors
   ${GetOptions} $R0 "--force-run" $R1

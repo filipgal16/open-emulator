@@ -1,6 +1,6 @@
 //! Hardware acceleration on Windows.
 //!
-//! Without it the guest still runs — QEMU falls back to interpreting every instruction — but a
+//! Without it the guest still runs (QEMU falls back to interpreting every instruction), but a
 //! cold boot goes from well under a minute to the better part of an hour. It is the single largest
 //! factor in whether this feels like a product.
 //!
@@ -12,7 +12,7 @@
 //!   running this app is quite likely running WSL2 or Docker too.
 //!
 //!   **AEHD** (Android Emulator Hypervisor Driver, Google's successor to Intel HAXM) is a kernel
-//!   driver that benchmarks faster on AMD — but it requires Hyper-V and the Virtual Machine
+//!   driver that benchmarks faster on AMD, but it requires Hyper-V and the Virtual Machine
 //!   Platform to be **off**, which breaks WSL2 and everything built on it. Detected and used when
 //!   already present; never installed automatically, because doing so would silently disable other
 //!   software the user depends on.
@@ -49,7 +49,7 @@ pub struct AccelerationProbes {
     /// Windows has staged feature changes that need a restart.
     ///
     /// Only meaningful alongside `whpx_enabled`: the feature reports itself enabled the moment
-    /// DISM finishes, and stays that way — while doing nothing at all — until the machine
+    /// DISM finishes, and stays that way, while doing nothing at all, until the machine
     /// restarts.
     pub reboot_pending: bool,
     /// The Hyper-V hypervisor is loaded. Decides whether `reboot_pending` is about *this* feature
@@ -80,12 +80,12 @@ pub fn decide_acceleration(probes: AccelerationProbes) -> AccelerationState {
 
     if probes.whpx_enabled {
         // Enabled is not the same as working. DISM reports success and flips the feature's state
-        // immediately, but nothing actually changes until the machine restarts — so believing the
+        // immediately, but nothing actually changes until the machine restarts, so believing the
         // flag here would have the app pass `-accel whpx` to an emulator that then refuses to
         // start, and blame the emulator.
         //
-        // Unless the hypervisor is already running. The reboot flag is machine-wide — any Windows
-        // Update sets it — and with Hyper-V loaded the feature has nothing left to wait for.
+        // Unless the hypervisor is already running. The reboot flag is machine-wide (any Windows
+        // Update sets it) and with Hyper-V loaded the feature has nothing left to wait for.
         if probes.reboot_pending && !probes.hypervisor_running {
             return state(
                 false,
@@ -103,7 +103,7 @@ pub fn decide_acceleration(probes: AccelerationProbes) -> AccelerationState {
         return state(
             false,
             AccelMethod::None,
-            "Virtualization is turned off in your PC’s firmware. Enable it in the BIOS or UEFI settings — \
+            "Virtualization is turned off in your PC’s firmware. Enable it in the BIOS or UEFI settings: \
              it is usually called Intel VT-x, AMD-V, or SVM.",
             false,
         );
@@ -117,7 +117,7 @@ pub fn decide_acceleration(probes: AccelerationProbes) -> AccelerationState {
     )
 }
 
-/// Asks the machine. Blocking — WMI and the service manager — so it runs on a worker thread.
+/// Asks the machine. Blocking, WMI and the service manager, so it runs on a worker thread.
 #[cfg(windows)]
 fn probe() -> AccelerationProbes {
     use oe_win::{system, wmi_probe};
@@ -175,12 +175,12 @@ pub async fn enable_whpx(on_log: LogHandler) -> Result<()> {
     .map_err(|error| crate::err!("the elevated command did not finish: {error}"))?;
     match outcome {
         Ok(()) => {
-            on_log(LogStream::Stdout, "the feature was enabled — Windows needs a restart before it takes effect");
+            on_log(LogStream::Stdout, "the feature was enabled; Windows needs a restart before it takes effect");
             Ok(())
         }
         Err(oe_win::system::ElevationError::Failed(3010)) => {
             // DISM's "succeeded, restart required".
-            on_log(LogStream::Stdout, "the feature was enabled — Windows needs a restart before it takes effect");
+            on_log(LogStream::Stdout, "the feature was enabled; Windows needs a restart before it takes effect");
             Ok(())
         }
         Err(error) => Err(crate::err!("{error}")),

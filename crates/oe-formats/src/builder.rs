@@ -5,7 +5,7 @@
 //! volumes inside its `super` partition (debloat, identity, our own files), re-sign the top-level
 //! vbmeta with our key and `HASHTREE_DISABLED` so the guest mounts `/system` without dm-verity
 //! putting Google's bytes back, and swap the result into place. Nothing here needs WSL, and nothing
-//! of Google's is redistributed — the user's machine downloaded the base.
+//! of Google's is redistributed: the user's machine downloaded the base.
 
 use std::collections::HashMap;
 use std::fs::{self, File};
@@ -128,10 +128,10 @@ pub struct RomManifest {
     ///
     /// Not the vbmeta digest alone, though it looks like one. With the hashtree disabled nothing
     /// in the vbmeta depends on what `/system` holds, so two builds with different content would
-    /// share a digest — and an old snapshot would be restored onto a changed system. The id folds
+    /// share a digest, and an old snapshot would be restored onto a changed system. The id folds
     /// in the recipe, the builder revision and the base, which are what the content is made from.
     pub rom_id: String,
-    /// The params the recipe read, as built — already part of `recipe_hash`. Absent if it reads
+    /// The params the recipe read, as built: already part of `recipe_hash`. Absent if it reads
     /// none.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub params: Option<ManifestParams>,
@@ -216,7 +216,7 @@ fn read_vbmetas(file: &File, layout: &ImageLayout) -> Result<Vbmetas> {
     let system = layout.volumes.system;
     let tail = read_exact_at(file, system.offset + system.size - 64, 64)?;
     let Some(footer) = parse_avb_footer(&tail, Some(system.size))? else {
-        fail!("the system partition has no AVB footer — this is not the image layout the ROM is built for");
+        fail!("the system partition has no AVB footer; this is not the image layout the ROM is built for");
     };
     let region = read_exact_at(file, system.offset + footer.vbmeta_offset, footer.vbmeta_size as usize)?;
     let chained = region[..parse_vbmeta_header(&region)?.total_size as usize].to_vec();
@@ -247,7 +247,7 @@ fn boot_params(text: &str) -> HashMap<String, String> {
 /// Identifies a base image by the digest the emulator puts on the command line, recomputed from
 /// the bytes and checked against Google's own `VerifiedBootParams.textproto`.
 ///
-/// Cheap — two small reads, never the 3 GB image — and it changes whenever Google republishes the
+/// Cheap: two small reads, never the 3 GB image, and it changes whenever Google republishes the
 /// image, which is exactly when a rebuild is needed. The cross-check doubles as proof that the
 /// builder reads this layout the way the emulator does.
 pub fn base_digest(base_dir: &Path) -> Result<String> {
@@ -300,7 +300,7 @@ pub struct RomState {
 }
 
 /// Rendered once per process. The wallpaper is drawn, not stored, and deterministic, so its bytes
-/// cannot change within a run — while `rom_state` is asked on every launch and every cold start.
+/// cannot change within a run, while `rom_state` is asked on every launch and every cold start.
 static WALLPAPER: OnceLock<Vec<u8>> = OnceLock::new();
 
 fn contents_for(recipe: &RomRecipe) -> Result<HashMap<Source, Vec<u8>>> {
@@ -318,12 +318,37 @@ fn contents_for(recipe: &RomRecipe) -> Result<HashMap<Source, Vec<u8>>> {
     Ok(contents)
 }
 
+/// What, if anything, keeps this image's partitions from mounting: each of Android's logical
+/// partitions must start with an ext4 superblock. A few kilobytes of reads, cheap enough for every
+/// launch; the full check (`cargo xtask rom-check`) reads the whole image.
+pub fn damage(image: &Path) -> Option<String> {
+    const PARTITIONS: [&str; 4] = ["system", "system_ext", "product", "vendor"];
+    const EXT4_MAGIC: [u8; 2] = [0x53, 0xef];
+    let check = || -> Result<Option<String>> {
+        let mut file = File::open(image)?;
+        let gpt = read_gpt(&mut file)?;
+        let super_part = find_partition(&gpt, "super")?.clone();
+        let mut window = FnReader(|offset: u64, len: usize| fileio::read_up_to(&file, super_part.offset + offset, len));
+        let lp = read_lp_metadata(&mut window, super_part.size)?;
+        for name in PARTITIONS {
+            let Ok(part) = find_logical(&lp.partitions, name) else { continue };
+            // The superblock is 1 KiB in; its magic is 0x38 bytes into that.
+            let magic = fileio::read_up_to(&file, super_part.offset + part.offset + 1024 + 0x38, 2)?;
+            if magic != EXT4_MAGIC {
+                return Ok(Some(format!("the {name} partition is not a readable file system")));
+            }
+        }
+        Ok(None)
+    };
+    check().unwrap_or_else(|error| Some(format!("its partition table cannot be read ({error})")))
+}
+
 fn state(built: bool, up_to_date: bool, reason: &str, manifest: Option<RomManifest>) -> RomState {
     RomState { built, up_to_date, reason: reason.to_owned(), manifest }
 }
 
 /// Whether the ROM on disk is the one this build of the app would produce: written by this
-/// builder, from this recipe, over this base. Anything else — including the old builder's image —
+/// builder, from this recipe, over this base. Anything else, including the old builder's image,
 /// rebuilds. `contents` replaces the rendered wallpaper, for tests.
 pub fn rom_state(
     sdk_root: &Path,
@@ -341,6 +366,11 @@ pub fn rom_state(
     };
     if manifest.builder_revision != i64::from(BUILDER_REVISION) {
         return Ok(state(true, false, "builder changed", Some(manifest)));
+    }
+    // A copy can damage an image without changing its size or date. The guest then cannot mount
+    // its partitions and reboots forever, so a damaged image rebuilds, like an outdated one.
+    if let Some(problem) = damage(&paths.image_dir.join("system.img")) {
+        return Ok(state(true, false, &format!("damaged: {problem}"), Some(manifest)));
     }
     let rendered;
     let contents = match contents {
@@ -407,7 +437,7 @@ pub fn build_rom(options: &BuildOptions) -> Result<BuildResult> {
     }
     let base_image = paths.base_dir.join("system.img");
     if !base_image.exists() {
-        fail!("the {} system image is not downloaded — there is nothing to build {} from", recipe.base_tag, recipe.id);
+        fail!("the {} system image is not downloaded; there is nothing to build {} from", recipe.base_tag, recipe.id);
     }
 
     let contents = contents_for(recipe)?;
@@ -428,7 +458,7 @@ pub fn build_rom(options: &BuildOptions) -> Result<BuildResult> {
     }
 
     if options.is_running.is_some_and(|is_running| is_running()) {
-        fail!("{} is running — stop Android before its system image is rebuilt", recipe.display_name);
+        fail!("{} is running: stop Android before its system image is rebuilt", recipe.display_name);
     }
 
     let gigabytes = fs::metadata(&base_image)?.len() as f64 / 1e9;
@@ -604,7 +634,7 @@ fn edit_volume(
     let prop_path = recipe.build_prop_path.get(name);
     if volume.exists(prop_path)? {
         let original = String::from_utf8_lossy(&volume.read_file(prop_path)?).into_owned();
-        // A recipe with no identity of its own leaves the base's — see `RomRecipe::identity`.
+        // A recipe with no identity of its own leaves the base's, see `RomRecipe::identity`.
         let (mut text, changed) = match &recipe.identity {
             Some(identity) => {
                 let rewritten = rewrite_identity(&original, identity)?;
@@ -622,7 +652,7 @@ fn edit_volume(
             volume.replace_file(prop_path, &data)?;
             written.push((prop_path.clone(), data));
         }
-        log(&format!("{name}: {prop_path} — {} identity keys rewritten", changed.len()));
+        log(&format!("{name}: {prop_path}: {} identity keys rewritten", changed.len()));
     } else {
         log(&format!("{name}: no {prop_path}"));
     }
@@ -630,7 +660,7 @@ fn edit_volume(
     for edit in recipe.edits().iter().filter(|e| e.volume == name) {
         if !volume.exists(&edit.path)? {
             fail!(
-                "{name}:{} is not in the {} image — {} cannot be built from this base",
+                "{name}:{} is not in the {} image: {} cannot be built from this base",
                 edit.path,
                 recipe.base_tag,
                 recipe.id
@@ -682,7 +712,7 @@ fn edit_volume(
     let verified = check.verify()?;
     if !verified.ok {
         let first: Vec<&str> = verified.problems.iter().take(5).map(String::as_str).collect();
-        fail!("{name}: the edited filesystem failed verification — {}", first.join("; "));
+        fail!("{name}: the edited filesystem failed verification: {}", first.join("; "));
     }
     for (path, data) in &written {
         if &check.read_file(path)? != data {
@@ -749,6 +779,16 @@ mod tests {
         assert!(!recover_interrupted_swap(&paths).unwrap());
         assert!(!paths.prev_dir.exists());
         assert_eq!(read_manifest(&paths.image_dir).unwrap().rom_id, "new");
+    }
+
+    #[test]
+    fn an_image_whose_partitions_cannot_be_read_is_damaged() {
+        let dir = tempfile::tempdir().unwrap();
+        let image = dir.path().join("system.img");
+        std::fs::write(&image, vec![0u8; 64 * 1024]).unwrap();
+        let problem = damage(&image).expect("zeros are no partition table");
+        assert!(problem.contains("partition table"), "{problem}");
+        assert!(damage(&dir.path().join("missing.img")).is_some(), "a missing image is damaged too");
     }
 
     #[test]

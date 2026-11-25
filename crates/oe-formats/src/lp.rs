@@ -1,4 +1,4 @@
-//! Android dynamic partitions — liblp metadata, format 10.x — read from the `super` partition.
+//! Android dynamic partitions (liblp metadata, format 10.x), read from the `super` partition.
 //!
 //! `system`, `system_ext`, `product` and `vendor` are not GPT partitions. They are regions of
 //! `super` that first-stage init maps with device-mapper from this metadata, and the ROM builder
@@ -110,7 +110,7 @@ impl ValidatedMetadata {
 /// `read` is relative to the start of `super`; `super_size` is its size in bytes (from the GPT),
 /// which every extent must fit inside. Tries the primary copy of slot 0, then the backup. A copy
 /// that fails its checksums is skipped with its reason kept; if none validates, every reason is
-/// returned. A copy that validates but describes something unsupported is refused outright — the
+/// returned. A copy that validates but describes something unsupported is refused outright: the
 /// backup of a valid table is not a second opinion.
 pub fn read_lp_metadata<R: ReadAt + ?Sized>(read: &mut R, super_size: u64) -> Result<LpMetadata> {
     if super_size == 0 || super_size > MAX_SAFE_INTEGER {
@@ -166,7 +166,7 @@ pub fn read_lp_metadata<R: ReadAt + ?Sized>(read: &mut R, super_size: u64) -> Re
     fail!("no valid LP metadata in super: {}", failures.join("; "))
 }
 
-/// The logical partition called `name`. Names are unique — [`read_lp_metadata`] refuses
+/// The logical partition called `name`. Names are unique: [`read_lp_metadata`] refuses
 /// duplicates.
 pub fn find_logical<'a>(parts: &'a [LogicalPartition], name: &str) -> Result<&'a LogicalPartition> {
     match parts.iter().find(|part| part.name == name) {
@@ -184,7 +184,7 @@ pub fn find_logical<'a>(parts: &'a [LogicalPartition], name: &str) -> Result<&'a
 
 // ── Geometry ────────────────────────────────────────────────────────────────────────────────────
 
-/// The primary geometry, or the backup if the primary fails its checks — as liblp reads it.
+/// The primary geometry, or the backup if the primary fails its checks, as liblp reads it.
 fn read_geometry(
     read: &mut impl FnMut(u64, u64, &str) -> Result<Vec<u8>>,
     super_size: u64,
@@ -355,7 +355,7 @@ fn resolve_partitions(metadata: &ValidatedMetadata, super_size: u64, metadata_en
             );
         }
         if attributes & LP_PARTITION_ATTR_SLOT_SUFFIXED != 0 {
-            fail!("{label} is SLOT_SUFFIXED — an A/B layout, not the single-slot emulator image this reads");
+            fail!("{label} is SLOT_SUFFIXED: an A/B layout, not the single-slot emulator image this reads");
         }
         if group_index >= metadata.groups.count {
             fail!("{label} is in group {group_index}, but the metadata has {} groups", metadata.groups.count);
@@ -502,7 +502,7 @@ mod tests {
 
     /// The metadata area of a `super` partition, built the way lpmake writes it: geometry and its
     /// backup, then every slot's primary copy, then every slot's backup, with real SHA-256
-    /// checksums. Only the metadata is materialised — the logical partitions' bytes are never read.
+    /// checksums. Only the metadata is materialised: the logical partitions' bytes are never read.
     fn build_super(build: Build) -> Vec<u8> {
         let mut buffer = vec![0u8; PRIMARY + 2 * build.metadata_max_size * build.slot_count];
 

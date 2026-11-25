@@ -6,7 +6,7 @@
 //! turns that off, but the flag is inside the signed header, so patching it alone makes libfs_avb
 //! reject the image (`PUBLIC_KEY_REJECTED`, `/system` fails to mount). Re-signing with any key
 //! works because libfs_avb checks the signature against the key embedded in the same vbmeta and
-//! leaves *which* key to the bootloader — whose check on the emulator trusts any key. What binds
+//! leaves *which* key to the bootloader, whose check on the emulator trusts any key. What binds
 //! the image is `androidboot.vbmeta.digest`, which is why the digest is recomputed and written into
 //! `VerifiedBootParams.textproto` in step with the signature.
 //!
@@ -288,7 +288,7 @@ pub fn parse_avb_footer(tail: &[u8], partition_size: Option<u64>) -> Result<Opti
 
 /// An RSA public key in AVB's encoding (`AvbRSAPublicKeyHeader` + data), as avbtool's
 /// `extract_public_key` writes it: u32 key bits, u32 n0inv = −1/n mod 2^32, n, then
-/// rr = 2^(2·bits) mod n — the Montgomery constants libavb's verifier uses instead of computing
+/// rr = 2^(2·bits) mod n: the Montgomery constants libavb's verifier uses instead of computing
 /// them. All big-endian. A private key encodes as its public half.
 pub fn avb_public_key<K: PublicKeyParts>(key: &K) -> Result<Vec<u8>> {
     let n_bytes = key.n_bytes();
@@ -342,7 +342,7 @@ fn exponent<K: PublicKeyParts>(key: &K) -> BigUint {
 /// The per-machine signing key: `dir/openemu-avb.pem`, PKCS#8, created (with `dir`) if missing.
 ///
 /// **This key is not a secret, and it is deliberately not in the repository.** The guest's
-/// libfs_avb accepts any key on the top-level vbmeta — it checks the signature against the key
+/// libfs_avb accepts any key on the top-level vbmeta; it checks the signature against the key
 /// embedded next to it, and leaves trusting that key to the bootloader, whose check on the emulator
 /// accepts anything. What binds the image is the digest on the kernel command line, not the key.
 /// The key exists only so that rebuilding on the same machine is byte-identical: a fresh key per
@@ -351,7 +351,7 @@ fn exponent<K: PublicKeyParts>(key: &K) -> BigUint {
 /// one.
 ///
 /// An existing file must hold an RSA key of `bits` bits with exponent 65537, or this fails naming
-/// the file — a key of the wrong size cannot replace the one in the vbmeta without moving offsets.
+/// the file: a key of the wrong size cannot replace the one in the vbmeta without moving offsets.
 pub fn load_or_create_signing_key(dir: &Path, bits: usize) -> Result<PrivateKey> {
     if !AVB_KEY_BITS.contains(&bits) {
         fail!("AVB signs with RSA-2048/4096/8192; {bits} bits is not one of them");
@@ -403,7 +403,7 @@ fn unreadable(file: &Path, reason: &str) -> crate::Error {
 
 /// A re-signed copy of `vbmeta`: exactly `total_size` bytes, `flags` in the header, our public key
 /// in place of the old one, and a fresh hash and RSASSA-PKCS1-v1_5 signature over header ‖
-/// auxiliary block. Nothing else changes — descriptors, key metadata and every offset stay as they
+/// auxiliary block. Nothing else changes: descriptors, key metadata and every offset stay as they
 /// were, which is why our key must be the same size as the one it replaces.
 ///
 /// The result is verified before it is returned, the way libavb will: hash recomputed, signature
@@ -467,7 +467,7 @@ pub fn resign_vbmeta(vbmeta: &[u8], private_key: &PrivateKey, flags: u32) -> Res
     Ok(out)
 }
 
-/// SHA-256 hex over the vbmeta images in order — top-level first, then each chained one.
+/// SHA-256 hex over the vbmeta images in order, top-level first, then each chained one.
 pub fn vbmeta_digest(images: &[&[u8]]) -> String {
     let mut hash = Sha256::new();
     for image in images {
@@ -560,7 +560,7 @@ fn has_unsafe_characters(text: &str) -> bool {
 /// `VerifiedBootParams.textproto`, which it turns into kernel command-line arguments.
 ///
 /// An existing param keeps its line and its position; a new one goes after the last param.
-/// Duplicate keys collapse to the first — the guest copies `androidboot.*` into read-only
+/// Duplicate keys collapse to the first: the guest copies `androidboot.*` into read-only
 /// `ro.boot.*` properties, where the first value set is the one that sticks, so a stale digest left
 /// above a fresh one would win. `major_version` and any line not understood are kept. A leading `#`
 /// line is the emulator's human-readable summary and is rewritten to list the params that result.
@@ -728,7 +728,7 @@ mod tests {
 
     /// A signed vbmeta laid out the way avbtool lays out the real top-level one: hash then
     /// signature in the auth block; descriptors, public key, then key metadata in the aux block.
-    /// With the defaults it has the measured shape — 4480 bytes, auth 576, aux 3648, key at 2592.
+    /// With the defaults it has the measured shape: 4480 bytes, auth 576, aux 3648, key at 2592.
     fn build_vbmeta(kind: u32, key: &PrivateKey, flags: u32, descriptors: &[u8]) -> Vec<u8> {
         let algorithm = algorithm(kind).unwrap();
         let hash_size = algorithm.hash_size as usize;

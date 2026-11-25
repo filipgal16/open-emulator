@@ -1,12 +1,12 @@
 //! First run: the checks setup makes, the one long download, and what to do if something fails.
 
-use iced::widget::{column, container, progress_bar, row, scrollable, space, text, Column};
+use iced::widget::{column, container, progress_bar, row, scrollable, text, Column};
 use iced::{Alignment, Element, Length};
 use oe_core::setup::StepState;
 
-use super::{action, quiet};
+use super::{action, go, quiet};
 use crate::app::{App, Message};
-use crate::icons::{icon, Icon};
+use crate::icons::{icon, neon_mark, Icon};
 use crate::theme::{self, Kind};
 
 pub fn view(app: &App) -> Element<'_, Message> {
@@ -51,14 +51,14 @@ pub fn view(app: &App) -> Element<'_, Message> {
     }
 
     let mut card = column![
-        row![icon(Icon::Brand, 28.0, t.accent), text("open-emulator").size(theme::TEXT_3XL).font(theme::SEMIBOLD).color(t.text)]
-            .spacing(10)
+        row![icon(Icon::Brand, 20.0, t.text), text("open-emulator").size(theme::TEXT_LG).font(theme::SEMIBOLD).color(t.text)]
+            .spacing(8)
             .align_y(Alignment::Center),
-        text(headline).size(theme::TEXT_XL).font(theme::SEMIBOLD).color(t.text),
-        text(detail).size(theme::TEXT_MD).color(if failed { t.danger } else { t.text_dim }),
+        text(headline).size(theme::DISPLAY).font(theme::HEADLINE).color(t.text),
+        text(detail).size(theme::TEXT_LG).color(if failed { t.danger } else { t.muted }),
     ]
-    .spacing(12)
-    .max_width(560);
+    .spacing(14)
+    .max_width(520);
 
     if let Some((done, total)) = setup.progress.filter(|_| setup.running) {
         if total > 0 {
@@ -68,12 +68,12 @@ pub fn view(app: &App) -> Element<'_, Message> {
     }
     card = card.push(container(steps).padding(16).width(Length::Fill).style(theme::panel(t)));
 
-    let mut buttons = row![].spacing(8);
+    let mut buttons = row![].spacing(8).align_y(Alignment::Center);
     if failed {
-        buttons = buttons.push(action(t, if setup.running { "Trying again…" } else { "Try again" }, Kind::Primary, (!setup.running).then_some(Message::SetupRetry)));
+        buttons = buttons.push(go(t, if setup.running { "Trying again…" } else { "Try again" }, (!setup.running).then_some(Message::SetupRetry)));
     }
     if setup.finished && !failed {
-        buttons = buttons.push(action(t, "Continue", Kind::Primary, Some(Message::SetupContinue)));
+        buttons = buttons.push(go(t, "Continue", Some(Message::SetupContinue)));
     }
     buttons = buttons.push(action(t, if setup.show_details { "Hide details" } else { "Details" }, Kind::Ghost, Some(Message::SetupDetails)));
     card = card.push(buttons);
@@ -85,10 +85,16 @@ pub fn view(app: &App) -> Element<'_, Message> {
         card = card.push(container(scrollable(log).height(220).anchor_bottom()).padding(10).width(Length::Fill).style(theme::panel(t)));
     }
 
-    container(column![space().height(Length::Fill), card, space().height(Length::Fill)].align_x(Alignment::Center))
-        .padding(32)
-        .center_x(Length::Fill)
-        .height(Length::Fill)
+    // The device screen's hero layout: the words and steps at the left, the neon mark floating at
+    // the right.
+    let split = row![
+        container(card).width(Length::FillPortion(11)),
+        container(neon_mark(280.0, t.dark)).center_x(Length::FillPortion(9)),
+    ]
+    .spacing(32)
+    .align_y(Alignment::Center);
+    container(container(split).max_width(theme::CONTENT_WIDTH).width(Length::Fill).padding([0, 56]))
+        .center(Length::Fill)
         .style(theme::fill(t.bg))
         .into()
 }

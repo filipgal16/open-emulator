@@ -5,7 +5,7 @@ use iced::widget::{button, column, container, image, progress_bar, row, scrollab
 use iced::{Alignment, Element, Length};
 use oe_store::types::{format_bytes, install_blocked, AppDetail, InstallJob, InstallState, SourceId, StoreApp};
 
-use super::{action, body, empty, heading, quiet, section};
+use super::{action, body, chip, column_of, empty, heading, page_header, pill, quiet, section};
 use crate::app::{App, Message};
 use crate::icons::{icon, Icon};
 use crate::theme::{self, Kind};
@@ -94,25 +94,29 @@ pub fn view(app: &App) -> Element<'_, Message> {
         .size(theme::TEXT_MD)
         .style(theme::input_style(t));
 
-    let mut sources = row![].spacing(4);
-    for (label, source) in [("All", None), ("F-Droid", Some(SourceId::Fdroid)), ("On this PC", Some(SourceId::Local)), ("Play", Some(SourceId::Play))] {
-        sources = sources.push(
-            button(text(label).size(theme::TEXT_SM).font(theme::SEMIBOLD))
-                .padding([5, 10])
-                .style(theme::button_style(t, Kind::Nav(store.source == source)))
-                .on_press(Message::StoreSource(source)),
-        );
+    // Graphite's feature chips, as the choice of where to look.
+    let mut sources = row![].spacing(6).align_y(Alignment::Center);
+    for (label, glyph, source) in [
+        ("All", Icon::Apps, None),
+        ("F-Droid", Icon::Store, Some(SourceId::Fdroid)),
+        ("On this PC", Icon::Folder, Some(SourceId::Local)),
+        ("Play", Icon::Device, Some(SourceId::Play)),
+    ] {
+        sources = sources.push(chip(t, Some(glyph), label, store.source == source, Some(Message::StoreSource(source))));
     }
     let from_file = button(row![icon(Icon::Folder, 14.0, t.text), text("Install from file").size(theme::TEXT_SM).font(theme::SEMIBOLD)].spacing(6).align_y(Alignment::Center))
-        .padding([6, 12])
+        .padding([7, 12])
         .style(theme::button_style(t, Kind::Secondary))
         .on_press_maybe(device_ready.then_some(Message::InstallFromFile));
 
     let header = column![
-        row![heading(t, "Store"), space().width(Length::Fill), from_file].align_y(Alignment::Center),
-        row![search.width(Length::Fill), sources].spacing(12).align_y(Alignment::Center),
+        page_header(t, "Find apps for your device", "Free and open-source apps from F-Droid, app files on this PC, and Google Play."),
+        container(row![search.width(Length::Fill), from_file].spacing(8).align_y(Alignment::Center)).max_width(680),
+        sources,
     ]
-    .spacing(12);
+    .spacing(16)
+    .align_x(Alignment::Center)
+    .width(Length::Fill);
 
     let main: Element<'_, Message> = if store.source == Some(SourceId::Play) {
         play(app)
@@ -122,13 +126,13 @@ pub fn view(app: &App) -> Element<'_, Message> {
         results(app)
     };
 
-    let mut page = column![header].spacing(16);
+    let mut page = column![header].spacing(24);
     if let Some(message) = &store.message {
         page = page.push(super::banner(t.warn_bg, t.warn_border, t.text, message.clone()));
     }
     page = page.push(row![container(main).width(Length::Fill).height(Length::Fill), queue(app)].spacing(16).height(Length::Fill));
     page = page.push(quiet(t, state.guest_sdk.map_or_else(|| "Device not running".to_owned(), |sdk| format!("Device API {sdk}"))));
-    container(page).padding(24).width(Length::Fill).height(Length::Fill).into()
+    container(column_of(page)).padding([32, 32]).width(Length::Fill).height(Length::Fill).into()
 }
 
 fn results(app: &App) -> Element<'_, Message> {
@@ -144,7 +148,7 @@ fn results(app: &App) -> Element<'_, Message> {
         } else if store.state.index_ready {
             ("The catalogue is empty", "The F-Droid index is downloaded once, then searched locally.".to_owned())
         } else {
-            ("Fetching the catalogue", "Fetching the F-Droid catalogue — this happens once, then search is local.".to_owned())
+            ("Fetching the catalogue", "Fetching the F-Droid catalogue. This happens once, then search is local.".to_owned())
         };
         return empty(t, title, sentence, None);
     }
@@ -154,9 +158,10 @@ fn results(app: &App) -> Element<'_, Message> {
         "Results"
     };
     let cards = store.results.iter().map(|item| card(app, item));
-    column![section(t, label), scrollable(Row::with_children(cards).spacing(12).wrap()).height(Length::Fill)].spacing(10).into()
+    column![section(t, label), scrollable(Row::with_children(cards).spacing(16).wrap().vertical_spacing(16)).height(Length::Fill)].spacing(12).into()
 }
 
+/// A bento card, Graphite's: a white title over grey copy, and a white pill to act on it.
 fn card<'a>(app: &'a App, item: &'a StoreApp) -> Element<'a, Message> {
     let t = app.tokens;
     let (label, install) = button_label(app, item);
@@ -164,20 +169,24 @@ fn card<'a>(app: &'a App, item: &'a StoreApp) -> Element<'a, Message> {
     if item.source == SourceId::Local {
         facts = facts.push(text("On this PC").size(theme::TEXT_XS).color(t.faint));
     }
+    let act: Element<'a, Message> = match install {
+        Some(message) => pill(t, label, Some(message)),
+        None => container(text(label).size(theme::TEXT_SM).font(theme::MEDIUM).color(t.faint)).padding([5, 0]).into(),
+    };
     let tile = column![
         row![app_icon(app, item, 40.0), column![
-            text(item.name.clone()).size(theme::TEXT_MD).font(theme::SEMIBOLD).color(t.text),
+            text(item.name.clone()).size(theme::TEXT_LG).font(theme::SEMIBOLD).color(t.text),
             facts,
         ]
         .spacing(2)]
-        .spacing(10)
+        .spacing(12)
         .align_y(Alignment::Center),
-        text(item.summary.clone()).size(theme::TEXT_SM).color(t.muted).height(36),
-        row![space().width(Length::Fill), action(t, label, Kind::Secondary, install)],
+        text(item.summary.clone()).size(theme::TEXT_SM).color(t.muted).height(38),
+        row![act, space().width(Length::Fill), icon(Icon::ArrowRight, 14.0, t.faint)].align_y(Alignment::Center),
     ]
-    .spacing(8)
-    .width(Length::Fixed(236.0));
-    button(tile).padding(12).style(theme::card_button(t)).on_press(Message::StoreOpen(item.source, item.package_name.clone())).into()
+    .spacing(12)
+    .width(Length::Fixed(278.0));
+    button(tile).padding(18).style(theme::card_button(t)).on_press(Message::StoreOpen(item.source, item.package_name.clone())).into()
 }
 
 fn detail_view<'a>(app: &'a App, detail: &'a AppDetail) -> Element<'a, Message> {
@@ -193,10 +202,10 @@ fn detail_view<'a>(app: &'a App, detail: &'a AppDetail) -> Element<'a, Message> 
             .spacing(16)
             .align_y(Alignment::Center),
         row![
-            fact("Version", if item.version_name.is_empty() { "—".into() } else { item.version_name.clone() }),
+            fact("Version", if item.version_name.is_empty() { "Unknown".into() } else { item.version_name.clone() }),
             fact("Size", format_bytes(item.size_bytes)),
-            fact("Licence", item.license.clone().unwrap_or_else(|| "—".into())),
-            fact("Minimum API", if item.min_sdk == 0 { "—".into() } else { item.min_sdk.to_string() }),
+            fact("Licence", item.license.clone().unwrap_or_else(|| "Unknown".into())),
+            fact("Minimum API", if item.min_sdk == 0 { "Unknown".into() } else { item.min_sdk.to_string() }),
             fact("Source", item.source.label().to_owned()),
         ]
         .spacing(28),
@@ -214,7 +223,7 @@ fn detail_view<'a>(app: &'a App, detail: &'a AppDetail) -> Element<'a, Message> 
     }
     page = page.push(column![
         section(t, "Native code"),
-        body(t, if item.abis.is_empty() { "None — runs on any device".to_owned() } else { item.abis.join(", ") }),
+        body(t, if item.abis.is_empty() { "None: runs on any device".to_owned() } else { item.abis.join(", ") }),
     ].spacing(4));
     if !item.anti_features.is_empty() {
         let things = item.anti_features.iter().fold(Column::new().spacing(2), |column, id| column.push(body(t, format!("• {}", anti_feature(id)))));
@@ -267,7 +276,7 @@ fn play(app: &App) -> Element<'_, Message> {
     let state = &app.store.state;
     let mut page = column![
         heading(t, "Google Play"),
-        body(t, "The real Play Store runs inside the device. Open it, or search it with the box above — results show on the device screen."),
+        body(t, "The real Play Store runs inside the device. Open it, or search it with the box above. Results show on the device screen."),
     ]
     .spacing(12)
     .max_width(560);

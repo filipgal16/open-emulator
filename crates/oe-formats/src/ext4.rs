@@ -1,8 +1,8 @@
 //! An ext4 editor for exactly one kind of filesystem: the logical partitions inside Google's
 //! API 30 emulator `system.img`.
 //!
-//! Those volumes are built by `mke2fs` + `e2fsdroid` with a small, fixed feature set — no journal,
-//! no `metadata_csum`, no `64bit`, no `flex_bg` — plus `shared_blocks`, which deduplicates
+//! Those volumes are built by `mke2fs` + `e2fsdroid` with a small, fixed feature set (no journal,
+//! no `metadata_csum`, no `64bit`, no `flex_bg`) plus `shared_blocks`, which deduplicates
 //! identical blocks so that one block can back several files. That last one is why the volumes
 //! cannot simply be mounted read-write and edited, and why this exists: it is what `debugfs` did
 //! for the previous attempt, without a Linux distribution on the user's machine.
@@ -594,7 +594,7 @@ impl<D: Disk> Ext4Volume<D> {
                 raw,
             };
             if u16le(&raw, 0x1e) != volume.group_checksum(g, &raw) {
-                fail!("group {g} descriptor checksum does not match — the volume is damaged or not what it claims");
+                fail!("group {g} descriptor checksum does not match: the volume is damaged or not what it claims");
             }
             volume.groups.push(desc);
         }
@@ -708,7 +708,7 @@ impl<D: Disk> Ext4Volume<D> {
         let end = start + self.group_block_count(g);
         for &b in &out {
             if b < start || b >= end {
-                fail!("group {g} metadata block {b} lies outside the group — flex_bg-style layouts are not supported");
+                fail!("group {g} metadata block {b} lies outside the group: flex_bg-style layouts are not supported");
             }
         }
         Ok(out)
@@ -911,7 +911,7 @@ impl<D: Disk> Ext4Volume<D> {
         Ok(())
     }
 
-    /// Every physical block an inode references: extent tree blocks, then data — one entry per
+    /// Every physical block an inode references: extent tree blocks, then data: one entry per
     /// reference, so a block can appear more than once.
     ///
     /// It does on Google's images. e2fsdroid deduplicates identical blocks *within* a file as well
@@ -1080,8 +1080,8 @@ impl<D: Disk> Ext4Volume<D> {
             for b in self.owned_blocks(&inode)? {
                 counts[b as usize] += 1;
             }
-            // An external xattr block — `/system/bin/run-as` has one, for `security.capability`
-            // beside its label — is a reference like any other, and ext4 lets several inodes share
+            // An external xattr block (`/system/bin/run-as` has one, for `security.capability`
+            // beside its label) is a reference like any other, and ext4 lets several inodes share
             // one.
             let acl = xattr_block_of(&inode.raw);
             if acl != 0 {
@@ -1579,12 +1579,12 @@ impl<D: Disk> Ext4Volume<D> {
         Ok(ino)
     }
 
-    /// Replaces a regular file's content, keeping its inode — and so its mode, owner and label.
+    /// Replaces a regular file's content, keeping its inode, and so its mode, owner and label.
     ///
     /// In place when every block the file owns is referenced by it alone and the new content fits:
     /// the vendor volume has one free inode and fifty free blocks, and rewriting its `build.prop`
     /// must not depend on either. Otherwise the new bytes go into new blocks and the old ones are
-    /// released through the reference count — on a deduplicated volume "this file's block" may also
+    /// released through the reference count: on a deduplicated volume "this file's block" may also
     /// be someone else's, and that block is never written.
     pub fn replace_file(&mut self, path: &str, data: &[u8]) -> Result<()> {
         self.require_writable()?;
@@ -1705,7 +1705,7 @@ impl<D: Disk> Ext4Volume<D> {
 
     // ── Persisting ──────────────────────────────────────────────────────────────────────────────
 
-    /// Writes bitmaps, group descriptors (with fresh checksums) and the superblock — and the backup
+    /// Writes bitmaps, group descriptors (with fresh checksums) and the superblock, and the backup
     /// copies of the last two in every group that carries one, as `ext2fs_flush` does.
     ///
     /// The kernel reads only the primaries, so stale backups would boot fine. They matter to
@@ -2212,7 +2212,7 @@ mod tests {
         Ext4Volume::open(BufferDisk::new(buffer), OpenOptions::default()).unwrap()
     }
 
-    /// Checks what was written through a brand-new reader — never the editor's own caches.
+    /// Checks what was written through a brand-new reader, never the editor's own caches.
     fn verified(buffer: &mut [u8]) -> Ext4Volume<BufferDisk<'_>> {
         let mut again = open_read_only(buffer);
         let report = again.verify().unwrap();

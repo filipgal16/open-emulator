@@ -1,7 +1,7 @@
 //! The `/proc/cpuinfo` an ARM app sees on an x86 guest.
 //!
 //! Google's ARM translator (`libndk_translation`) does not pass the real `/proc/cpuinfo` through
-//! to translated code — it is an x86 one, and ARM code would not know what to make of it. It
+//! to translated code; it is an x86 one, and ARM code would not know what to make of it. It
 //! serves `/system/etc/cpuinfo.arm64.txt` (and `cpuinfo.arm.txt` for 32-bit) instead, and Google's
 //! images ship those describing **one** processor, numbered 1:
 //!
@@ -19,7 +19,7 @@
 //! and started five workers and the render thread.
 //!
 //! So the ROM repeats the stock entry once per guest core, numbered from 0 as the kernel does.
-//! Everything else — the feature list, the implementer and part — stays byte-for-byte Google's:
+//! Everything else (the feature list, the implementer and part) stays byte-for-byte Google's:
 //! it describes what the translator can execute, which is not ours to restate.
 
 use crate::{fail, Result};
@@ -40,7 +40,7 @@ fn processor_lines(text: &str) -> Vec<(usize, usize)> {
         .collect()
 }
 
-/// Splits on runs of two or more newlines — JavaScript's `text.split(/\n{2,}/)`.
+/// Splits on runs of two or more newlines: JavaScript's `text.split(/\n{2,}/)`.
 fn split_blocks(text: &str) -> Vec<&str> {
     let mut blocks = Vec::new();
     let bytes = text.as_bytes();
@@ -64,7 +64,7 @@ fn split_blocks(text: &str) -> Vec<&str> {
 }
 
 /// One entry per core, numbered from 0. Fails if `stock` is not the one-entry-or-more file
-/// described above — an image that ships something else is one this transform was not measured
+/// described above: an image that ships something else is one this transform was not measured
 /// against.
 pub fn expand_arm_cpuinfo(stock: &[u8], cores: u32) -> Result<Vec<u8>> {
     if cores < 1 {

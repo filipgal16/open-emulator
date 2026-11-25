@@ -12,7 +12,7 @@ use crate::env_file::GuestProfile;
 use crate::sdk::adb::Adb;
 use crate::{CommandResult, LogHandler};
 
-/// Ordered deliberately — the wizard and lockscreen first, because everything after them assumes
+/// Ordered deliberately: the wizard and lockscreen first, because everything after them assumes
 /// the home screen is reachable.
 const SETTINGS: &[(&str, &[&str])] = &[
     (
@@ -60,7 +60,7 @@ const SETTINGS: &[(&str, &[&str])] = &[
 /// JIT-ing on every warm boot.
 ///
 /// Deliberately short. Compiling more dirties more guest pages, which grows the snapshot's
-/// `ram.bin` — and warm start is dominated by restoring that file, so a longer list makes every
+/// `ram.bin`, and warm start is dominated by restoring that file, so a longer list makes every
 /// subsequent start *slower*.
 const DEXOPT_PACKAGES: &[&str] = &["com.android.settings", "com.android.systemui"];
 
@@ -78,7 +78,7 @@ const ROM_SETTINGS: &[&str] = &[
 ];
 
 /// Quick Boot's own snapshot name. Saved under any other name, the emulator ignores it on launch
-/// and cold-boots instead — which is what made provisioning look successful while every later
+/// and cold-boots instead, which is what made provisioning look successful while every later
 /// start still took half a minute.
 pub const QUICK_BOOT_SNAPSHOT: &str = "default_boot";
 
@@ -132,7 +132,7 @@ pub async fn provision_guest(input: ProvisionInput<'_>) -> CommandResult {
         }
     } else {
         // On a software CPU this costs many minutes and buys back less than it spends.
-        log("no acceleration — skipping ahead-of-time compilation");
+        log("no acceleration; skipping ahead-of-time compilation");
     }
 
     shell("input keyevent KEYCODE_HOME".to_owned(), Duration::from_secs(30)).await;

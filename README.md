@@ -1,8 +1,8 @@
 # open-emulator
 
-**Android on your PC.** A Windows desktop app that runs Google's Android emulator natively, embeds
-the emulator's own GPU-rendered window in its own, installs apps into the guest from a built-in
-store, and stays out of your way.
+**Android on your PC.** A Windows desktop app that runs Google's Android emulator natively, shows
+Android inside its own single window, installs apps into the guest from a built-in store, and stays
+out of your way.
 
 No terminal. No configuration. Double-click, wait once, use Android.
 
@@ -40,7 +40,7 @@ From 0.3.0 on, each [release](https://github.com/filipgal16/open-emulator/releas
 |---|---|
 | **OS** | Windows 10 or 11, x64 |
 | **Virtualization** | Turned on in the PC's firmware (BIOS/UEFI). If the **Windows Hypervisor Platform** is off, setup turns it on; Windows asks for permission, then needs a restart. Without acceleration the emulator falls back to running in software, which is very slow |
-| **Disk** | About 10 GB free. The app itself is about 15 MB; Android takes the rest |
+| **Disk** | About 20 GB free. The app itself is about 15 MB. Android takes the rest: about 7.5 GB for the emulator and system images, and up to 12.5 GB for the device, including a snapshot the size of its memory |
 | **Network** | Needed for the first run and to download apps |
 
 No Linux, WSL, JDK or Android Studio is involved. The app downloads the Android SDK parts it needs
@@ -97,13 +97,19 @@ The title bar holds:
 
 ### Device
 
-The Android display is the emulator's own GPU-rendered window, embedded in the app. So it runs at
-the emulator's frame rate, and your mouse and keyboard go straight to Android. The display keeps
-its own aspect ratio and is centred in the pane, the way a phone sits on a desk. When it rotates,
-the app fits it to the pane again.
+Android appears inside the app's own window, and that is the only window there is. The emulator
+runs with no window of its own. It renders Android on the graphics card, then hands each new frame
+to the app over its local gRPC service, inside your PC. The app draws the frames itself: at full
+resolution, without compression, and up to 60 frames a second. The display keeps its own aspect
+ratio and is centred in the pane, the way a phone sits on a desk.
 
-If the app can't embed the emulator's window, it mirrors the screen frame by frame instead, and
-resizes Android's display to fit the pane.
+Mouse and keyboard go back over the same connection, so a tap reaches Android in about a fifth of a
+millisecond. Press, drag and let go as on a touch screen. The mouse wheel scrolls, and typing goes
+to the field that has focus in Android.
+
+To use the emulator's own window instead, with its toolbar down the side, turn on **Show the
+emulator's own window** in Settings → Display. If the gRPC service cannot be reached, the app falls
+back to mirroring the screen from screenshots, a few frames a second.
 
 A tool rail beside the display holds Back, Home, Recents, Fullscreen, Rotate, Screenshot,
 Volume down and up, and Power.
@@ -149,7 +155,10 @@ banner at the top says what is left to do.
 
 - **Appearance**: System (follows Windows), Light or Dark.
 - **Device identity**: which phone model the device reports itself as.
-- **Display**: **Interface size**, which sets how large Android draws things (its density, in dpi).
+- **Display**:
+  - **Interface size**, which sets how large Android draws things (its density, in dpi).
+  - **Show the emulator's own window**, off by default. When it's on, Android opens in the
+    emulator's own window, with its toolbar down the side, instead of inside the app.
 - **Performance**: sliders for **Processor** cores and **Memory**. Next to them are this PC's
   processors and memory, the graphics mode, and whether acceleration is working.
 - **Storage**: where Android is stored.
@@ -163,8 +172,8 @@ banner at the top says what is left to do.
 - **Keyboard**: the shortcuts, as in the table below.
 
 The Interface size, Processor and Memory sliders each have an **Automatic** switch, which picks the
-value for this PC. Changes to them and to Device identity take effect the next time the device
-starts.
+value for this PC. Changes to them, to Device identity and to Show the emulator's own window take
+effect the next time the device starts.
 
 ### Keyboard
 
@@ -262,14 +271,21 @@ Environment variables the app reads:
         ├── oe-engine ── emulator.exe, adb protocol, AVDs, SDK download ──► Android emulator ─► guest
         ├── oe-store  ── F-Droid, local files, installer, Play via intents
         ├── oe-formats ─ ext4, AVB, GPT, LP, build.prop, ROM builder (pure, no Win32)
-        └── oe-win ───── every Win32 call: window embedding, UAC, registry, DPAPI, WMI
+        └── oe-win ───── every Win32 call: UAC, registry, DPAPI, WMI, process lookup
 ```
 
-The app starts `emulator.exe` from the Android SDK as an ordinary Windows process. It then moves the
-emulator's window inside its own (`SetParent`). The app talks to the guest through its own adb
-client, which speaks adb's socket protocol directly. It starts `adb.exe` only to start the adb
-server, to install apps and to copy files to the device. Taps and key presses go through one shell
-session on the guest that stays open.
+The app starts `emulator.exe` from the Android SDK as an ordinary Windows process, with
+`-qt-hide-window -grpc <port> -grpc-use-token`. The emulator then has no window at all, and serves
+its screen and input over the gRPC service described by `emulator_controller.proto` in the SDK.
+That is the protocol Android Studio's built-in emulator uses. `oe-engine/src/grpc.rs` speaks it over
+HTTP/2 directly, with no code generator. The port and the access token come from the discovery file
+each emulator writes for itself. `streamScreenshot` delivers a frame each time the display changes,
+and only the newest one is kept, so a busy moment drops frames instead of building a backlog.
+`sendMouse`, `sendKey` and `injectWheel` carry input back.
+
+For everything else the app talks to the guest through its own adb client, which speaks adb's
+socket protocol directly. It starts `adb.exe` only to start the adb server, to install apps and to
+copy files to the device.
 
 Everything the interface shows, app icons included, is downloaded by the Rust code. Images come
 only over https, through a size-capped cache. The cache checks each file's first bytes to make sure

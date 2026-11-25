@@ -546,6 +546,7 @@ impl NativeEmulator {
             use_snapshot: (mode == "snapshot").then_some("default_boot"),
             headless: true,
             writable_system: false,
+            native_display: None,
         });
         args.extend(["-port".to_owned(), NATIVE_PORT.to_string()]);
         Ok(NativeEmulator {
@@ -744,7 +745,7 @@ mod tests {
         let device = oe_engine::env_file::DeviceIdentity { name: "generic".into(), props: Vec::new(), lcd_width: None, lcd_height: None, lcd_density: None };
         let tuning = tune_for_host(&HostFacts { cpus: 8, total_ram_mb: 8192, accelerated: true, has_window: false }, TuningOverrides::default());
         let line = |snapshot: Option<&'static str>| {
-            emulator_args(&EmulatorArgsInput { avd_name: "A", tuning: &tuning, device: &device, use_snapshot: snapshot, headless: true, writable_system: false })
+            emulator_args(&EmulatorArgsInput { avd_name: "A", tuning: &tuning, device: &device, use_snapshot: snapshot, headless: true, writable_system: false, native_display: None })
         };
         assert!(line(None).contains(&"-no-snapshot-load".to_owned()));
         assert!(!line(Some("default_boot")).contains(&"-no-snapshot-load".to_owned()));

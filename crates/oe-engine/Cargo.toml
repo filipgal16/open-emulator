@@ -20,6 +20,11 @@ sha1 = { workspace = true }
 sha2 = { workspace = true }
 reqwest = { workspace = true }
 tokio = { workspace = true }
+# The emulator's gRPC display and input, spoken over HTTP/2 directly (see src/grpc.rs). All three
+# are already in the build through reqwest.
+bytes = { workspace = true }
+h2 = { workspace = true }
+http = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }

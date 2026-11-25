@@ -42,7 +42,7 @@ pub fn protect(data: &[u8]) -> Option<Vec<u8>> {
     }
 }
 
-/// Decrypts what [`protect`] produced — for this user only. `None` for anything else, including
+/// Decrypts what [`protect`] produced, for this user only. `None` for anything else, including
 /// data from another user or another machine.
 pub fn unprotect(data: &[u8]) -> Option<Vec<u8>> {
     let input = blob(data);

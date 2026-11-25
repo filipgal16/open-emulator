@@ -12,11 +12,11 @@ Honest inventory, verified against the code rather than remembered:
 F-Droid and sideloading, a device-wide Google account with autofill, a setup wizard, real settings
 (theme, device identity spoofing, CPU/RAM, storage, keyboard), an NSIS installer, and 363 tests.
 
-**Built but not connected.** `engine/window-embed.ts` — a complete Win32 embedding API
+**Built but not connected.** `engine/window-embed.ts`: a complete Win32 embedding API
 (`findMainWindowForProcessTree`, `waitForWindow`, `embedWindow`, `moveWindow`, `clientSize`),
 unit-tested, and referenced from **nowhere** in `index.ts`.
 
-**Half-built.** `QemuEngine` — the hard parts (ISO9660, cpio, initrd, args) are done; the process
+**Half-built.** `QemuEngine`: the hard parts (ISO9660, cpio, initrd, args) are done; the process
 orchestration and the ext4 `/data` question are not.
 
 **The default is still WSL.** `resolveEngineId` returns `wsl`. The native path is opt-in via an
@@ -28,7 +28,7 @@ Everything else in this document is downstream of these. They are not polish.
 
 ### 1. We show Android as a slideshow
 
-`EngineMirror` polls `adb exec-out screencap -p` on a 250ms timer — a 4fps ceiling, and measured at
+`EngineMirror` polls `adb exec-out screencap -p` on a 250ms timer: a 4fps ceiling, and measured at
 **~2.8fps** because a capture takes ~400ms. Each frame is a full PNG: encoded in the guest,
 transferred, decoded in the renderer, turned into a blob URL.
 
@@ -49,7 +49,7 @@ per event before Android sees anything.
 That is survivable for tapping a Settings toggle. It is fatal for anything a person would call
 gaming, which is the entire reason LDPlayer's audience uses LDPlayer.
 
-## Phase 1 — Make the device real
+## Phase 1: Make the device real
 
 Nothing in Phase 2 is worth starting before this lands.
 
@@ -68,8 +68,8 @@ it. `window-embed.ts` reparents that HWND into our viewport with `SetParent`.
 logical display, `moveWindow` sizes the host window showing it. Both are needed and they are not
 the same lever.
 
-**Risk, and it is real:** an embedded child HWND paints over everything. No HTML can float above it
-— that constraint is why the shell redesign put every panel in-flow. It also captures its own
+**Risk, and it is real:** an embedded child HWND paints over everything. No HTML can float above it,
+and that constraint is why the shell redesign put every panel in-flow. It also captures its own
 input, which collides with 1.2 below.
 
 ### 1.2 A persistent input channel
@@ -93,7 +93,7 @@ The comment guarding `resolveEngineId` says WSL stays until the native engine ha
 a real machine. It has. The condition has expired.
 
 Flip to `sdk` after one verified end-to-end run, then decide honestly whether the WSL engine earns
-its maintenance. Two runtimes means every guest feature is written twice — the quoting-depth bug
+its maintenance. Two runtimes means every guest feature is written twice: the quoting-depth bug
 was exactly that tax being paid.
 
 ### 1.4 Cut QemuEngine
@@ -102,16 +102,16 @@ A second unfinished runtime is a liability, not an asset. The SDK emulator is wh
 performance actually requires. Recommend deleting it or parking it on a branch; keep the pure
 codecs (`iso9660`, `cpio`), which are independently useful and already tested.
 
-## Phase 2 — The GUI that defines the category
+## Phase 2: The GUI that defines the category
 
 This is where "mainly GUI" gets spent, and it is only affordable once Phase 1 is done.
 
-### 2.1 Keymapping — the reason people choose LDPlayer
+### 2.1 Keymapping: the reason people choose LDPlayer
 
 Map WASD and the mouse onto touch points, saved per app.
 
 - A visual editor: drop a key onto a spot on the screen, name it, save.
-- Presets for the common shapes — a twin-stick MOBA layout, an FPS aim/fire layout.
+- Presets for the common shapes: a twin-stick MOBA layout, an FPS aim/fire layout.
 - Per-app profiles that activate when that package comes to the foreground.
 
 **The overlay conflict, and the way through it.** The editor needs to draw controls on top of the
@@ -128,7 +128,7 @@ no keymapping at all.
 LDPlayer's other defining feature: several Android instances at once, with a manager to clone,
 rename, start, and batch-operate them.
 
-Be clear-eyed — **this is the largest refactor in the plan.** `index.ts` holds exactly one `engine`,
+Be clear-eyed: **this is the largest refactor in the plan.** `index.ts` holds exactly one `engine`,
 one `openEmu`, one `mirror`, one `DisplayScaler`, and every IPC handler closes over them. It needs
 an instance registry, per-instance IPC addressing, and a manager UI.
 
@@ -154,7 +154,7 @@ can find them. Today a screenshot goes through a browser download of a blob URL.
 Record a sequence of taps and replay it. Cheap once 1.2 exists, and it is table stakes in this
 category.
 
-## Phase 3 — Commercial polish
+## Phase 3: Commercial polish
 
 - **Auto-update.** Shipping an installer with no update path means version one is forever.
 - **Virtual GPS** and sensor spoofing.

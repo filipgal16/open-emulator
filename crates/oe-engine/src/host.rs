@@ -1,7 +1,7 @@
 //! How much of the machine to give the guest, and which renderer to ask for.
 //!
 //! The numbers below are *measured*, not guessed, and the measurements are the reason they look
-//! unintuitive — see each note. They were taken on a KVM host under WSL2; the shape of the
+//! unintuitive: see each note. They were taken on a KVM host under WSL2; the shape of the
 //! reasoning carries over to WHPX, but the exact figures deserve re-measuring on native Windows
 //! before anyone tunes them further.
 
@@ -39,7 +39,7 @@ pub struct HostFacts {
     pub total_ram_mb: u64,
     /// Whether a hypervisor the emulator can use (WHPX or AEHD) is actually available.
     pub accelerated: bool,
-    /// False in a headless run — the emulator cannot use the real GPU without a window.
+    /// False in a headless run: the emulator cannot use the real GPU without a window.
     pub has_window: bool,
 }
 
@@ -73,7 +73,7 @@ fn choose_cores(cpus: u32, accelerated: bool) -> u32 {
     cpus.saturating_sub(1).clamp(1, 12)
 }
 
-/// RAM — a measured constant, not a fraction of host memory.
+/// RAM: a measured constant, not a fraction of host memory.
 ///
 /// Scaling with the host was actively harmful: cold boot measured 22.9s at 3072MB, 25.9s at
 /// 3782MB and 38.6s at 4096MB, and warm start is dominated by restoring the snapshot's `ram.bin`,

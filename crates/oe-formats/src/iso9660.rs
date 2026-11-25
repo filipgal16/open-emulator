@@ -1,8 +1,8 @@
 //! Reading files out of an ISO9660 image, without mounting it.
 //!
 //! The shell version used `mount -o loop`, which needs root and does not exist on Windows at all.
-//! ISO9660 is a simple format — fixed 2048-byte sectors and a directory tree of variable-length
-//! records — and only two files are ever needed out of it: the kernel and the initrd.
+//! ISO9660 is a simple format: fixed 2048-byte sectors and a directory tree of variable-length
+//! records, and only two files are ever needed out of it: the kernel and the initrd.
 //!
 //! Reading it directly is also better than mounting: no privilege, no mount point to leak if the
 //! process dies partway, and no dependency on a loop device being available.
@@ -14,7 +14,7 @@ use crate::bytes::u32le;
 use crate::{err, fail, fileio, Result};
 
 const SECTOR: u64 = 2048;
-/// The volume descriptors start here — the first 16 sectors are reserved for boot code.
+/// The volume descriptors start here: the first 16 sectors are reserved for boot code.
 const PVD_SECTOR: u64 = 16;
 const PVD_TYPE_PRIMARY: u8 = 1;
 const STANDARD_ID: &[u8; 5] = b"CD001";
@@ -26,7 +26,7 @@ const FLAG_DIRECTORY: u8 = 0x02;
 pub struct IsoEntry {
     pub name: String,
     pub is_directory: bool,
-    /// Logical block address — multiply by 2048 for the byte offset.
+    /// Logical block address: multiply by 2048 for the byte offset.
     pub lba: u32,
     pub size: u32,
 }
@@ -40,7 +40,7 @@ fn both_endian32(buffer: &[u8], offset: usize) -> u32 {
 /// Cleans up an ISO9660 file identifier.
 ///
 /// Plain ISO9660 upper-cases names and appends a version suffix, so `initrd.img` is stored as
-/// `INITRD.IMG;1`. Rock Ridge, which Android-x86 images carry, preserves the real name — so the
+/// `INITRD.IMG;1`. Rock Ridge, which Android-x86 images carry, preserves the real name, so the
 /// comparison has to work either way, which is why lookups here are case-insensitive.
 fn clean_name(raw: &str) -> String {
     let without_version = raw.split(';').next().unwrap_or("");
@@ -135,7 +135,7 @@ impl IsoReader {
         Ok(self.list(directory)?.into_iter().find(|entry| entry.name.to_lowercase() == wanted))
     }
 
-    /// The whole contents of a file. Only ever used for a kernel and an initrd — a few MB each.
+    /// The whole contents of a file. Only ever used for a kernel and an initrd: a few MB each.
     pub fn read_file(&self, entry: &IsoEntry) -> Result<Vec<u8>> {
         if entry.is_directory {
             fail!("{} is a directory", entry.name);
@@ -146,7 +146,7 @@ impl IsoReader {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BootFiles {
-    /// The directory holding the payload, as an absolute path from the media root — this is what
+    /// The directory holding the payload, as an absolute path from the media root; this is what
     /// Android-x86's initrd takes as `SRC=`. Empty when the payload sits at the root, which is how
     /// ISO releases are laid out; a release-named directory once installed to a disk.
     pub src_dir: String,
@@ -187,7 +187,7 @@ pub fn read_boot_files(iso_path: &Path) -> Result<BootFiles> {
         }
     }
     fail!(
-        "no kernel and initrd.img found in {} — this does not look like an Android-x86 image",
+        "no kernel and initrd.img found in {}; this does not look like an Android-x86 image",
         iso_path.display()
     )
 }
@@ -251,7 +251,7 @@ mod tests {
     }
 
     /// A minimal but genuinely valid ISO9660 image, built by hand rather than by mkisofs, which
-    /// does not exist on Windows — and the point of the module under test is precisely that we no
+    /// does not exist on Windows, and the point of the module under test is precisely that we no
     /// longer need such a tool. Sector plan: 0-15 reserved, 16 PVD, 17 terminator, 18 root dir,
     /// then one sector per subdirectory, then file contents.
     fn build_iso(files: Vec<FileSpec>, dirs: Vec<DirSpec>) -> Vec<u8> {

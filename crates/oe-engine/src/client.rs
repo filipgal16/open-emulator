@@ -1,6 +1,6 @@
 //! The typed façade the rest of the app drives the guest through.
 //!
-//! Everything above this — the store, the account, the app library, the UI — talks to
+//! Everything above this (the store, the account, the app library, the UI) talks to
 //! [`OpenEmuClient`] and never to an engine directly. Taps, swipes, keys and typed text go down the
 //! engine's open input channel rather than each starting a command of their own.
 
@@ -108,7 +108,7 @@ impl OpenEmuClient {
         self.engine.install_apks(apk_paths, on_log, timeout.unwrap_or(MINUTES_10)).await
     }
 
-    /// Copies a host file into the guest, creating its directory first — explicitly, so storage
+    /// Copies a host file into the guest, creating its directory first, explicitly, so storage
     /// that refuses the directory fails here, with its own error, before a copy that can run to
     /// gigabytes has started.
     pub async fn push_file(&self, host_path: &str, guest_path: &str, on_log: LogHandler, timeout: Option<Duration>) -> CommandResult {
@@ -122,7 +122,7 @@ impl OpenEmuClient {
         self.engine.push_file(host_path, guest_path, on_log, timeout.unwrap_or(MINUTES_10)).await
     }
 
-    /// Fires a VIEW intent — how the Play client is driven (`market://search?q=…`).
+    /// Fires a VIEW intent: how the Play client is driven (`market://search?q=…`).
     pub async fn view_intent(&self, uri: &str, on_log: LogHandler) -> bool {
         let command = format!("am start -a android.intent.action.VIEW -d {}", self.engine.quote_guest_arg(uri));
         self.engine.shell(&command, on_log, Duration::from_secs(30)).await.success()

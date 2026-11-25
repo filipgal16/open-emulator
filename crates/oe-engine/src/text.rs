@@ -1,8 +1,8 @@
 //! Turning a child process's output bytes into lines.
 //!
 //! Windows tools do not agree on an encoding when their output is piped: most write UTF-8 (or the
-//! console's code page, which is UTF-8-compatible for everything the SDK prints), while some —
-//! `wsl.exe` most notoriously — write UTF-16LE, sometimes with a BOM. Decoding UTF-16 as UTF-8
+//! console's code page, which is UTF-8-compatible for everything the SDK prints), while some,
+//! `wsl.exe` most notoriously, write UTF-16LE, sometimes with a BOM. Decoding UTF-16 as UTF-8
 //! produces text riddled with NUL bytes, so the encoding is detected from the first bytes.
 
 /// Decodes one buffer of Windows process output, detecting UTF-16LE by its BOM or by the share of
@@ -36,7 +36,7 @@ fn decode_utf16(buffer: &[u8]) -> String {
 /// Splits a byte stream into whole lines, holding a partial line until the rest arrives.
 ///
 /// [`flush`](LineSplitter::flush) must be called when the stream ends. A program's last line
-/// frequently has no trailing newline, and without the flush that line vanishes — which is the
+/// frequently has no trailing newline, and without the flush that line vanishes, which is the
 /// worst possible failure for a log, because the last thing a process says before dying is usually
 /// the reason it died. Empty lines are not delivered.
 #[derive(Default)]

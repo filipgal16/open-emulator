@@ -1,7 +1,7 @@
 //! The cpio "newc" archive format, read and written in Rust.
 //!
 //! This exists to patch an Android-x86 initrd, which is a gzipped cpio archive. The shell version
-//! shelled out to `zcat | cpio -idm` and `cpio -o -H newc | gzip` — neither of which exists on
+//! shelled out to `zcat | cpio -idm` and `cpio -o -H newc | gzip`, neither of which exists on
 //! Windows, and neither of which is worth shipping a Unix toolchain for. The format is fixed-width
 //! ASCII headers and 4-byte alignment.
 //!
@@ -63,7 +63,7 @@ pub fn parse_cpio(archive: &[u8]) -> Result<Vec<CpioEntry>> {
     }
 
     // Checked up front, not only inside the loop. A buffer too short to hold one header would
-    // otherwise fall straight through and return no entries — so a failed gunzip, or simply the
+    // otherwise fall straight through and return no entries, so a failed gunzip, or simply the
     // wrong file, would produce an *empty* initrd that repacks and boots to nothing, with no error
     // anywhere pointing at the cause.
     if archive.len() < HEADER_BYTES || &archive[..6] != MAGIC {
@@ -184,7 +184,7 @@ pub fn build_cpio(entries: &[CpioEntry]) -> Vec<u8> {
 /// Rewrites one entry's contents in place, leaving everything else untouched. `false` when there
 /// is no entry of that name.
 ///
-/// The alternative — unpack to disk, edit, repack — is how the shell version worked, and it
+/// The alternative (unpack to disk, edit, repack) is how the shell version worked, and it
 /// silently loses file modes and symlinks unless every flag is exactly right. Editing the parsed
 /// entry cannot lose what it never converted.
 pub fn replace_entry(entries: &mut [CpioEntry], name: &str, rewrite: impl FnOnce(&[u8]) -> Vec<u8>) -> bool {
@@ -236,7 +236,7 @@ mod tests {
         let parsed =
             parse_cpio(&build_cpio(&[entry("sbin", 0o040755, b"", 1), entry("bin/sh", 0o120777, b"busybox", 1)])).unwrap();
         assert!(parsed[0].is_directory(), "a directory must not become a regular file");
-        assert!(parsed[1].is_symlink(), "a symlink target is its data — losing the type breaks the link");
+        assert!(parsed[1].is_symlink(), "a symlink target is its data; losing the type breaks the link");
         assert_eq!(parsed[1].data, b"busybox");
     }
 

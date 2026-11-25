@@ -12,7 +12,7 @@ pub struct FetchRequest {
     pub url: String,
     pub accept: Option<&'static str>,
     pub if_none_match: Option<String>,
-    /// The body is refused past this many bytes, while it streams — not after it is all in memory.
+    /// The body is refused past this many bytes, while it streams, not after it is all in memory.
     pub max_bytes: usize,
     pub timeout: Duration,
 }
@@ -38,7 +38,7 @@ impl FetchResponse {
 
 pub type Fetcher = Arc<dyn Fn(FetchRequest) -> BoxFuture<'static, Result<FetchResponse>> + Send + Sync>;
 
-/// Fetches over HTTP(S) with `client`. Sends no cookies — there is no cookie store — and follows
+/// Fetches over HTTP(S) with `client`. Sends no cookies (there is no cookie store) and follows
 /// redirects.
 pub fn http_fetcher(client: reqwest::Client) -> Fetcher {
     Arc::new(move |request: FetchRequest| {

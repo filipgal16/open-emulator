@@ -9,6 +9,7 @@ pub mod defender;
 pub mod download;
 pub mod engine;
 pub mod env_file;
+pub mod grpc;
 pub mod host;
 pub mod input;
 pub mod layout;

@@ -15,7 +15,7 @@ pub enum ProfileId {
 pub struct ProfileSpec {
     pub id: ProfileId,
     pub label: &'static str,
-    /// One line, in the user's terms — not "google_apis_playstore;x86_64".
+    /// One line, in the user's terms, not "google_apis_playstore;x86_64".
     pub description: &'static str,
     pub play_store: bool,
     /// Roughly what the one-time download costs, so the choice is informed.
@@ -82,7 +82,7 @@ impl ProfileId {
             ProfileId::Play => ProfileSpec {
                 id: self,
                 label: "Play Store",
-                description: "Google Play Store built in — sign in and install apps normally. Slowest to start.",
+                description: "Google Play Store built in. Sign in and install apps normally. Slowest to start.",
                 play_store: true,
                 download_hint: "about 4 GB extra",
                 proprietary: true,

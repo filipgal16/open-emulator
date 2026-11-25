@@ -60,7 +60,7 @@ pub struct Step {
     /// Shown while the fix runs. Plain language, and honest about how long it will take.
     pub working: Option<&'static str>,
     /// Not run by [`SetupRunner::run_auto`], even when its check fails: for work that must not gate
-    /// the wizard — provisioning's one-time cold boot — which the caller starts in the background.
+    /// the wizard, provisioning's one-time cold boot, which the caller starts in the background.
     /// [`SetupRunner::run_fix`] still runs it on demand.
     pub defer_fix: bool,
     pub check: Check,

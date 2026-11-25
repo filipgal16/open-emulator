@@ -116,7 +116,7 @@ impl ProcessRunner {
         ProcessRunner::default()
     }
 
-    /// Serialized. A failed command does not poison the queue — later commands still run.
+    /// Serialized. A failed command does not poison the queue, later commands still run.
     pub async fn run(&self, file: impl Into<OsString>, options: RunOptions) -> Result<CommandResult> {
         let _turn = self.queue.lock().await;
         exec(file.into(), options).await
@@ -172,7 +172,7 @@ pub async fn exec(file: OsString, options: RunOptions) -> Result<CommandResult> 
     }
 }
 
-/// A process that outlives the call that started it — the emulator itself.
+/// A process that outlives the call that started it: the emulator itself.
 pub struct DetachedProcess {
     pub pid: Option<u32>,
     pub child: Child,
@@ -205,7 +205,7 @@ mod tests {
     use std::time::Instant;
 
     /// The helper child process (`examples/test_child.rs`), which `cargo test` builds into the
-    /// profile's `examples` directory — found by walking up from the test binary, wherever this
+    /// profile's `examples` directory: found by walking up from the test binary, wherever this
     /// Cargo version keeps that.
     fn child() -> OsString {
         let name = if cfg!(windows) { "test_child.exe" } else { "test_child" };

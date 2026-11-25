@@ -11,7 +11,7 @@ use crate::{fail, Result};
 ///
 /// A recipe's id is its image tag, so the profile names it with `PROFILE_IMAGE_TAG`. The profile
 /// also states the base and the API level on its own, because the SDK paths and the download are
-/// built from those before any recipe is consulted — and the two descriptions can drift. Running
+/// built from those before any recipe is consulted, and the two descriptions can drift. Running
 /// on would read one image directory and build into another, so a disagreement fails here, naming
 /// both.
 pub fn recipe_for_profile(profile: &GuestProfile) -> Result<Option<RomRecipe>> {

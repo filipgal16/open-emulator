@@ -1,5 +1,5 @@
-//! The device-wide account: who the user is, across every guest the app manages, and — only if they
-//! chose to store one — their Google password, sealed with DPAPI.
+//! The device-wide account: who the user is, across every guest the app manages, and, only if they
+//! chose to store one, their Google password, sealed with DPAPI.
 //!
 //! The password never leaves this module except as keystrokes typed into the guest's focused field,
 //! and nothing here ever hands it to the UI.
@@ -62,7 +62,7 @@ pub struct AccountProfile {
 pub struct AccountState {
     pub profile: AccountProfile,
     pub guest: GuestAccountState,
-    /// False when DPAPI is unavailable — the vault then refuses to store anything.
+    /// False when DPAPI is unavailable: the vault then refuses to store anything.
     pub vault_available: bool,
 }
 
@@ -211,7 +211,7 @@ impl SecretVault {
     }
 
     /// The secret, for the caller to use and drop at once. `None` when nothing is stored, or when
-    /// Windows can no longer open it — a different user, or a restored profile.
+    /// Windows can no longer open it: a different user, or a restored profile.
     pub fn get(&self) -> Option<String> {
         let sealed = std::fs::read(&self.file).ok()?;
         String::from_utf8(open(&sealed)?).ok()
@@ -290,7 +290,7 @@ pub enum Migration {
     /// There was nothing to move.
     None,
     Moved,
-    /// It could not be read. Nothing is stored in its place, and the user is asked again — never a
+    /// It could not be read. Nothing is stored in its place, and the user is asked again, never a
     /// readable copy.
     Lost,
 }
@@ -476,7 +476,7 @@ impl Account {
     /// Opens the guest's own "add a Google account" flow. Nothing is automated past this point.
     pub async fn begin_sign_in(&self) -> FillResult {
         if self.client.start_add_google_account(no_log()).await {
-            fill(true, "Sign-in opened in the guest — complete it on the screen.")
+            fill(true, "Sign-in opened in the guest. Complete it on the screen.")
         } else {
             fill(false, "Could not open the guest sign-in screen. Is Android running?")
         }

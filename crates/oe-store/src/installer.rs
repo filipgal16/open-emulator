@@ -44,7 +44,7 @@ pub struct DownloadRequest {
 pub type Downloader = Arc<dyn Fn(DownloadRequest) -> BoxFuture<'static, Result<()>> + Send + Sync>;
 
 /// Downloads over https, resuming a partial file, and verifying the digest before the file takes
-/// its final name — so the cache can never hold a bad artefact under a name that says it is good.
+/// its final name, so the cache can never hold a bad artefact under a name that says it is good.
 pub fn http_downloader(client: reqwest::Client) -> Downloader {
     Arc::new(move |request: DownloadRequest| {
         let client = client.clone();
@@ -196,7 +196,7 @@ impl Installer {
         job
     }
 
-    /// Records a file turned away before it could become a job — as a failed job rather than a
+    /// Records a file turned away before it could become a job, as a failed job rather than a
     /// return value, so the reason appears in the install list the person is already watching.
     pub fn refuse(&self, label: &str, reason: &str) -> InstallJob {
         let mut job = self.new_job(label, label, SourceId::Local);

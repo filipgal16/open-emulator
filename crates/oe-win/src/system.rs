@@ -1,7 +1,7 @@
 //! Running something as administrator, services, and knowing when Windows wants a restart.
 //!
-//! The Electron app did each of these by starting a process — `powershell Start-Process -Verb
-//! RunAs`, `sc.exe query`, `reg.exe query` — and parsing what it printed. These are the calls those
+//! The Electron app did each of these by starting a process (`powershell Start-Process -Verb
+//! RunAs`, `sc.exe query`, `reg.exe query`) and parsing what it printed. These are the calls those
 //! tools make themselves, without the second or so each process cost.
 
 use std::ffi::OsStr;
@@ -82,7 +82,7 @@ impl std::error::Error for ElevationError {}
 /// Runs a command elevated, via a UAC prompt, and waits for it.
 ///
 /// Succeeds only if the user accepts and the command exits 0. Declining is an error, which the
-/// caller surfaces as a setup failure rather than a silent no-op — a setup step that quietly does
+/// caller surfaces as a setup failure rather than a silent no-op: a setup step that quietly does
 /// nothing is worse than one that fails, because the failure arrives later and somewhere else.
 ///
 /// Blocking: call it from a worker thread.
@@ -147,7 +147,7 @@ pub fn hklm_key_exists(path: &str) -> bool {
 ///
 /// This is the trap that every "enable an optional feature" flow falls into. `DISM
 /// /Enable-Feature` reports success, changes nothing observable, and stays that way until the
-/// machine reboots — while every direct check keeps saying the feature is fine. The user sees a
+/// machine reboots, while every direct check keeps saying the feature is fine. The user sees a
 /// green step immediately followed by a baffling failure two steps later, with no mention anywhere
 /// of the one action that fixes it.
 ///

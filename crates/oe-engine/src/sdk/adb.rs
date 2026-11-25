@@ -1,4 +1,4 @@
-//! adb: the server's socket for what runs often, `adb.exe` for what it does best.
+﻿//! adb: the server's socket for what runs often, `adb.exe` for what it does best.
 //!
 //! Shell commands, property reads, device listing and screenshots go over the server's own
 //! protocol ([`super::adb_wire`]), falling back to `adb.exe` only while no server is running yet.
@@ -61,7 +61,7 @@ impl Adb {
         Adb { binary, runner, wire: AdbWire::new(server_port()) }
     }
 
-    /// Talks to a server on another port — a test's fake one.
+    /// Talks to a server on another port: a test's fake one.
     pub fn with_server_port(mut self, port: u16) -> Self {
         self.wire = AdbWire::new(port);
         self
@@ -93,10 +93,10 @@ impl Adb {
         }
     }
 
-    /// Raw `adb -s <serial> …`, with the serial as its own argv entry.
+    /// Raw `adb -s <serial> â€¦`, with the serial as its own argv entry.
     ///
     /// Everything past `shell` is handed to the guest's `sh`, so a caller passing user text still
-    /// has to quote for *that* shell — see [`crate::quote::posix_quote`]. What it no longer has to
+    /// has to quote for *that* shell: see [`crate::quote::posix_quote`]. What it no longer has to
     /// do is quote for a host shell as well, because there isn't one.
     pub async fn exec(&self, serial: &str, args: &[String], on_log: LogHandler, timeout: Duration) -> Result<CommandResult> {
         let mut argv = vec!["-s".to_owned(), serial.to_owned()];
@@ -156,7 +156,7 @@ impl Adb {
     ///
     /// Read as bytes, not through the line runner: a `0x0a` byte inside the image data is not a
     /// line break, and a text decode mangles anything that is not valid text. `exec-out` rather
-    /// than `shell` for the same class of reason — `adb shell` translates `\n` to `\r\n` on some
+    /// than `shell` for the same class of reason: `adb shell` translates `\n` to `\r\n` on some
     /// transports, which quietly corrupts every capture.
     pub async fn screencap(&self, serial: &str, timeout: Duration) -> Result<Vec<u8>> {
         match within(timeout, self.wire.exec_out(serial, "screencap -p")).await {

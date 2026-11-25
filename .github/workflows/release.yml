@@ -3,7 +3,7 @@ name: Release
 # Builds the Windows installer on Windows, after the test suite passes.
 #
 #   - Pushing a version tag (v0.3.0) also publishes it as a GitHub release: the installer and
-#     latest.yml. That release is where installed copies look for updates — this app's updater and
+#     latest.yml. That release is where installed copies look for updates; this app's updater and
 #     the Electron version's alike read latest.yml from the latest release.
 #   - Running it by hand (Actions → Release → Run workflow) builds without publishing, and keeps
 #     the installer as a workflow artifact for a week.

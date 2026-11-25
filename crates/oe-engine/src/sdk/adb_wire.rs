@@ -1,7 +1,7 @@
 //! adb's own wire protocol, spoken straight to the adb server on `127.0.0.1:5037`.
 //!
-//! Every `adb.exe shell …` costs a process start on Windows — tens of milliseconds before the
-//! command has even reached the server — and every status poll, tap, and property read paid it.
+//! Every `adb.exe shell …` costs a process start on Windows (tens of milliseconds before the
+//! command has even reached the server) and every status poll, tap, and property read paid it.
 //! The server already listens on a socket and speaks a small protocol; this speaks it directly.
 //! `adb.exe` is still what starts the server, and what installs and pushes, which it streams with
 //! logic of its own.
@@ -113,7 +113,7 @@ impl AdbWire {
         Ok(None)
     }
 
-    /// `exec:` — the command's stdout as raw bytes, untouched by any line handling. What a
+    /// `exec:`: the command's stdout as raw bytes, untouched by any line handling. What a
     /// screenshot needs: a `0x0a` inside PNG data is not a line break.
     pub async fn exec_out(&self, serial: &str, command: &str) -> Result<Vec<u8>, WireError> {
         let mut stream = self.open(serial, &format!("exec:{command}")).await?;
@@ -122,7 +122,7 @@ impl AdbWire {
         Ok(bytes)
     }
 
-    /// A shell that stays open, for commands written into it one after another — input events,
+    /// A shell that stays open, for commands written into it one after another: input events,
     /// mostly, which would otherwise each pay for a connection of their own.
     pub async fn open_shell(&self, serial: &str) -> Result<ShellSession, WireError> {
         let stream = self.open(serial, "shell,v2,raw:").await?;
@@ -147,7 +147,7 @@ impl ShellSession {
         write_packet(&mut self.writer, STDIN, &line).await
     }
 
-    /// False once the guest has closed the shell — the guest stopped, or the server restarted.
+    /// False once the guest has closed the shell: the guest stopped, or the server restarted.
     pub fn is_open(&self) -> bool {
         !self.drain.is_finished()
     }

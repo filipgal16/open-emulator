@@ -1,11 +1,11 @@
 //! A ROM, as data: what the builder removes, renames, rewrites and adds on top of one of Google's
 //! emulator images. This module holds the shape, the rules every recipe must meet, and the first
-//! recipe — `openemu`, built from the AOSP `default` API 30 image; `design/openemu-rom.md`
+//! recipe: `openemu`, built from the AOSP `default` API 30 image; `design/openemu-rom.md`
 //! ("Recipe v1") is where each of its choices is argued. [`crate::recipe_compat`] holds the second,
 //! and [`crate::recipes`] is where a recipe is looked up by id.
 //!
 //! Paths are **in-volume**: each logical partition is its own ext4, opened on its own. The system
-//! volume is system-as-root — its tree starts at `/` with the content under `/system/...` — while
+//! volume is system-as-root (its tree starts at `/` with the content under `/system/...`), while
 //! system_ext, product and vendor are mounted at their own root, so their apps are `/app/...`, not
 //! `/product/app/...`. Mixing the two up removes nothing and still reports success, which is what
 //! [`validate_recipe`] refuses.
@@ -134,7 +134,7 @@ impl Transform {
 }
 
 /// A stock file whose bytes are rewritten from its own content. The inode is kept, so its mode,
-/// owner and label are whatever Google gave it — which is why an edit names no label, and why the
+/// owner and label are whatever Google gave it, which is why an edit names no label, and why the
 /// file must already exist: a recipe that edits a file its base does not have fails the build
 /// rather than inventing one.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -176,7 +176,7 @@ pub struct RomRecipe {
     /// Stock files rewritten in place, after debloat. `None` and an empty list build the same
     /// image but hash differently, as they did in the TypeScript builder.
     pub edits: Option<Vec<RomEdit>>,
-    /// Created in order, after debloat — a directory before anything inside it.
+    /// Created in order, after debloat: a directory before anything inside it.
     pub files: Vec<RomFile>,
 }
 
@@ -190,8 +190,8 @@ impl RomRecipe {
     }
 }
 
-/// Bumped whenever the builder changes how it applies a recipe — a different edit order, a fixed
-/// ext4 bug, another file rewritten — without the recipe itself changing.
+/// Bumped whenever the builder changes how it applies a recipe (a different edit order, a fixed
+/// ext4 bug, another file rewritten) without the recipe itself changing.
 ///
 /// It is hashed with the recipe, because "up to date" is decided by the hash: without it, an image
 /// built by a broken builder would count as current forever after the fix shipped.
@@ -204,7 +204,7 @@ const VERSION: u32 = 1;
 
 pub(crate) const SYSTEM_FILE: &str = "u:object_r:system_file:s0";
 
-/// The system volume is rooted at `/`, so this in-volume path is also the path Android sees —
+/// The system volume is rooted at `/`, so this in-volume path is also the path Android sees:
 /// which is what `ro.config.wallpaper` has to name.
 const MEDIA_DIR: &str = "/system/media";
 const WALLPAPER_DIR: &str = "/system/media/openemu";
@@ -539,7 +539,7 @@ pub fn recipe_hash(
 /// The emulator's own ceiling for `hw.cpu.ncore`.
 pub const MAX_ARM_CPU_CORES: u32 = 64;
 
-/// The params this recipe's edits actually read, checked — or `None` if it reads none. A param
+/// The params this recipe's edits actually read, checked, or `None` if it reads none. A param
 /// the recipe does not use is left out, so it cannot force a rebuild.
 pub fn used_params(recipe: &RomRecipe, params: RomParams) -> Result<Option<RomParams>> {
     if !recipe.edits().iter().any(|edit| edit.transform == Transform::ArmCpuinfo) {
@@ -561,7 +561,7 @@ pub fn used_params(recipe: &RomRecipe, params: RomParams) -> Result<Option<RomPa
 
 /// Directories new files may go into without declaring them: measured on the stock volumes, not
 /// assumed. `/system` is a linear directory of 17 entries in one block on the stock system
-/// volume. Adding one here is a claim about Google's image, so it needs a measurement behind it —
+/// volume. Adding one here is a claim about Google's image, so it needs a measurement behind it:
 /// an earlier revision listed `/system/media`, which that image does not have.
 fn stock_dirs(volume: Volume) -> &'static [&'static str] {
     match volume {
@@ -623,7 +623,7 @@ pub fn validate_recipe(recipe: &RomRecipe) -> Result<()> {
         }
     }
 
-    // Debloat runs before anything else, so a removed path that is — or contains — something the
+    // Debloat runs before anything else, so a removed path that is, or contains, something the
     // recipe then edits or creates would leave the builder editing a file that no longer exists.
     let removed_ancestor = |volume: Volume, target: &str| -> Option<String> {
         let mut p = target;
@@ -689,7 +689,7 @@ pub fn validate_recipe(recipe: &RomRecipe) -> Result<()> {
         }
 
         if file.mode > 0o7777 {
-            fail!("{id}: mode 0o{:o} is not permission bits alone — the type comes from kind", file.mode);
+            fail!("{id}: mode 0o{:o} is not permission bits alone: the type comes from kind", file.mode);
         }
         if file.kind == FileKind::Dir && file.source.is_some() {
             fail!("{id} is a directory and cannot have content");
@@ -703,8 +703,8 @@ pub fn validate_recipe(recipe: &RomRecipe) -> Result<()> {
     Ok(())
 }
 
-/// An in-volume path must be absolute and normalised — the ext4 editor looks names up one
-/// component at a time, and `.`, `..` or an empty component are not names it will find — and must
+/// An in-volume path must be absolute and normalised (the ext4 editor looks names up one
+/// component at a time, and `.`, `..` or an empty component are not names it will find) and must
 /// have the shape its volume has (see the module comment).
 fn check_path(volume: Volume, target: &str, what: &str) -> Result<()> {
     if !target.starts_with('/') {
@@ -718,7 +718,7 @@ fn check_path(volume: Volume, target: &str, what: &str) -> Result<()> {
     }
     let in_system = target.starts_with("/system/");
     if volume == Volume::System && !in_system {
-        fail!("{what} system:{target} is outside /system/ — the system volume is rooted at / with its content under /system/");
+        fail!("{what} system:{target} is outside /system/: the system volume is rooted at / with its content under /system/");
     }
     if volume != Volume::System && in_system {
         fail!("{what} {volume}:{target} starts with /system/, but {volume} is mounted at its own root");

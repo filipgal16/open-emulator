@@ -79,14 +79,12 @@ pub(crate) fn parse_gfxinfo(text: &str) -> Gfx {
     }
 }
 
-/// What open-emulator's screen mirror can reach at this screencap cost, in frames per second.
-/// Only meaningful for open-emulator: LDPlayer draws its own window and never uses screencap.
-///
-/// The WSL runtime slept a fixed 300 ms after each `screencap -p`; the native runtime ticks every
-/// 250 ms and skips ticks while a capture is in flight, so it can reach at most 4 FPS.
-pub(crate) fn mirror_fps(png_median_ms: f64) -> (f64, f64) {
-    let two = |x: f64| (x * 100.0).round() / 100.0;
-    (two(1000.0 / (png_median_ms + 300.0)), two(1000.0 / ((png_median_ms / 250.0).ceil() * 250.0)))
+/// What open-emulator's screenshot fallback can reach at this screencap cost, in frames per
+/// second. Only meaningful for open-emulator: LDPlayer draws its own window and never uses
+/// screencap. The fallback ticks every 250 ms and skips ticks while a capture is in flight, so it
+/// can reach at most 4 FPS. (The app's own display streams over gRPC; this is only its fallback.)
+pub(crate) fn mirror_fps(png_median_ms: f64) -> f64 {
+    ((1000.0 / ((png_median_ms / 250.0).ceil() * 250.0)) * 100.0).round() / 100.0
 }
 
 /// The comparison table for two result files. Lower is better except `*_fps` and `*_mb_s`.
@@ -226,9 +224,7 @@ pub(crate) fn run(args: &[String]) -> Result<(), String> {
     let raw: Vec<f64> = (0..5).map(|_| suite.adb_run(&["exec-out", "screencap"], None).ms as f64).collect();
     suite.put("screencap_png_ms", &png);
     suite.put("screencap_raw_ms", &raw);
-    let (wsl, native) = mirror_fps(median(&png).unwrap_or(f64::NAN));
-    suite.summary.insert("oe_mirror_fps_wsl".to_owned(), num(wsl));
-    suite.summary.insert("oe_mirror_fps_native".to_owned(), num(native));
+    suite.summary.insert("oe_mirror_fps_native".to_owned(), num(mirror_fps(median(&png).unwrap_or(f64::NAN))));
     println!("screencap -p: {} ms ({png_bytes} B); raw: {} ms", join(&png), join(&raw));
 
     suite.sh("dumpsys gfxinfo com.android.settings reset");
@@ -351,10 +347,10 @@ mod tests {
     }
 
     #[test]
-    fn the_mirror_estimate_matches_each_runtimes_pacing() {
-        // 100 ms capture: WSL sleeps 300 ms after it, native waits for the next 250 ms tick.
-        assert_eq!(mirror_fps(100.0), (2.5, 4.0));
-        assert_eq!(mirror_fps(300.0), (1.67, 2.0));
+    fn the_mirror_estimate_matches_the_fallbacks_pacing() {
+        // A capture waits for the next 250 ms tick.
+        assert_eq!(mirror_fps(100.0), 4.0);
+        assert_eq!(mirror_fps(300.0), 2.0);
     }
 
     #[test]

@@ -1,6 +1,6 @@
 //! Patching the Android-x86 initrd so the guest is reachable over adb.
 //!
-//! There is no USB to emulate, so adb has to arrive over TCP — and `adbd` only listens on TCP when
+//! There is no USB to emulate, so adb has to arrive over TCP, and `adbd` only listens on TCP when
 //! `service.adb.tcp.port` is set. Getting that property in is the whole problem, and the initrd is
 //! the small honest place to do it:
 //!
@@ -10,7 +10,7 @@
 //!   Editing `system.sfs` means unpacking and repacking 942 MB to change one line.
 //!
 //!   The initrd is about 1.3 MB and *already* writes to `default.prop` immediately before handing
-//!   over to Android — that is how it disables the setup wizard. Adding three lines beside that is
+//!   over to Android; that is how it disables the setup wizard. Adding three lines beside that is
 //!   a few hundred bytes of change to a file that is rebuilt on every prepare anyway.
 //!
 //! `ro.adb.secure` and `ro.secure` go in the same edit for a related reason: with adb
@@ -28,7 +28,7 @@ use flate2::Compression;
 
 use crate::cpio::{build_cpio, find_entry, parse_cpio, replace_entry};
 
-/// The line the stock initrd uses to disable the setup wizard — our insertion point.
+/// The line the stock initrd uses to disable the setup wizard: our insertion point.
 const ANCHOR: &str = "ro.setupwizard.mode=DISABLED";
 
 pub const ADB_TCP_PORT: u16 = 5555;
@@ -55,7 +55,7 @@ impl From<InitrdPatchError> for crate::Error {
 /// Shell inserted into the initrd's `init`, immediately after the anchor.
 ///
 /// Existing assignments are stripped before the new ones are appended, because `default.prop` is
-/// read top to bottom and a later duplicate does not reliably win — leaving the original in place
+/// read top to bottom and a later duplicate does not reliably win, leaving the original in place
 /// would make the result depend on Android's property-loading order rather than on this edit.
 ///
 /// Tab-indented to match the surrounding script.
@@ -78,7 +78,7 @@ fn patch_script(port: u16) -> String {
 /// rather than producing a silently unpatched initrd.
 pub fn patch_init_script(script: &str, port: u16) -> Result<String, InitrdPatchError> {
     if script.contains("service.adb.tcp.port") {
-        // Already patched. Returning it unchanged keeps `prepare` idempotent — and re-running the
+        // Already patched. Returning it unchanged keeps `prepare` idempotent, and re-running the
         // insertion would stack duplicate blocks on every call.
         return Ok(script.to_owned());
     }
@@ -86,7 +86,7 @@ pub fn patch_init_script(script: &str, port: u16) -> Result<String, InitrdPatchE
     let mut lines: Vec<String> = script.split('\n').map(str::to_owned).collect();
     let Some(anchor) = lines.iter().position(|line| line.contains(ANCHOR)) else {
         return Err(InitrdPatchError(format!(
-            "could not find \"{ANCHOR}\" in the initrd's init script — this Android-x86 build is not one this patch understands"
+            "could not find \"{ANCHOR}\" in the initrd's init script; this Android-x86 build is not one this patch understands"
         )));
     };
 
@@ -104,7 +104,7 @@ pub struct PatchResult {
 
 /// Reads a gzipped initrd, patches `init`, and repacks it.
 ///
-/// Every other entry is passed through untouched, including its mode — which matters more than it
+/// Every other entry is passed through untouched, including its mode, which matters more than it
 /// sounds, because `init` is the one file whose executable bit the kernel absolutely requires.
 pub fn patch_initrd(gzipped: &[u8], port: u16) -> Result<PatchResult, InitrdPatchError> {
     let mut raw = Vec::new();
@@ -115,7 +115,7 @@ pub fn patch_initrd(gzipped: &[u8], port: u16) -> Result<PatchResult, InitrdPatc
     let mut entries = parse_cpio(&raw).map_err(|error| InitrdPatchError(error.0))?;
 
     let Some(init) = find_entry(&entries, "init") else {
-        return Err(InitrdPatchError("the initrd contains no init — it is not an Android-x86 boot image".into()));
+        return Err(InitrdPatchError("the initrd contains no init; it is not an Android-x86 boot image".into()));
     };
     let already_patched = String::from_utf8_lossy(&init.data).contains("service.adb.tcp.port");
 

@@ -61,7 +61,7 @@ pub struct AvdConfigInput<'a> {
 /// The load-bearing one is **`hw.gpu.mode`**, which must match the `-gpu` flag the emulator is
 /// launched with. If they disagree, the snapshot written by one boot records a different renderer
 /// than `config.ini` claims, and the next warm start dies with "The emulator hardware cannot load
-/// snapshot". Both values come from the same [`GuestTuning`] precisely so they cannot drift — see
+/// snapshot". Both values come from the same [`GuestTuning`] precisely so they cannot drift: see
 /// [`emulator_args`], which reads `tuning.gpu_mode` for the flag.
 pub fn avd_config_overrides(input: &AvdConfigInput) -> Vec<(String, String)> {
     let AvdConfigInput { profile, device, tuning, has_snapshot, snapshot_name } = input;
@@ -123,6 +123,10 @@ pub struct EmulatorArgsInput<'a> {
     pub use_snapshot: Option<&'a str>,
     pub headless: bool,
     pub writable_system: bool,
+    /// Draw nothing of its own: no window (`-qt-hide-window`), and the screen and input served
+    /// over gRPC on this port, for the app to draw Android itself. `None` keeps the emulator's
+    /// own window.
+    pub native_display: Option<u16>,
 }
 
 /// The emulator's command line.
@@ -130,7 +134,7 @@ pub struct EmulatorArgsInput<'a> {
 /// Two flags are here for reasons that cost real debugging, and neither is cosmetic:
 ///
 /// **`-gpu <mode>` is never `auto`.** The emulator resolves `auto` to a concrete renderer that
-/// varies by system image — swiftshader on `google_apis`, lavapipe on AOSP — and writes the
+/// varies by system image (swiftshader on `google_apis`, lavapipe on AOSP) and writes the
 /// *resolved* name into the snapshot's `hardware.ini`. `config.ini` would still say something
 /// else, and the next warm start refuses the snapshot. `tuning.gpu_mode` is the single source for
 /// both.
@@ -157,8 +161,12 @@ pub fn emulator_args(input: &EmulatorArgsInput) -> Vec<String> {
     .map(|s| (*s).to_owned())
     .collect();
 
+    if let Some(port) = input.native_display.filter(|_| !input.headless) {
+        // The token travels in the emulator's discovery file, which only this user can read.
+        args.extend(["-qt-hide-window".to_owned(), "-grpc".to_owned(), port.to_string(), "-grpc-use-token".to_owned()]);
+    }
     if input.headless {
-        // Audio has no sink in a headless run — the emulator logs a driver failure and initialises
+        // Audio has no sink in a headless run: the emulator logs a driver failure and initialises
         // it anyway. Skipping the subsystem is cheaper than letting it fail.
         args.extend(["-no-window".to_owned(), "-no-audio".to_owned()]);
     }
@@ -166,7 +174,7 @@ pub fn emulator_args(input: &EmulatorArgsInput) -> Vec<String> {
         args.push("-writable-system".into());
     }
 
-    // Device identity is baked into the boot, so a snapshot taken afterwards carries it — which is
+    // Device identity is baked into the boot, so a snapshot taken afterwards carries it, which is
     // why switching device needs a re-provision rather than just a restart.
     for (key, value) in &input.device.props {
         args.push("-prop".into());
@@ -222,7 +230,7 @@ mod tests {
     }
 
     fn args(device: &DeviceIdentity, use_snapshot: Option<&str>, headless: bool, writable_system: bool) -> Vec<String> {
-        emulator_args(&EmulatorArgsInput { avd_name: "A", tuning: &tuning(), device, use_snapshot, headless, writable_system })
+        emulator_args(&EmulatorArgsInput { avd_name: "A", tuning: &tuning(), device, use_snapshot, headless, writable_system, native_display: None })
     }
 
     fn pair(key: &str, value: &str) -> (String, String) {
@@ -284,6 +292,7 @@ mod tests {
             use_snapshot: None,
             headless: true,
             writable_system: false,
+            native_display: None,
         });
         assert_eq!(get(&config, "hw.gpu.mode"), Some("swiftshader_indirect"));
         assert_eq!(args[args.iter().position(|a| a == "-gpu").unwrap() + 1], "swiftshader_indirect");
@@ -325,6 +334,17 @@ mod tests {
         assert!(!warm.contains(&"-snapshot".into()), "naming a snapshot is what broke the warm path");
         assert!(!warm.contains(&"-no-snapshot-load".into()), "loading must stay enabled or there is no warm start");
         assert!(!warm.contains(&"-no-snapshot-save".into()), "saving on exit is what keeps default_boot current");
+    }
+
+    #[test]
+    fn a_native_display_hides_the_window_and_serves_grpc() {
+        let (tuning, device) = (tuning(), device());
+        let input = |headless| EmulatorArgsInput {
+            avd_name: "A", tuning: &tuning, device: &device, use_snapshot: None, headless, writable_system: false, native_display: Some(8600),
+        };
+        let line = emulator_args(&input(false)).join(" ");
+        assert!(line.contains("-qt-hide-window -grpc 8600 -grpc-use-token"), "{line}");
+        assert!(!emulator_args(&input(true)).contains(&"-qt-hide-window".to_owned()), "headless already has no window");
     }
 
     #[test]

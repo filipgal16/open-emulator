@@ -3,7 +3,7 @@
 //! The emulator's window is a native child window placed *over* a rectangle of ours, so the UI
 //! has to know that rectangle in window coordinates. Layout knows it; nothing in iced's stock
 //! widgets passes it on. This fills its space, optionally paints a background, and publishes its
-//! bounds whenever they change — the iced counterpart of the renderer's `ResizeObserver`.
+//! bounds whenever they change: the iced counterpart of the renderer's `ResizeObserver`.
 
 use iced::advanced::layout::{self, Layout};
 use iced::advanced::renderer;

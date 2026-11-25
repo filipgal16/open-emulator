@@ -4,7 +4,7 @@
 //! two partitions, `vbmeta` (the top-level AVB metadata) and `super` (the dynamic partitions). Every
 //! byte the ROM builder writes lands at an offset derived from this table, so the table is checked
 //! before it is believed. A header or entry array that fails its CRC means a truncated download, a
-//! different image, or damage — and an offset read from it would aim the editor at the wrong bytes
+//! different image, or damage, and an offset read from it would aim the editor at the wrong bytes
 //! of a 3 GB file, which fails at boot, far from the cause.
 //!
 //! Only the primary header is read. The builder never changes the table, so the backup at the end
@@ -47,7 +47,7 @@ pub fn read_gpt<R: ReadAt + ?Sized>(read: &mut R) -> Result<Vec<GptPartition>> {
 ///
 /// `read` is relative to the start of the disk. Refuses a missing signature, a header or entry
 /// array whose CRC32 does not match, a header that is not the primary, entries outside the usable
-/// range, and partitions that overlap — any of which means the offsets cannot be trusted to write
+/// range, and partitions that overlap, any of which means the offsets cannot be trusted to write
 /// through.
 pub fn read_gpt_with_sector_size<R: ReadAt + ?Sized>(read: &mut R, sector_size: u64) -> Result<Vec<GptPartition>> {
     if sector_size < 512 || !sector_size.is_power_of_two() {
@@ -270,7 +270,7 @@ mod tests {
     }
 
     /// A disk laid out the way sgdisk does it: protective MBR, header at LBA 1, 128 entries of 128
-    /// bytes from LBA 2, CRCs computed for real. Only the table is materialised — the partitions'
+    /// bytes from LBA 2, CRCs computed for real. Only the table is materialised: the partitions'
     /// own sectors are never read, so the buffer ends at the first usable LBA.
     fn build_disk(partitions: &[Part], layout: Layout) -> Vec<u8> {
         let Layout { sector_size, num_entries, entry_size, last_usable } = layout;

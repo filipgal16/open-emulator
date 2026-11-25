@@ -1,4 +1,4 @@
-//! `openemu-compat`: the ROM for running what people actually install — ARM games — rather than
+//! `openemu-compat`: the ROM for running what people actually install, ARM games, rather than
 //! the licence-clean minimum.
 //!
 //! `openemu` is built from the AOSP image, which is x86-only: an app that ships only ARM libraries
@@ -16,9 +16,9 @@
 //!
 //! **Compatibility first.** Google's identity stays exactly as shipped (`identity: None`): Play
 //! services decides from the build fingerprint whether the device may sign in, and a game's
-//! "Sign in with Google" goes through it. Anything an app can reach by API — Play services, the
+//! "Sign in with Google" goes through it. Anything an app can reach by API (Play services, the
 //! services framework, WebView, Chrome (custom tabs are how most games show a login page), the
-//! keyboard, text-to-speech, the licence checker, the document and photo pickers — stays, however
+//! keyboard, text-to-speech, the licence checker, the document and photo pickers) stays, however
 //! large.
 //!
 //! **Every core visible.** The translator tells ARM apps the device has one CPU; see
@@ -39,7 +39,7 @@ const VERSION: u32 = 1;
 /// Apps this recipe must never remove, and why. A test holds `debloat` to it, as `KEPT` does for
 /// `openemu`.
 pub const COMPAT_KEPT: &[(&str, &str)] = &[
-    ("PrebuiltGmsCore", "Google Play services: sign-in, push, ads, Play Games — what most games call first"),
+    ("PrebuiltGmsCore", "Google Play services: sign-in, push, ads, Play Games; what most games call first"),
     ("GoogleServicesFramework", "Play services cannot register the device or hold an account without it"),
     ("ConfigUpdater", "delivers the server-side configuration Play services runs on"),
     ("GoogleOneTimeInitializer", "sets the Google defaults on first boot; Play services expects them"),
@@ -69,7 +69,7 @@ pub const COMPAT_KEPT: &[(&str, &str)] = &[
     ("TelephonyProvider", "telephony's own data; the framework starts it regardless of the apps removed"),
     ("BlockedNumberProvider", "Telecom checks incoming calls against it"),
     ("SettingsProvider", "Settings.System/Secure/Global live in it; without it nothing boots"),
-    ("DownloadProvider", "DownloadManager is a framework API any app may call — games fetch their data with it"),
+    ("DownloadProvider", "DownloadManager is a framework API any app may call; games fetch their data with it"),
     ("MediaProviderLegacy", "migrates media data for the MediaProvider module"),
     ("ExternalStorageProvider", "serves /sdcard to the file picker"),
     ("TeleService", "com.android.phone; the framework starts it regardless of the apps removed"),
@@ -159,7 +159,7 @@ pub fn openemu_compat_recipe() -> RomRecipe {
                         "talkback",
                     ],
                 ),
-                // The Google app (Assistant, hotword, the launcher feed — the heaviest background
+                // The Google app (Assistant, hotword, the launcher feed: the heaviest background
                 // process on the stock image), Digital Wellbeing, Android System Intelligence and
                 // the Private Compute services it talks through, the dialer and the SMS app (no
                 // telephony UI on an emulator, as on `openemu`), the Android Auto and supervision

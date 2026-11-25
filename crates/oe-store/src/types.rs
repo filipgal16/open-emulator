@@ -57,7 +57,7 @@ pub struct StoreApp {
     pub package_name: String,
     pub name: String,
     pub summary: String,
-    /// The icon, already downloaded to the image cache — never a remote URL. `None` shows a
+    /// The icon, already downloaded to the image cache, never a remote URL. `None` shows a
     /// placeholder.
     pub icon: Option<PathBuf>,
     pub version_name: String,
@@ -66,7 +66,7 @@ pub struct StoreApp {
     pub license: Option<String>,
     /// Minimum API level this build installs on.
     pub min_sdk: u32,
-    /// ABIs the APK carries native code for. Empty means pure bytecode — runs on any guest.
+    /// ABIs the APK carries native code for. Empty means pure bytecode: runs on any guest.
     pub abis: Vec<String>,
     pub categories: Vec<String>,
     pub last_updated: i64,
@@ -127,7 +127,7 @@ pub struct InstallJob {
     pub bytes_done: u64,
     /// 0 when the server sent no length; the UI shows an indeterminate bar.
     pub bytes_total: u64,
-    /// Why the job failed — or, on a `Done` job, what after the install did not work (a game's
+    /// Why the job failed, or, on a `Done` job, what after the install did not work (a game's
     /// data files that could not be copied), since the install itself stands.
     pub error: Option<String>,
     /// Milliseconds since the Unix epoch.
@@ -163,10 +163,10 @@ pub fn install_blocked(app: &StoreApp, guest_sdk: Option<u32>) -> Option<String>
     }
 }
 
-/// `1.4 MB`, `12 MB`, `—` for nothing.
+/// `1.4 MB`, `12 MB`, `Unknown` for nothing.
 pub fn format_bytes(bytes: u64) -> String {
     if bytes == 0 {
-        return "—".to_owned();
+        return "Unknown".to_owned();
     }
     if bytes < 1024 {
         return format!("{bytes} B");
@@ -225,7 +225,7 @@ mod tests {
 
     #[test]
     fn sizes_read_the_way_a_person_says_them() {
-        assert_eq!(format_bytes(0), "—");
+        assert_eq!(format_bytes(0), "Unknown");
         assert_eq!(format_bytes(512), "512 B");
         assert_eq!(format_bytes(1536), "1.5 KB");
         assert_eq!(format_bytes(25 * 1024 * 1024), "25 MB");

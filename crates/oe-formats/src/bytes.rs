@@ -138,7 +138,7 @@ pub fn js_trim(text: &str) -> &str {
     text.trim_matches(js_is_space)
 }
 
-/// Splits on `\n`, dropping one `\r` before each `\n` — JavaScript's `text.split(/\r?\n/)`.
+/// Splits on `\n`, dropping one `\r` before each `\n`: JavaScript's `text.split(/\r?\n/)`.
 pub fn split_lines(text: &str) -> Vec<&str> {
     let pieces: Vec<&str> = text.split('\n').collect();
     let last = pieces.len() - 1;
@@ -165,8 +165,8 @@ pub fn js_line_spans(text: &str) -> Vec<(usize, usize)> {
     spans
 }
 
-/// Replaces the first line that starts with `prefix` — JavaScript's
-/// `text.replace(/^<prefix>.*$/m, replacement)` — and leaves the text alone if there is none.
+/// Replaces the first line that starts with `prefix` (JavaScript's
+/// `text.replace(/^<prefix>.*$/m, replacement)`) and leaves the text alone if there is none.
 pub fn replace_first_line(text: &str, prefix: &str, replacement: &str) -> String {
     for (start, end) in js_line_spans(text) {
         if text[start..end].starts_with(prefix) {

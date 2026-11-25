@@ -70,7 +70,7 @@ impl AppLibrary {
         names.into_iter().map(|package_name| InstalledApp { label: pretty_label(&package_name), package_name }).collect()
     }
 
-    /// Package names only — what install attribution compares before and after.
+    /// Package names only: what install attribution compares before and after.
     pub async fn package_names(&self) -> Vec<String> {
         self.list().await.into_iter().map(|app| app.package_name).collect()
     }

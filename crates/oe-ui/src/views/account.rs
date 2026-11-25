@@ -5,7 +5,7 @@ use iced::widget::{column, container, row, scrollable, text_input, toggler};
 use iced::{Alignment, Element, Length};
 use oe_core::account::{FillField, SignInState};
 
-use super::{action, body, heading, quiet, section};
+use super::{action, body, more, page_header, quiet, section};
 use crate::app::{App, Message};
 use crate::theme::{self, Kind};
 
@@ -38,7 +38,7 @@ pub fn view(app: &App) -> Element<'_, Message> {
         password = password.push(toggler(profile.auto_fill).label("Let assisted sign-in type it").text_size(theme::TEXT_SM).on_toggle(Message::SetAutoFill));
         password = password.push(action(t, "Forget the password", Kind::Danger, Some(Message::ClearPassword)));
     } else if state.vault_available {
-        password = password.push(quiet(t, "Optional. Stored with Windows' own encryption, and only ever typed into the device — never shown again."));
+        password = password.push(quiet(t, "Optional. Stored with Windows' own encryption, and only ever typed into the device. It is never shown again."));
         password = password.push(
             row![
                 input("Password", &app.account.password).secure(true).on_input(Message::PasswordInput).on_submit(Message::SavePassword).width(Length::Fill),
@@ -72,17 +72,21 @@ pub fn view(app: &App) -> Element<'_, Message> {
     .spacing(8);
 
     let mut page = column![
-        row![heading(t, "Account"), iced::widget::space().width(Length::Fill), action(t, "Close", Kind::Ghost, Some(Message::ToggleAccount))]
-            .align_y(Alignment::Center),
-        container(identity).padding(16).width(Length::Fill).style(theme::panel(t)),
-        container(password).padding(16).width(Length::Fill).style(theme::panel(t)),
-        container(device).padding(16).width(Length::Fill).style(theme::panel(t)),
+        column![
+            page_header(t, "Account", "Who you are on the device, and help signing it in to Google."),
+            more(t, "Back to where you were", Some(Message::ToggleAccount)),
+        ]
+        .spacing(10)
+        .align_x(Alignment::Center),
+        container(identity).padding(20).width(Length::Fill).style(theme::panel(t)),
+        container(password).padding(20).width(Length::Fill).style(theme::panel(t)),
+        container(device).padding(20).width(Length::Fill).style(theme::panel(t)),
     ]
-    .spacing(16)
+    .spacing(18)
     .max_width(640);
     if let Some(message) = &app.account.message {
         page = page.push(body(t, message.clone()));
     }
     page = page.push(action(t, "Sign out of this app", Kind::Danger, Some(Message::SignOut)));
-    scrollable(container(page).padding(24).center_x(Length::Fill)).height(Length::Fill).into()
+    scrollable(container(page).padding([32, 24]).center_x(Length::Fill)).height(Length::Fill).into()
 }

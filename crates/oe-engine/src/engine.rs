@@ -1,6 +1,6 @@
 //! Everything the app needs from an Android runtime.
 //!
-//! One runtime is left — Google's emulator, as [`crate::sdk::sdk_engine::SdkEngine`] — but the
+//! One runtime is left (Google's emulator, as [`crate::sdk::sdk_engine::SdkEngine`]) but the
 //! store, the account and the app library reach it only through this trait, so their tests can
 //! stand a fake in for a guest. Methods return boxed futures so the trait can live behind `dyn`.
 

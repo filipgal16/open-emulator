@@ -3,9 +3,9 @@
 //! telling them apart is the installer's job, at install time.
 //!
 //! No APK parsing happens here. Reading a package name out of an APK means decoding Android's
-//! binary XML, and getting that subtly wrong would mislabel apps — while the guest can answer the
+//! binary XML, and getting that subtly wrong would mislabel apps, while the guest can answer the
 //! same question exactly: the installer diffs `pm list packages -3` across the install. So a local
-//! entry is honest about what it is — a file — until it has been installed.
+//! entry is honest about what it is, a file, until it has been installed.
 
 use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
@@ -99,7 +99,7 @@ impl LocalSource {
             version_code: 0,
             size_bytes: file.size,
             license: None,
-            // A file the user chose is never blocked on a guess about compatibility — the guest's
+            // A file the user chose is never blocked on a guess about compatibility: the guest's
             // package manager is the authority, and it will say so if the APK does not fit.
             min_sdk: 0,
             abis: Vec::new(),

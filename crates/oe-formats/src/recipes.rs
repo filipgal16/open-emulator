@@ -9,7 +9,7 @@ pub fn rom_recipes() -> Vec<RomRecipe> {
     vec![openemu_recipe(), openemu_compat_recipe()]
 }
 
-/// The recipe with this id, or `None` — an image tag that is not one of ours is a stock image.
+/// The recipe with this id, or `None`: an image tag that is not one of ours is a stock image.
 pub fn recipe_by_id(id: &str) -> Option<RomRecipe> {
     rom_recipes().into_iter().find(|recipe| recipe.id == id)
 }

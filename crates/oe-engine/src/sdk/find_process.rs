@@ -1,7 +1,7 @@
 //! Finds the emulator's QEMU process for an AVD by its command line.
 //!
 //! Exists because the pid we spawn is the wrong one to remember. `emulator.exe` is a launcher: it
-//! starts `qemu-system-x86_64.exe` and forwards its output — and when the app that spawned it
+//! starts `qemu-system-x86_64.exe` and forwards its output, and when the app that spawned it
 //! exits, the launcher's stdio pipes close and the launcher goes with them, while QEMU carries on
 //! running the guest. The pid file then names a dead process, `status` reports a running guest as
 //! stopped, nothing embeds its window, and the next `start` boots a second emulator against the
@@ -32,7 +32,7 @@ pub fn match_qemu_pid(processes: &[(u32, String)], avd_name: &str) -> Option<u32
         .map(|(pid, _)| *pid)
 }
 
-/// `(?:^|\s)-avd\s+"?NAME"?(?:\s|$)` — the AVD as a whole argument, so a name that is a prefix of
+/// `(?:^|\s)-avd\s+"?NAME"?(?:\s|$)`: the AVD as a whole argument, so a name that is a prefix of
 /// another AVD's does not match it.
 fn names_avd(command_line: &str, avd_name: &str) -> bool {
     if avd_name.is_empty() {

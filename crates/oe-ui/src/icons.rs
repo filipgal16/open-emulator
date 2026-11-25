@@ -28,6 +28,7 @@ pub enum Icon {
     Key,
     Brand,
     Folder,
+    ArrowRight,
 }
 
 impl Icon {
@@ -67,6 +68,7 @@ impl Icon {
             // The app's mark: a phone outline with its earpiece, as BrandMark drew it.
             Icon::Brand => r#"<rect x="6.5" y="2.5" width="11" height="19" rx="3"/><path d="M10.5 5.5h3"/>"#,
             Icon::Folder => r#"<path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/>"#,
+            Icon::ArrowRight => r#"<path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>"#,
         }
     }
 
@@ -85,4 +87,43 @@ pub fn icon<'a, Message: 'a>(name: Icon, size: f32, color: Color) -> Element<'a,
         .height(Length::Fixed(size))
         .style(move |_, _| svg::Style { color: Some(color) })
         .into()
+}
+
+/// The app's phone mark as a neon tube sign, after Graphite's spiral of hexagons: eight outlines,
+/// each smaller, turned further and drifting off-centre, so they wind inwards. Every tube is lit
+/// three times over: a wide soft halo, a nearer glow, and the white-hot core. Light tubes on the
+/// dark theme, dark ones on the light.
+pub fn neon(dark: bool) -> String {
+    let mut tubes = String::new();
+    for i in 0..8u8 {
+        let step = f32::from(i);
+        let scale = 1.0 - step * 0.078;
+        let (w, h) = (100.0 * scale, 172.0 * scale);
+        let (cx, cy) = (128.0 + step * 2.4, 128.0 - step * 1.6);
+        tubes.push_str(&format!(
+            r#"<rect x="{x:.1}" y="{y:.1}" width="{w:.1}" height="{h:.1}" rx="{r:.1}" transform="rotate({a:.1} {cx:.1} {cy:.1})"/>"#,
+            x = cx - w / 2.0,
+            y = cy - h / 2.0,
+            r = 24.0 * scale,
+            a = step * 11.5,
+        ));
+    }
+    let (tube, glow, halo, halo_opacity) = if dark { ("#ffffff", "#f4f6f8", "#b8c4d0", 0.42) } else { ("#111111", "#2a2a2a", "#6b7580", 0.3) };
+    format!(
+        r##"<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 256 256">
+<defs>
+<filter id="wide" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="11"/></filter>
+<filter id="near" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="3"/></filter>
+<g id="tubes" fill="none" stroke-linecap="round" stroke-linejoin="round">{tubes}</g>
+</defs>
+<use xlink:href="#tubes" stroke="{halo}" stroke-width="12" opacity="{halo_opacity}" filter="url(#wide)"/>
+<use xlink:href="#tubes" stroke="{glow}" stroke-width="5.5" opacity="0.6" filter="url(#near)"/>
+<use xlink:href="#tubes" stroke="{tube}" stroke-width="2.6"/>
+</svg>"##
+    )
+}
+
+/// The neon mark at `size` pixels, in its own colours.
+pub fn neon_mark<'a, Message: 'a>(size: f32, dark: bool) -> Element<'a, Message> {
+    svg(svg::Handle::from_memory(neon(dark).into_bytes())).width(Length::Fixed(size)).height(Length::Fixed(size)).into()
 }

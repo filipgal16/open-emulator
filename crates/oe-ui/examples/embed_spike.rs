@@ -5,8 +5,8 @@
 //! as the window resizes, and lets the left rail hide and show it. With `--auto` it runs a script
 //! and samples the screen in the middle of the guest at each step: after embedding, after the host
 //! window is resized, while hidden, and shown again. It exits 0 if the screen showed the guest
-//! exactly when it should — the host's renderer never painted over the child, and hiding it really
-//! uncovered the host — and 1 if not.
+//! exactly when it should (the host's renderer never painted over the child, and hiding it really
+//! uncovered the host), and 1 if not.
 //!
 //! `ICED_BACKEND=tiny-skia` runs the host on the software renderer, the fallback if the GPU one
 //! paints over child windows; `WGPU_BACKEND=dx12|vulkan|gl` picks the GPU API.

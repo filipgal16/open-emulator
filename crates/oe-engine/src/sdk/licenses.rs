@@ -1,12 +1,12 @@
 //! Google's SDK licences: presenting them, and recording that they were accepted.
 //!
-//! The old `fetch_android.sh` piped `yes` into `sdkmanager --licenses` — it accepted every Google
+//! The old `fetch_android.sh` piped `yes` into `sdkmanager --licenses`; it accepted every Google
 //! licence automatically, without ever showing one. `LICENSING.md` rests its whole argument on each
 //! user's machine accepting Google's licence, so here the text is shown and the acceptance is
 //! explicit.
 //!
-//! The acceptance is recorded in the same format `sdkmanager` uses — a file per licence id under
-//! `<sdk>/licenses/`, containing the SHA-1 of the licence text — so the SDK directory stays
+//! The acceptance is recorded in the same format `sdkmanager` uses (a file per licence id under
+//! `<sdk>/licenses/`, containing the SHA-1 of the licence text), so the SDK directory stays
 //! interchangeable with a normally-installed one.
 
 use std::collections::BTreeMap;
@@ -48,8 +48,8 @@ pub fn is_accepted(sdk_root: &Path, license: &SdkLicense) -> Result<bool> {
 
 /// Records acceptance, appending rather than replacing.
 ///
-/// A licences file legitimately holds several hashes — one per licence version the user has
-/// accepted over time — and overwriting would silently revoke consent to the others.
+/// A licences file legitimately holds several hashes, one per licence version the user has
+/// accepted over time, and overwriting would silently revoke consent to the others.
 pub fn record_acceptance(sdk_root: &Path, license: &SdkLicense) -> Result<()> {
     let file = license_file(sdk_root, &license.id)?;
     if let Some(parent) = file.parent() {

@@ -1,8 +1,8 @@
 //! Updates: the newest published release, looked for on a schedule, downloaded only when asked,
 //! and installed when the app quits.
 //!
-//! The feed is the one electron-builder published and the Electron app's updater read —
-//! `latest.yml` on the latest GitHub release — so existing installs and this one follow the same
+//! The feed is the one electron-builder published and the Electron app's updater read:
+//! `latest.yml` on the latest GitHub release, so existing installs and this one follow the same
 //! file, and a release made for either reaches both.
 
 use std::cmp::Ordering;
@@ -64,7 +64,7 @@ fn unquote(value: &str) -> &str {
         .unwrap_or(value)
 }
 
-/// The three fields of `latest.yml` that matter, from its top level — or from the first entry
+/// The three fields of `latest.yml` that matter, from its top level, or from the first entry
 /// under `files` for a file that names the installer only there.
 pub fn parse_latest_yml(text: &str) -> Option<Release> {
     let (mut version, mut path, mut sha512) = (None, None, None);
@@ -171,7 +171,7 @@ impl UpdateFeed {
     }
 }
 
-/// Whether this is an installed copy — the installer leaves its uninstaller beside the app — and
+/// Whether this is an installed copy (the installer leaves its uninstaller beside the app) and
 /// so one an update can replace. A development build run from `target/` is not.
 pub fn is_installed_copy() -> bool {
     std::env::current_exe()

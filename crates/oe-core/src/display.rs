@@ -1,4 +1,4 @@
-//! Android's display, sized to the pane showing it — for when the guest is mirrored rather than
+//! Android's display, sized to the pane showing it, for when the guest is mirrored rather than
 //! embedded. An embedded guest is its own window and sizes itself.
 //!
 //! `wm size` sets the logical display to the pane's real pixels, and `wm density` keeps a button
@@ -119,7 +119,7 @@ impl DisplayScaler {
         }
     }
 
-    /// Forgets the panel and what was applied — a different guest is about to start.
+    /// Forgets the panel and what was applied: a different guest is about to start.
     pub fn forget(&self) {
         let mut state = self.state();
         state.base = None;
@@ -169,7 +169,7 @@ impl DisplayScaler {
         Some(geometry)
     }
 
-    /// Puts the guest's display back to its panel — before the guest's own window takes over.
+    /// Puts the guest's display back to its panel, before the guest's own window takes over.
     pub async fn reset(&self) {
         {
             let mut state = self.state();

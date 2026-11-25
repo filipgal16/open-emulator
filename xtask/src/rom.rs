@@ -2,14 +2,12 @@
 //! downloaded stock image exactly as the app does on first run, and check a built image with
 //! tools that did not write it. See design/openemu-rom.md.
 //!
-//! The check runs `e2fsck` through `wsl.exe`. That is a development requirement only: the app
-//! never needs WSL, but `fsck-lite` shares the editor's assumptions and so cannot be the judge of
-//! the editor's output.
+//! The check is native, like everything else here: the project's own readers for GPT, LP, AVB and
+//! ext4 (`fsck-lite`). No Linux tools and no WSL are involved.
 
 use std::fs::File;
 use std::io::Read;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use std::time::Instant;
 
 use oe_engine::env_file::load_profile;
@@ -42,7 +40,7 @@ fn known_recipes() -> String {
 
 /// The recipe named by `--recipe`, or `openemu`. Unknown ids list what this build knows.
 fn pick_recipe(id: &str) -> Result<RomRecipe, String> {
-    recipe_by_id(id).ok_or_else(|| format!("unknown recipe '{id}' — this build knows: {}", known_recipes()))
+    recipe_by_id(id).ok_or_else(|| format!("unknown recipe '{id}'; this build knows: {}", known_recipes()))
 }
 
 /// The value after `--name`. A flag given without one is an error, not a silent default.
@@ -140,7 +138,7 @@ pub fn build(args: &[String]) -> Result<(), String> {
 
     let manifest = &result.manifest;
     println!(
-        "\n{} in {:.1}s — {}",
+        "\n{} in {:.1}s: {}",
         if result.skipped { "already up to date" } else { "built" },
         started.elapsed().as_secs_f64(),
         result.image_dir.display()
@@ -190,20 +188,6 @@ fn parse_check_args(args: &[String]) -> Result<CheckArgs, String> {
     })
 }
 
-/// An absolute Windows path in WSL2's `/mnt/<drive>/...` passthrough form.
-fn to_wsl_mount_path(path: &Path) -> Result<String, String> {
-    let absolute = std::path::absolute(path).map_err(|e| format!("cannot resolve {}: {e}", path.display()))?;
-    let text = absolute.to_string_lossy().replace('\\', "/");
-    let text = text.strip_prefix("//?/").unwrap_or(&text);
-    let mut chars = text.chars();
-    match (chars.next(), chars.next(), chars.next()) {
-        (Some(drive), Some(':'), Some('/')) if drive.is_ascii_alphabetic() => {
-            Ok(format!("/mnt/{}/{}", drive.to_ascii_lowercase(), &text[3..]))
-        }
-        _ => Err(format!("cannot convert to a WSL mount path: {}", path.display())),
-    }
-}
-
 /// Counts failures and prints each check as the script did.
 #[derive(Default)]
 struct Report {
@@ -227,31 +211,6 @@ impl Report {
             self.fail(fail)
         }
     }
-}
-
-/// `e2fsck -fn` through WSL. `wsl -e` runs the program without a login shell, so `/usr/sbin` is
-/// not on its PATH and a bare `e2fsck` is not found; the path is spelled out, and `/sbin` covers
-/// distributions without a merged `/usr`. Returns the exit code and the output.
-fn e2fsck(target: &str) -> Result<(i32, String), String> {
-    let mut last = None;
-    for binary in ["/usr/sbin/e2fsck", "/sbin/e2fsck"] {
-        let result = Command::new("wsl.exe")
-            .args(["-e", binary, "-fn", target])
-            .output()
-            .map_err(|e| format!("cannot run wsl.exe (e2fsck needs WSL with e2fsprogs): {e}"))?;
-        let text =
-            format!("{}{}", String::from_utf8_lossy(&result.stdout), String::from_utf8_lossy(&result.stderr)).replace('\0', "");
-        let not_found = text.contains("execvpe(") && text.contains(") failed");
-        last = Some((result.status.code().unwrap_or(-1), text));
-        if !not_found {
-            break;
-        }
-    }
-    last.ok_or_else(|| "e2fsck was not run".to_owned())
-}
-
-fn first_lines(text: &str, n: usize) -> String {
-    text.trim().lines().take(n).collect::<Vec<_>>().join("\n")
 }
 
 /// Reads a window of an open file as if it began at `base`: the `super` partition inside the disk.
@@ -319,46 +278,41 @@ fn fixture_cases() -> Vec<(&'static str, Edit)> {
 }
 
 fn check_fixtures(report: &mut Report) -> Result<(), String> {
-    let source = repo_root().join("desktop").join("test").join("fixtures").join("rom").join("ext4-fixture.img.gz");
+    let source = repo_root().join("crates").join("oe-formats").join("testdata").join("ext4-fixture.img.gz");
     let gz = std::fs::read(&source).map_err(|e| format!("cannot read the ext4 fixture {}: {e}", source.display()))?;
     let mut fixture = Vec::new();
     flate2::read::GzDecoder::new(&gz[..])
         .read_to_end(&mut fixture)
         .map_err(|e| format!("cannot unpack the ext4 fixture: {e}"))?;
 
-    let dir = std::env::temp_dir().join(format!("oe-rom-check-{}", std::process::id()));
-    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-    let outcome = (|| {
-        for (name, edit) in fixture_cases() {
-            let mut buffer = fixture.clone();
-            let edited = Ext4Volume::open(BufferDisk::new(&mut buffer), OpenOptions::writable()).and_then(|mut volume| {
-                edit(&mut volume)?;
-                volume.flush()
-            });
-            if let Err(e) = edited {
-                report.fail(format!("editor: {name}: {e}"));
-                continue;
-            }
-            let file = dir.join("case.img");
-            std::fs::write(&file, &buffer).map_err(|e| e.to_string())?;
-            let (code, output) = e2fsck(&to_wsl_mount_path(&file)?)?;
-            report.check(code == 0, format!("e2fsck: {name}"), format!("e2fsck (exit {code}): {name}\n{}", first_lines(&output, 20)));
+    for (name, edit) in fixture_cases() {
+        let mut buffer = fixture.clone();
+        let edited = Ext4Volume::open(BufferDisk::new(&mut buffer), OpenOptions::writable()).and_then(|mut volume| {
+            edit(&mut volume)?;
+            volume.flush()
+        });
+        if let Err(e) = edited {
+            report.fail(format!("editor: {name}: {e}"));
+            continue;
         }
-        Ok(())
-    })();
-    let _ = std::fs::remove_dir_all(&dir);
-    outcome
+        match Ext4Volume::open(BufferDisk::new(&mut buffer), OpenOptions::default()).and_then(|mut volume| volume.verify()) {
+            Ok(lite) if lite.ok => report.pass(format!("fsck-lite: {name}")),
+            Ok(lite) => report.fail(format!("fsck-lite: {name}: {}", lite.problems.iter().take(5).cloned().collect::<Vec<_>>().join("; "))),
+            Err(e) => report.fail(format!("fsck-lite: {name}: {e}")),
+        }
+    }
+    Ok(())
 }
 
 fn check_rom(report: &mut Report, recipe_id: &str) -> Result<(), String> {
     let Ok(recipe) = pick_recipe(recipe_id) else {
-        report.fail(format!("unknown recipe '{recipe_id}' — this build knows: {}", known_recipes()));
+        report.fail(format!("unknown recipe '{recipe_id}'; this build knows: {}", known_recipes()));
         return Ok(());
     };
     let layout = sdk_layout();
     let image_dir = rom_paths(&layout.sdk_root, &recipe).image_dir;
     let Some(manifest) = read_manifest(&image_dir) else {
-        report.fail(format!("no ROM built by this builder at {} — run cargo xtask rom-build", image_dir.display()));
+        report.fail(format!("no ROM built by this builder at {}: run cargo xtask rom-build", image_dir.display()));
         return Ok(());
     };
     println!("{} {}, built {}", manifest.recipe_id, manifest.recipe_version, manifest.built_at);
@@ -372,7 +326,6 @@ fn check_rom(report: &mut Report, recipe_id: &str) -> Result<(), String> {
     let super_part = find_partition(&gpt, "super").map_err(e)?.clone();
     let lp = read_lp_metadata(&mut Window { file: &file, base: super_part.offset }, super_part.size).map_err(e)?;
 
-    let wsl_image = to_wsl_mount_path(&image)?;
     for name in ["system", "system_ext", "product", "vendor"] {
         let part = find_logical(&lp.partitions, name).map_err(e)?;
         let offset = super_part.offset + part.offset;
@@ -381,10 +334,8 @@ fn check_rom(report: &mut Report, recipe_id: &str) -> Result<(), String> {
         if lite.ok {
             report.pass(format!("{name}: fsck-lite ({} blocks, {} inodes free)", volume.free_blocks(), volume.free_inodes()));
         } else {
-            report.fail(format!("{name}: fsck-lite — {}", lite.problems.iter().take(5).cloned().collect::<Vec<_>>().join("; ")));
+            report.fail(format!("{name}: fsck-lite: {}", lite.problems.iter().take(5).cloned().collect::<Vec<_>>().join("; ")));
         }
-        let (code, output) = e2fsck(&format!("{wsl_image}?offset={offset}"))?;
-        report.check(code == 0, format!("{name}: e2fsck -fn"), format!("{name}: e2fsck -fn exited {code}\n{}", first_lines(&output, 20)));
     }
 
     let vbmeta_partition = file.read_at(vbmeta.offset, vbmeta.size as usize).map_err(e)?;
@@ -430,7 +381,7 @@ pub fn check(args: &[String]) -> Result<(), String> {
     let args = parse_check_args(args)?;
     let mut report = Report::default();
     if args.fixtures {
-        println!("ext4 editor edits through e2fsck -fn");
+        println!("ext4 editor edits, checked with fsck-lite");
         check_fixtures(&mut report)?;
     } else {
         check_rom(&mut report, &args.recipe)?;
@@ -483,14 +434,6 @@ mod tests {
         let message = pick_recipe("nope").unwrap_err();
         assert!(message.contains("openemu, openemu-compat"), "{message}");
         assert!(pick_recipe("openemu-compat").is_ok());
-    }
-
-    #[test]
-    fn windows_paths_become_wsl_mount_paths() {
-        if cfg!(windows) {
-            assert_eq!(to_wsl_mount_path(Path::new(r"C:\Users\x\a b.img")).unwrap(), "/mnt/c/Users/x/a b.img");
-            assert_eq!(to_wsl_mount_path(Path::new(r"\\?\D:\t\case.img")).unwrap(), "/mnt/d/t/case.img");
-        }
     }
 
     #[test]

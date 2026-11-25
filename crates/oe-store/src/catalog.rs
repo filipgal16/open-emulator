@@ -1,7 +1,7 @@
 //! The searchable sources behind one search box.
 //!
-//! Play is deliberately absent: it has no catalogue to query from here — the real client does its
-//! own searching inside the guest — so mixing it in would mean inventing listings we cannot
+//! Play is deliberately absent: it has no catalogue to query from here; the real client does its
+//! own searching inside the guest, so mixing it in would mean inventing listings we cannot
 //! actually produce.
 
 use std::sync::Arc;

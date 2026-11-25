@@ -6,7 +6,7 @@
 //! side) there is exactly one shell to get through, so one layer of quoting is right; the WSL
 //! runtime had two shells in the way and needed [`guest_shell_arg`]'s two layers.
 
-/// POSIX single-quoting: close the quote, emit an escaped quote, reopen — the only way to get a
+/// POSIX single-quoting: close the quote, emit an escaped quote, reopen: the only way to get a
 /// single quote inside a single-quoted POSIX string.
 pub fn posix_quote(value: &str) -> String {
     format!("'{}'", value.replace('\'', "'\\''"))

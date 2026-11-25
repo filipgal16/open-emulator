@@ -2,12 +2,13 @@
 //!
 //! Three steps, each runnable on its own:
 //!
-//!   1. `cargo build --release -p oe-ui` — the app, one executable.
+//!   1. `cargo build --release -p oe-ui`: the app, one executable, in cargo's target directory
+//!      (asked of cargo, since `CARGO_TARGET_DIR` or a cargo config can move it off `target\`).
 //!   2. Stage it beside what it reads at run time: `android\` (profiles, devices, the AVD config
-//!      template) and the licence files — the same subset of `android\` the Electron build shipped.
+//!      template) and the licence files: the same subset of `android\` the Electron build shipped.
 //!   3. `makensis` turns the stage into `open-emulator-Setup-<version>.exe`, and `latest.yml`
-//!      describes it in the shape electron-builder wrote, which is what installed copies — Electron
-//!      ones included — read to find an update.
+//!      describes it in the shape electron-builder wrote, which is what installed copies (Electron
+//!      ones included) read to find an update.
 //!
 //! Options: `--skip-build` reuses the last release build; `--stage-only` stops before NSIS, for a
 //! machine without it.
@@ -35,8 +36,9 @@ pub fn run(args: &[String]) -> Result<(), String> {
     if !skip_build {
         build_release(&root)?;
     }
+    let exe = release_exe(&root)?;
     let stage = dist.join("app");
-    stage_app(&root, &stage)?;
+    stage_app(&exe, &root, &stage)?;
     println!("staged the app in {}", stage.display());
     if stage_only {
         return Ok(());
@@ -59,6 +61,28 @@ fn build_release(root: &Path) -> Result<(), String> {
         .status()
         .map_err(|e| format!("could not run cargo: {e}"))?;
     status.success().then_some(()).ok_or_else(|| "the release build failed".to_owned())
+}
+
+/// Where the release build is. Asked of cargo rather than assumed to be `target\release`: with
+/// the target directory moved elsewhere, that folder can hold an old build, which would ship.
+fn release_exe(root: &Path) -> Result<PathBuf, String> {
+    let cargo = std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
+    let output = Command::new(cargo)
+        .args(["metadata", "--format-version", "1", "--no-deps"])
+        .current_dir(root)
+        .output()
+        .map_err(|e| format!("could not run cargo metadata: {e}"))?;
+    if !output.status.success() {
+        return Err("cargo metadata failed".to_owned());
+    }
+    let target = target_directory(&output.stdout).ok_or("cargo metadata named no target directory")?;
+    Ok(target.join("release").join("open-emulator.exe"))
+}
+
+/// The `target_directory` of `cargo metadata`'s answer.
+fn target_directory(metadata: &[u8]) -> Option<PathBuf> {
+    let value: serde_json::Value = serde_json::from_slice(metadata).ok()?;
+    value.get("target_directory")?.as_str().map(PathBuf::from)
 }
 
 /// What of `android\` the app reads at run time. The SDK, AVDs, state, logs, images and APKs a
@@ -90,17 +114,16 @@ fn copy_tree(from: &Path, to: &Path, base: &Path) -> Result<(), String> {
     Ok(())
 }
 
-fn stage_app(root: &Path, stage: &Path) -> Result<(), String> {
-    let exe = root.join("target").join("release").join("open-emulator.exe");
+fn stage_app(exe: &Path, root: &Path, stage: &Path) -> Result<(), String> {
     if !exe.is_file() {
-        return Err(format!("{} is missing — build it first, or drop --skip-build", exe.display()));
+        return Err(format!("{} is missing: build it first, or drop --skip-build", exe.display()));
     }
     if stage.exists() {
         std::fs::remove_dir_all(stage).map_err(|e| format!("could not clear {}: {e}", stage.display()))?;
     }
     let android = stage.join("android");
     std::fs::create_dir_all(&android).map_err(|e| e.to_string())?;
-    std::fs::copy(&exe, stage.join("open-emulator.exe")).map_err(|e| format!("could not copy the app: {e}"))?;
+    std::fs::copy(exe, stage.join("open-emulator.exe")).map_err(|e| format!("could not copy the app: {e}"))?;
     copy_tree(&root.join("android"), &android, &root.join("android"))?;
     for name in ["LICENSE", "LICENSING.md", "THIRD-PARTY-NOTICES.md"] {
         let file = root.join(name);
@@ -196,6 +219,14 @@ mod tests {
         assert!(yml.contains("path: open-emulator-Setup-9.9.9.exe\n"));
         assert!(yml.contains(&format!("sha512: {}\n", base64(&Sha512::digest(b"installer bytes")))));
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn the_app_is_taken_from_where_cargo_built_it() {
+        let metadata = br#"{"packages":[],"target_directory":"C:\\Temp\\oe-target","version":1}"#;
+        assert_eq!(target_directory(metadata), Some(PathBuf::from(r"C:\Temp\oe-target")));
+        assert_eq!(target_directory(b"{}"), None);
+        assert_eq!(target_directory(b"not json"), None);
     }
 
     #[test]

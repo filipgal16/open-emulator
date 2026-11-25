@@ -1,4 +1,4 @@
-[workspace]
+﻿[workspace]
 resolver = "3"
 members = ["crates/*", "xtask"]
 
@@ -22,6 +22,7 @@ getrandom = { version = "0.4", features = ["sys_rng"] }
 iced = { version = "0.14", default-features = false, features = ["wgpu", "tiny-skia", "crisp", "thread-pool", "tokio", "image", "svg", "canvas", "advanced"] }
 windows-sys = { version = "0.61", features = [
     "Win32_Foundation",
+    "Win32_Graphics_Dwm",
     "Win32_Graphics_Gdi",
     "Win32_Security",
     "Win32_Security_Cryptography",
@@ -38,6 +39,9 @@ num-bigint = "0.5"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "process", "io-util", "time", "sync", "fs", "net"] }
 raw-window-handle = "0.6"
 reqwest = { version = "0.13", default-features = false, features = ["native-tls", "http2", "system-proxy", "charset"] }
+bytes = "1"
+h2 = "0.4"
+http = "1"
 wmi = { version = "0.18", default-features = false }
 rsa = { version = "0.10", features = ["pkcs1v15"] }
 serde = { version = "1", features = ["derive"] }

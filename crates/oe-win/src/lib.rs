@@ -2,8 +2,7 @@
 //!
 //! The Electron app reached these through a JavaScript FFI bridge; here they are direct calls.
 //! Each module owns one concern: [`window`] reparents the emulator's window into ours,
-//! [`guest_window`] keeps it placed and alive, and the rest replace what used to be a PowerShell
-//! or `reg.exe` round trip.
+//! [`guest_window`] keeps it placed and alive, and the rest replace what used to be a PowerShell or `reg.exe` round trip.
 //!
 //! The guest-window controller is plain logic over an injected [`guest_window::EmbedApi`], so it
 //! builds and tests on every platform; only the Win32 implementation is Windows-only.

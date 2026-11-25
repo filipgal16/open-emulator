@@ -3132,6 +3132,9 @@ dependencies = [
 name = "oe-engine"
 version = "0.3.0"
 dependencies = [
+ "bytes",
+ "h2",
+ "http",
  "oe-formats",
  "oe-win",
  "reqwest",

@@ -7,7 +7,7 @@ use crate::Result;
 
 /// What the installer needs to actually put an app in the guest.
 ///
-/// `sha256` is `None` only for a file the user handed us directly — there is nothing to compare a
+/// `sha256` is `None` only for a file the user handed us directly; there is nothing to compare a
 /// local APK against. For anything fetched over the network it is mandatory; see the installer.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DownloadSpec {
@@ -29,7 +29,7 @@ pub enum Location {
 }
 
 /// Deliberately narrow: answer a query, describe one app, hand back something installable. Play
-/// is not one of these — the real Play client runs inside the guest and does its own installing.
+/// is not one of these: the real Play client runs inside the guest and does its own installing.
 pub trait AppSource: Send + Sync {
     fn id(&self) -> SourceId;
     /// Ranked matches. An empty query means "browse".

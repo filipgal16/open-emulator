@@ -2,7 +2,7 @@
 //!
 //! Replaces `fetch_android.sh`, which downloaded a JDK and `cmdline-tools` in order to run
 //! `sdkmanager`, which then downloaded the packages one at a time. Here the packages come straight
-//! from the manifest, three at a time, resumable — and the JRE and command-line tools stop being
+//! from the manifest, three at a time, resumable, and the JRE and command-line tools stop being
 //! needed at all.
 
 use std::path::{Path, PathBuf};
@@ -36,7 +36,7 @@ async fn fetch_text(client: &reqwest::Client, url: &str) -> Result<String> {
 /// image are what the AVD is created against.
 pub fn plan_from_manifests(profile: &GuestProfile, main_xml: &str, sys_xml: &str, host: HostOs) -> Result<DependencyPlan> {
     // A derived image (`openemu`) is built here, not downloaded; what the repository has to supply
-    // is the stock image it is built from — at the profile's API level, which is also the base's.
+    // is the stock image it is built from, at the profile's API level, which is also the base's.
     let image_tag = profile.base_image_tag.as_deref().unwrap_or(&profile.image_tag);
     let api = profile.api_level;
     let main = parse_repository(main_xml, host, REPOSITORY_URL);
@@ -130,7 +130,7 @@ pub async fn acquire_dependencies(
             .iter()
             .map(|(url, error)| format!("{}: {}", url.rsplit('/').next().unwrap_or(url), error.message))
             .collect();
-        fail!("could not download {} package(s) — {}", result.failures.len(), detail.join("; "));
+        fail!("could not download {} package(s): {}", result.failures.len(), detail.join("; "));
     }
 
     for archive in &plan.archives {
@@ -225,7 +225,7 @@ pub fn cleanup(layout: &SdkLayout, drop_jre: bool) -> CleanupReport {
         layout.sdk_root.join(".temp"),
         layout.sdk_root.join(".downloadIntermediates"),
     ];
-    // The JRE is only needed while `sdkmanager` is, which is no longer at all — but it is removed
+    // The JRE is only needed while `sdkmanager` is, which is no longer at all, but it is removed
     // explicitly rather than silently, because an installation that predates the direct-download
     // path may still have one.
     if drop_jre {
@@ -241,7 +241,7 @@ pub fn cleanup(layout: &SdkLayout, drop_jre: bool) -> CleanupReport {
         let _ = std::fs::remove_dir_all(&target);
         report.removed.push(target);
     }
-    // Orphaned partial downloads anywhere under the root — a `.part` whose download was abandoned
+    // Orphaned partial downloads anywhere under the root: a `.part` whose download was abandoned
     // long ago is not a head start, it is dead weight.
     for stale in find_by_extension(&layout.root, ".part", 4) {
         report.bytes_freed += size_of(&stale);

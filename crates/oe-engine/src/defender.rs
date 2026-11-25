@@ -1,6 +1,6 @@
 //! An opt-in Windows Defender exclusion for the emulator's folder.
 //!
-//! Defender's real-time scanner inspects every write, and a cold boot writes a lot — the guest's
+//! Defender's real-time scanner inspects every write, and a cold boot writes a lot: the guest's
 //! userdata and snapshot images churn constantly. Excluding the emulator's own directory is a known
 //! emulator speedup on Windows.
 //!
@@ -16,7 +16,7 @@ use crate::{err, Result};
 
 /// Whether Defender excludes the folder. `Unknown` is a real third answer: Defender may be absent
 /// (another antivirus), managed by policy, or not queryable, and the UI must not claim "not
-/// excluded — turn it on" when it does not actually know.
+/// excluded: turn it on" when it does not actually know.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ExclusionState {
     Excluded,
@@ -24,7 +24,7 @@ pub enum ExclusionState {
     Unknown,
 }
 
-/// Whether `folder` is covered by any of `exclusions` — equal to one, or nested under one — so a
+/// Whether `folder` is covered by any of `exclusions` (equal to one, or nested under one) so a
 /// broader exclusion the user already has (their whole profile, say) counts, and a redundant one
 /// is not offered. Case-folded and trailing-slash-trimmed, as Windows compares paths.
 pub fn is_covered_by(folder: &str, exclusions: &[String]) -> bool {

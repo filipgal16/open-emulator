@@ -9,9 +9,9 @@ where it was right and replaced where the boot log shows it was not.
 | | |
 |---|---|
 | Guest | Android 11 (API 30), x86_64, on Google's SDK emulator (QEMU `ranchu` + goldfish devices) |
-| Images | `default` — AOSP `sdk_phone_x86_64-userdebug 11 RSR1.210722.013.A2`, test-keys, Apache-2.0 userspace. `google_apis` and `google_apis_playstore` for the GMS profiles. |
+| Images | `default`: AOSP `sdk_phone_x86_64-userdebug 11 RSR1.210722.013.A2`, test-keys, Apache-2.0 userspace. `google_apis` and `google_apis_playstore` for the GMS profiles. |
 | Runtime | Native Windows (`emulator.exe` + WHPX) by default; WSL still selectable |
-| ABIs | `x86_64,x86` only. **No ARM translation** in the AOSP image — ARM-only apps will not install. |
+| ABIs | `x86_64,x86` only. **No ARM translation** in the AOSP image; ARM-only apps will not install. |
 
 `system.img` is a GPT disk:
 
@@ -45,17 +45,17 @@ chained `system` vbmeta. Recomputed that way from the stock image it reproduces 
 `image-builder.ts` (committed in 2dee65b as found) edited the volumes with `debugfs` in WSL.
 Booting that image shows:
 
-- `/product`, `/vendor`, `/system_ext` changes are live — they have no dm-verity.
+- `/product`, `/vendor`, `/system_ext` changes are live; they have no dm-verity.
 - **`/system` is stock.** libfs_avb sets up dm-verity with FEC on `/system`, and the kernel logs
   `verity-fec: corrected 1982 errors` as it repairs every edit back to Google's bytes.
 - Patching the vbmeta flags breaks its signature: `ERROR_VERIFICATION / PUBLIC_KEY_REJECTED isn't
   allowed`, `Failed to mount /system`.
 - It hashed a fixed 6144 bytes at 1 MiB, which is not how the digest is formed (see above).
 
-## What works — measured on this machine
+## What works: measured on this machine
 
 **Re-sign the top-level vbmeta with our own key.** libfs_avb in user space does not check *which*
-key signed the top-level vbmeta — that is the bootloader's job, and its `validate_vbmeta_public_key`
+key signed the top-level vbmeta; that is the bootloader's job, and its `validate_vbmeta_public_key`
 is a no-op that trusts any key; what binds the image is the digest on the command line. So:
 
 1. Set `HASHTREE_DISABLED` (flag 1) in the top-level vbmeta header.
@@ -67,17 +67,17 @@ is a no-op that trusts any key; what binds the image is the digest on the comman
 Result: `libfs_avb: Returning avb_handle with status: HashtreeDisabled`, `AVB HASHTREE disabled
 on: /system`, no `system-verity` device, `/system` edits live, `ro.product.model=OpenEmulator
 One`, boot in ~44 s on a fresh AVD. **`ro.boot.verifiedbootstate`, `ro.boot.vbmeta.device_state`
-and `ro.boot.veritymode` are all empty — exactly as on the stock image.** The chained `system`
+and `ro.boot.veritymode` are all empty, exactly as on the stock image.** The chained `system`
 vbmeta still verifies with Google's key, untouched; its hashtree simply is not set up.
 
-The alternative that also boots — `VERIFICATION_DISABLED` plus
-`androidboot.verifiedbootstate=orange` and `device_state=unlocked` on the command line — is
+The alternative that also boots, `VERIFICATION_DISABLED` plus
+`androidboot.verifiedbootstate=orange` and `device_state=unlocked` on the command line, is
 rejected: orange is an unlocked bootloader to every app and to key attestation, the very tell
 LDPlayer hides. `-writable-system` is not needed by either and is dropped.
 
 The signing key is generated once per machine (RSA-4096, `%LOCALAPPDATA%\open-emulator\rom\`) and
-reused, so rebuilds are byte-identical. It protects nothing and is not secret — the guest trusts any
-key — so it is not committed to the repository, where it would look like a leaked secret.
+reused, so rebuilds are byte-identical. It protects nothing and is not secret (the guest trusts any
+key), so it is not committed to the repository, where it would look like a leaked secret.
 
 ## What LDPlayer's Android is, and what we take from it
 
@@ -89,7 +89,7 @@ signed by themselves, and ship it.
 | Derived from AOSP, not a stock image | `openemu`, derived from AOSP `default` | **A** |
 | `/system` they control, signed with their key | re-signed vbmeta, verity off for `/system`, no unlocked state | **A** |
 | Their brand in Settings → About | `open-emulator` / `OpenEmulator One`, our build number | **A** |
-| Debloated — no phone/SMS/calendar apps | conservative debloat on all four volumes, space actually reclaimed | **A** |
+| Debloated: no phone/SMS/calendar apps | conservative debloat on all four volumes, space actually reclaimed | **A** |
 | Branded look | default wallpaper shipped in the image (`ro.config.wallpaper`) | **A** |
 | "Phone model" setting | today's `-prop` device picker is recorded, not changed (see DoD) | later |
 | In-guest services, own launcher/store | priv-app agent and launcher | C |
@@ -108,7 +108,7 @@ signed by themselves, and ship it.
 - **No AOSP build.** It needs a Linux box, ~400 GB and 32 GB+ RAM (this machine has 15 GB) and
   would reproduce `sdk_phone_x86_64`; nothing in this ROM needs recompiling.
 
-### Modules — `desktop/src/main/rom/`, each unit-tested
+### Modules: `desktop/src/main/rom/`, each unit-tested
 
 | Module | Job |
 |---|---|
@@ -144,12 +144,12 @@ Two things only the real volumes showed, both now handled rather than refused:
   designed in.
 - **Remove a tree**: unlink from the parent, then release. Every block reachable from every in-use
   inode is counted first (`shared_blocks`); a block is freed only at count zero. An inode is freed
-  only when its link count reaches zero — hard links outside the tree keep it. Freed inodes are
+  only when its link count reaches zero; hard links outside the tree keep it. Freed inodes are
   zeroed and never put on the orphan list; `bg_itable_unused` is not raised. The parent's link
   count drops for a removed directory unless it is the `dir_nlink` sentinel 1.
   *Unlinking without freeing is not an option*: it leaves allocated, unreachable inodes that
   `e2fsck -fn` reports, which is how the old builder would have failed the merge bar.
-- **Create** a file or directory, only into a **linear** directory (a hashed one is refused — none
+- **Create** a file or directory, only into a **linear** directory (a hashed one is refused, none
   exist on these volumes). Inode from the parent's group, else an initialised group, else an
   `INODE_UNINIT` group initialised first; `bg_itable_unused` lowered only when the inode is taken
   from the tail. Blocks in at most four runs (else fail), from initialised groups first, an
@@ -157,10 +157,10 @@ Two things only the real volumes showed, both now handled rather than refused:
   timestamps, `file_type` matching the mode, `.`/`..` and link counts for directories, the parent's
   link count raised, `security.selinux` in-inode laid out byte-for-byte as the stock images do.
 - **Replace** a file: keep the inode (mode, owner, label). If every block it owns is referenced by
-  it alone and the new content fits, write in place — the vendor volume has one free inode and 50
+  it alone and the new content fits, write in place: the vendor volume has one free inode and 50
   blocks, so this is the normal path for `build.prop`. Otherwise allocate new blocks, then release
   the old ones through the refcount. A block that might be shared is never written.
-- **Bookkeeping**: bitmaps, group descriptor counts, flags and crc16, superblock counts — and the
+- **Bookkeeping**: bitmaps, group descriptor counts, flags and crc16, superblock counts, and the
   **backup superblocks and GDTs** in groups 1 and powers of 3, 5, 7, as `ext2fs_flush` does, so a
   later `e2fsck -b` cannot resurrect the stock layout. `s_wtime`/`s_mtime` are left as they are.
 - **Verify** (fsck-lite, always run by the builder): checksums; every allocated block is metadata
@@ -175,7 +175,7 @@ machine. The user's build is checked by fsck-lite only, and nothing claims other
 ### Build flow
 
 1. Refuse if the `openemu` AVD's emulator is running.
-2. Resolve the base (`default/x86_64`). Its identity is the stock vbmeta digest — cheap, and it
+2. Resolve the base (`default/x86_64`). Its identity is the stock vbmeta digest, cheap, and it
    changes whenever Google republishes the image.
 3. Copy it to `openemu/x86_64.staging`. The stock image is never touched.
 4. GPT → LP → each logical partition as a bounded window onto the staged `system.img`.
@@ -198,14 +198,14 @@ The engine stores the ROM id (the output vbmeta digest) in `state/<AVD>/rom_id` 
 succeeds**. Before a start, if the AVD has booted before and the stored id differs:
 
 1. delete the whole `snapshots/` directory (not just `default_boot`);
-2. delete `system.img.qcow2` and `vendor.img.qcow2` only — `userdata-qemu.img.qcow2` and
+2. delete `system.img.qcow2` and `vendor.img.qcow2` only: `userdata-qemu.img.qcow2` and
    `encryptionkey.img.qcow2` are the user's data and stay;
 3. then sync `config.ini` (so it is not pointed at a snapshot just deleted);
 4. clear `provisioned_at`, so the start cold-boots and provisions in the background.
 
 Keeping userdata across later recipe bumps is an OTA in miniature: PackageManager drops system
 packages whose APKs disappeared, the fingerprint change triggers the "Android is upgrading" dexopt
-pass (slower than a fresh boot, once), and an existing wallpaper file is left alone — the branded
+pass (slower than a fresh boot, once), and an existing wallpaper file is left alone: the branded
 default shows on fresh AVDs.
 
 ### Engine and shell
@@ -234,7 +234,7 @@ default shows on fresh AVDs.
 
 `ro.build.fingerprint` is in none of the files; init derives it from the rebranded
 `ro.product.*`. API 30's init lets a later definition of a key override an earlier one (it logs
-"Overriding previous 'ro.' property"); rewriting every occurrence in place makes the order moot. Build id, type and tags are kept — the image is still a userdebug test-keys build,
+"Overriding previous 'ro.' property"); rewriting every occurrence in place makes the order moot. Build id, type and tags are kept: the image is still a userdebug test-keys build,
 and saying so is honest. `ro.setupwizard.mode=DISABLED` is already in `system_ext`.
 
 **Our props**, upserted into `/system/build.prop`: `ro.openemu.rom=1`,
@@ -257,8 +257,8 @@ Telecom. `NfcNci` goes because the stock image declares no `android.hardware.nfc
 
 **Files**: `/system/media/` and `/system/media/openemu/` (dirs, 0755) and `wallpaper.png`
 (0644), all `u:object_r:system_file:s0`, root:root. This image keeps its media under
-`/product/media` and has no `/system/media` at all — an earlier revision of this plan said it was
-empty, which was a misread `debugfs` listing — so the ROM creates it, in the linear `/system`.
+`/product/media` and has no `/system/media` at all (an earlier revision of this plan said it was
+empty, which was a misread `debugfs` listing), so the ROM creates it, in the linear `/system`.
 
 ## Definition of done
 
@@ -286,7 +286,7 @@ On this machine, from the real `default` image:
 - Removed packages absent; `com.android.phone` installed; Settings opens; the wallpaper picker
   and `ACTION_IMAGE_CAPTURE` resolve; Browser2 launches; the wallpaper is ours on a fresh AVD.
 - Measured against stock `fast`, same AVD settings: cold boot, warm start, `MemAvailable` after
-  boot, process count, package count — reported whichever way it goes. No package-count target.
+  boot, process count, package count, reported whichever way it goes. No package-count target.
 - Upgrade path: a provisioned `openemu` AVD with a user APK, then a recipe bump → snapshot not
   restored, user APK still installed, removed app gone, userdata overlay kept.
 - Builder: twice in a row → byte-identical; with the emulator running → refused; killed after
@@ -305,7 +305,7 @@ On this machine, from the real `default` image:
 | Snapshot restored onto a changed ROM | ROM id check and ordered invalidation, above |
 | Space | Frees reclaim what debloat removes; additions go in after them. Growing a partition (LP + resize) is later work |
 
-## openemu-compat — the ROM that runs ARM games
+## openemu-compat: the ROM that runs ARM games
 
 Built 2026-11-13, measured on the ROG G513RM (Ryzen 7 6800H, RTX 3060, WHPX, emulator 37.1.11).
 Recipe: `desktop/src/main/rom/recipe-compat.ts`. Profile: `android/profiles/openemu-compat.env`.
@@ -314,7 +314,7 @@ Recipe: `desktop/src/main/rom/recipe-compat.ts`. Profile: `android/profiles/open
 
 `openemu` cannot run the thing people install emulators for. The test case was a Unity game that
 ships `arm64-v8a` and `armeabi-v7a` libraries and nothing else: on `openemu` (`abilist=x86_64,x86`)
-it does not install. An x86 guest needs an ARM translator, and two exist — Google's
+it does not install. An x86 guest needs an ARM translator, and two exist: Google's
 `libndk_translation`, inside its **Google APIs** images, and Intel's `libhoudini`.
 
 Grafting Google's translator into the AOSP-derived image was the plan's phase C. It is not what
@@ -325,7 +325,7 @@ images. Going the other way needs nothing new: start from the image that already
 translator and **remove**, which is what the editor is good at.
 
 So `openemu-compat` is `system-images;android-34;google_apis;x86_64` (rev 14), edited. The
-toolchain reads it unchanged — same GPT, same `super` with the same four ext4 volumes and feature
+toolchain reads it unchanged: same GPT, same `super` with the same four ext4 volumes and feature
 set (plus an erofs `system_dlkm`, which is left alone), same two-level vbmeta (4992 + 1664 bytes
 here), and the stock digest reproduces Google's `451e57ed…`.
 
@@ -333,9 +333,9 @@ here), and the stock digest reproduces Google's `451e57ed…`.
 
 | | Stock `google_apis` 34 | `openemu-compat` 1 |
 |---|---|---|
-| ABIs | `x86_64,arm64-v8a` | the same — that is the point |
+| ABIs | `x86_64,arm64-v8a` | the same; that is the point |
 | What an ARM app is told about the CPU | **1 core** (`/system/etc/cpuinfo.arm64.txt` lists one processor, numbered 1) | **every guest core**: both cpuinfo files list processors 0…N−1 |
-| Identity | Google's `sdk_gphone64_x86_64` fingerprint | **unchanged** — only `ro.build.display.id` is ours |
+| Identity | Google's `sdk_gphone64_x86_64` fingerprint | **unchanged**: only `ro.build.display.id` is ours |
 | Apps | 223 packages | 181: 42 removed across `system`, `system_ext`, `product` |
 | `/system` verity | dm-verity | off, by the same re-sign as `openemu`; `verifiedbootstate` and `device_state` stay empty |
 | Play services, WebView, Chrome, keyboard | present | present, on the recipe's kept list with a reason each |
@@ -344,7 +344,7 @@ here), and the stock digest reproduces Google's `451e57ed…`.
 translated code the real `/proc/cpuinfo`; it serves a static file, and Google ships that file
 describing a single processor. Unity counts cores from it. On a 6-core guest the stock image gave
 `SystemInfo CPU = x86-64, Cores = 1`, `1 big (mask: 0x2)`, no `Job.Worker` threads and no
-`UnityGfxDeviceWorker` — the whole game on one translated thread. With the file listing six
+`UnityGfxDeviceWorker`: the whole game on one translated thread. With the file listing six
 processors: `Cores = 6`, `6 big (mask: 0x3f)`, five workers and the render thread. Fixing it at
 run time takes `adb root` and a bind mount that is lost on reboot; in the image it takes neither
 (`arm-cpuinfo.ts`, checked with the game running as uid 2000).
@@ -373,7 +373,7 @@ the launcher was focused, two boots each:
 | Used RAM (`dumpsys meminfo`) | 1.81 – 1.88 GB | **1.30 – 1.31 GB** |
 | `MemAvailable` | 2.30 – 2.32 GB | **2.67 – 2.68 GB** |
 | Processes / packages | 357 – 360 / 223 | 330 – 334 / 181 |
-| Fatal exceptions in the crash log | — | 0; `system_server` started once |
+| Fatal exceptions in the crash log | Unknown | 0; `system_server` started once |
 
 Start times on `openemu-compat` (time from launching `emulator.exe` to `sys.boot_completed=1`):
 
@@ -389,14 +389,14 @@ fair comparison; they are left out rather than quoted. `e2fsck -fn` passes on al
 (`npm run rom:check -- --recipe openemu-compat`). The build itself takes 6 – 7 s.
 
 Not measured: a game in a match. The test game's installed version is refused by its own server
-until updated, so the furthest it got is its title screen — a steady 30 fps, which looks like the
+until updated, so the furthest it got is its title screen: a steady 30 fps, which looks like the
 game's own cap (its main thread used under 20 % of a core).
 
 ### What it costs
 
 - **It contains Google Mobile Services and is a modified Google image.** `openemu` was designed so
   that nothing in it carried a redistribution condition; this is the opposite. It is built on the
-  user's machine from their own download and never hosted by us, like the `full` profile — but
+  user's machine from their own download and never hosted by us, like the `full` profile, but
   `full` boots Google's image as shipped and this edits it, which SDK Terms §3.3 speak to
   directly. `LICENSING.md` has the row. It is an option to build and measure with, not a default
   to ship, until that has a legal answer.
@@ -405,35 +405,35 @@ game's own cap (its main thread used under 20 % of a core).
   once that image is downloaded, and it is the better base for old games.
 - **No Play Store app.** Google APIs has Play services but not `com.android.vending`; apps arrive
   as APK files. A Play Store base is a `user` build with no root, which the in-image cpuinfo fix no
-  longer needs — also a candidate third recipe.
+  longer needs; also a candidate third recipe.
 - **Emulator tells remain** (`ranchu`, `qemu`, the `sdk_gphone` model), as on `openemu`.
 
-## Phase C — written down, not built
+## Phase C: written down, not built
 
-- **ARM translation in `openemu` itself** — `libndk_translation` ships only in Google's GMS images
+- **ARM translation in `openemu` itself**: `libndk_translation` ships only in Google's GMS images
   and `libhoudini` is Intel's; neither is redistributable, and grafting one into the AOSP-derived
   image is the SDK-licence question in its sharpest form. Still needs a legal answer.
   `openemu-compat` (above) is the route that exists today: it does not graft, it starts from the
   Google image, and it carries the same open question in the open.
-- **In-guest agent** (priv-app): persistent input, clipboard, shared folder, virtual GPS — the
+- **In-guest agent** (priv-app): persistent input, clipboard, shared folder, virtual GPS: the
   roadmap's 1.2 and 2.4 inside the ROM. Needs an APK toolchain at dev time.
 - **Our launcher, store, and static RROs** in `/product/overlay` for framework and SettingsProvider
-  defaults — the AOSP-sanctioned way vendors restyle a ROM.
+  defaults: the AOSP-sanctioned way vendors restyle a ROM.
 - **Root toggle** via Magisk in the ramdisk (GPL-3.0). The repo already patches cpio ramdisks.
 - **Hiding emulator tells** (`ro.kernel.qemu`, `ranchu`, `test-keys`) after init.
 - **A real "phone model" picker** stamped into the image, if `-prop` proves unable to override
   `ro.product.*`.
-- **A landscape, tablet-density default device** — a `devices/*.env` + UI decision, not an image
+- **A landscape, tablet-density default device**: a `devices/*.env` + UI decision, not an image
   change.
 - **Branded boot animation.**
 
 ## Work plan
 
-1. `gpt.ts`, `lp.ts`, `avb.ts` + tests — subagent, against this document and the probe scripts.
-2. `ext4.ts` + fixture + tests — me.
-3. `build-prop.ts`, `recipe.ts` + tests — subagent.
+1. `gpt.ts`, `lp.ts`, `avb.ts` + tests: subagent, against this document and the probe scripts.
+2. `ext4.ts` + fixture + tests: me.
+3. `build-prop.ts`, `recipe.ts` + tests: subagent.
 4. Wallpaper look from Cursor Grok; `wallpaper.ts`.
-5. `builder.ts`, CLI (`npm run rom:build`, `rom:check`), manifest, swap — me.
-6. Engine: setup step, `-writable-system` removal, ROM-id invalidation, status — me.
+5. `builder.ts`, CLI (`npm run rom:build`, `rom:check`), manifest, swap: me.
+6. Engine: setup step, `-writable-system` removal, ROM-id invalidation, status: me.
 7. Verify on this machine; on failure, re-plan with Grok and retry.
 8. Docs; retire `image-builder.ts` and `design/custom-image.md`; push.

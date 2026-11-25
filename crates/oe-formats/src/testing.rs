@@ -35,11 +35,11 @@ fn zip64_extra(values: &[u64]) -> Vec<u8> {
     extra
 }
 
-/// A genuine PKZIP archive built in memory, by hand, so the fixture depends on nothing — with
+/// A genuine PKZIP archive built in memory, by hand, so the fixture depends on nothing, with
 /// deflate and zip64 as options, since bundles use both.
 ///
 /// With `zip64`, every size and offset is written as the 0xFFFFFFFF placeholder with its real
-/// value in a zip64 extra field, and the end of the archive carries the zip64 record and locator —
+/// value in a zip64 extra field, and the end of the archive carries the zip64 record and locator:
 /// the layout a writer produces for an archive past 4 GB, at a size a test can afford.
 pub fn make_zip(files: &[ZipFile], zip64: bool) -> Vec<u8> {
     let mut locals: Vec<u8> = Vec::new();

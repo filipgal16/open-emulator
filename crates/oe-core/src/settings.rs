@@ -16,7 +16,7 @@ pub enum ThemeChoice {
     Dark,
 }
 
-/// The device identities a guest can report as — the file names in `android/devices/`.
+/// The device identities a guest can report as: the file names in `android/devices/`.
 ///
 /// Not cosmetic: stock images identify as brand "Android", model "mainline", and plenty of apps
 /// treat that as an emulator and refuse to run.
@@ -76,6 +76,9 @@ pub struct Settings {
     pub cores: Option<u32>,
     pub ram_mb: Option<u32>,
     pub density: Option<u32>,
+    /// Let the emulator show its own window, toolbar and all, instead of keeping it hidden and
+    /// showing Android inside ours. Off by default.
+    pub emulator_window: bool,
 }
 
 /// The ranges the controls offer. A hand-edited file is clamped to a little more, not refused.
@@ -118,6 +121,7 @@ pub fn sanitize(raw: &Value) -> Settings {
         cores: clamp_number(field("cores"), 1, 32),
         ram_mb: clamp_number(field("ramMb"), 1024, 16_384),
         density: clamp_number(field("density"), 120, 640),
+        emulator_window: field("emulatorWindow").and_then(Value::as_bool).unwrap_or(false),
     }
 }
 
@@ -271,6 +275,13 @@ mod tests {
         assert_eq!(settings.ram_mb, Some(3000));
         assert_eq!(settings.density, Some(120));
         assert_eq!(settings.download_root, None, "only an absolute folder is a place to download to");
+    }
+
+    #[test]
+    fn the_emulators_own_window_stays_hidden_unless_switched_on() {
+        assert!(!sanitize(&json!({})).emulator_window, "off by default");
+        assert!(!sanitize(&json!({ "emulatorWindow": "yes" })).emulator_window, "only a real true switches it on");
+        assert!(sanitize(&json!({ "emulatorWindow": true })).emulator_window);
     }
 
     #[test]

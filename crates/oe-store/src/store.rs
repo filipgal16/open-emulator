@@ -30,7 +30,7 @@ const MAX_QUERY_CHARS: usize = 200;
 pub enum StoreEvent {
     /// A job changed: progress, a new state, an error.
     Job(InstallJob),
-    /// An install really landed in the guest — the cue to re-read the app list.
+    /// An install really landed in the guest: the cue to re-read the app list.
     Installed(String),
     /// The catalogue or the guest's facts changed.
     IndexUpdated(StoreState),
@@ -67,7 +67,7 @@ impl Store {
         Store::with_network(client, paths, on_log, on_event, fetch, http_downloader(http_client()))
     }
 
-    /// [`Store::new`] over a network of the caller's choosing — a test's script.
+    /// [`Store::new`] over a network of the caller's choosing: a test's script.
     pub fn with_network(
         client: OpenEmuClient,
         paths: &StorePaths,
@@ -161,7 +161,7 @@ impl Store {
         self.state()
     }
 
-    /// `source` `None` — or Play, which has no catalogue here — searches every source at once.
+    /// `source` `None` (or Play, which has no catalogue here) searches every source at once.
     pub async fn search(&self, query: &str, source: Option<SourceId>, limit: Option<usize>) -> Vec<StoreApp> {
         let query: String = query.chars().take(MAX_QUERY_CHARS).collect();
         let source = source.filter(|source| *source != SourceId::Play);
@@ -183,7 +183,7 @@ impl Store {
         self.installer.jobs()
     }
 
-    /// Installs app files already on this PC — a drop onto the window, or a file chosen. One job
+    /// Installs app files already on this PC: a drop onto the window, or a file chosen. One job
     /// per file; a file that is not an app comes back as a failed job saying why.
     pub async fn install_files(&self, paths: &[PathBuf]) -> Vec<InstallJob> {
         let mut jobs = Vec::new();

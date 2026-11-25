@@ -50,7 +50,7 @@ pub fn avd_exists(layout: &SdkLayout, avd_name: &str) -> bool {
 ///
 /// Safe to re-run: it rewrites the two configuration files and touches nothing else, so an
 /// existing guest keeps its userdata, its snapshot, and its installed apps. That is what lets
-/// setup call this on every start to keep cores, RAM, and the renderer in step with the host —
+/// setup call this on every start to keep cores, RAM, and the renderer in step with the host:
 /// `hw.gpu.mode` in particular has to match the `-gpu` flag or the snapshot becomes unloadable.
 pub fn create_avd(input: &CreateAvdInput) -> Result<AvdPaths> {
     let paths = avd_paths(input.layout, &input.profile.avd_name);

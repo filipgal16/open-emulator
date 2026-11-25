@@ -59,6 +59,8 @@ pub enum Message {
     Tick,
     Poll,
     CloseRequested,
+    /// The guest's window is back with the emulator, or did not answer in time: quit.
+    FinishClose,
     FileDropped(PathBuf),
     Key(keyboard::Key, keyboard::Modifiers),
 
@@ -85,6 +87,8 @@ pub enum Message {
     PointerMoved(Point),
     PointerDown,
     PointerUp,
+    /// A mouse wheel turn over the device, in lines; positive scrolls up.
+    Wheel(f32),
     Typed(bool),
 
     // Apps
@@ -116,6 +120,7 @@ pub enum Message {
     Settings(SettingsState),
     SetTheme(ThemeChoice),
     SetDevice(DeviceId),
+    SetEmulatorWindow(bool),
     SliderCores(f64),
     SliderRam(f64),
     SliderDensity(f64),
@@ -213,6 +218,8 @@ pub struct App {
     pub pane: Option<Rectangle>,
     pub embedded: bool,
     pub mirroring: bool,
+    /// Set once a close has been asked for, while the guest's window is handed back.
+    pub closing: bool,
     pub frame: Option<(image::Handle, u32, u32)>,
     pub pointer: Option<Point>,
     pub pressed: Option<(Point, Instant)>,
@@ -224,7 +231,7 @@ pub struct App {
     pub account: AccountUi,
     pub toast: Option<String>,
     /// Store art, decoded from the cached files' bytes. The cache names files by a hash with no
-    /// extension, and iced decides a file's format from its extension — so a path would not load.
+    /// extension, and iced decides a file's format from its extension, so a path would not load.
     pub icons: HashMap<PathBuf, image::Handle>,
 }
 
@@ -251,6 +258,7 @@ impl App {
             pane: None,
             embedded: false,
             mirroring: false,
+            closing: false,
             frame: None,
             pointer: None,
             pressed: None,
@@ -333,37 +341,26 @@ impl App {
         Subscription::batch(subscriptions)
     }
 
-    fn active(&self) -> bool {
-        matches!(self.device.phase, EmuPhase::Running | EmuPhase::Starting)
-    }
-
     fn visible(&self) -> bool {
         self.ready && self.workspace == Workspace::Device && !self.show_account
     }
 
-    /// Tells the core where the device pane is, so the guest's window follows it — or hides.
+    /// The device pane changed: the app draws Android there itself, so all that follows is
+    /// whether the screen stream should run.
     fn report_viewport(&mut self) -> Task<Message> {
-        if !self.active() {
-            self.embedded = false;
-            return self.sync_mirror();
-        }
-        let (Some(parent), Some(pane)) = (self.parent, self.pane) else { return Task::none() };
-        #[cfg(windows)]
-        {
-            let rect = crate::probe::to_physical(pane, self.scale);
-            let visible = self.visible();
-            perform(&self.core, move |core| async move { core.report_viewport(oe_win::Hwnd(parent), rect, visible).await }, Message::Embedded)
-        }
-        #[cfg(not(windows))]
-        {
-            let _ = (parent, pane);
-            Task::none()
-        }
+        self.embedded = false;
+        self.sync_mirror()
     }
 
-    /// Mirrors only when the guest runs but its own window could not be shown in the pane.
+    /// Whether the user asked for the emulator's own window instead of Android inside the pane.
+    pub fn own_window(&self) -> bool {
+        self.settings.state.as_ref().is_some_and(|state| state.settings.emulator_window)
+    }
+
+    /// Mirrors only when the guest runs but its own window could not be shown in the pane, and
+    /// never while the emulator is showing that window by itself.
     fn sync_mirror(&mut self) -> Task<Message> {
-        let want = self.device.phase == EmuPhase::Running && !self.embedded && self.visible();
+        let want = self.device.phase == EmuPhase::Running && self.visible() && !self.own_window();
         if want && !self.mirroring {
             self.core.start_mirror();
         } else if !want && self.mirroring {
@@ -433,6 +430,7 @@ impl App {
             Message::Window(None) => Task::none(),
             Message::Parent(hwnd) => {
                 self.parent = (hwnd != 0).then_some(hwnd);
+                self.tint_frame();
                 self.report_viewport()
             }
             Message::Scale(scale) => {
@@ -450,12 +448,38 @@ impl App {
             Message::Tick => Task::none(),
             Message::Poll => perform(&self.core, |core| async move { core.device_state().await }, Message::Device),
             Message::CloseRequested => {
+                if self.closing {
+                    return Task::none();
+                }
+                self.closing = true;
                 self.core.stop_mirror();
-                self.core.release_guest_window();
+                // Handed back off this thread, which keeps answering messages meanwhile. Giving the
+                // emulator its window back is a conversation with the emulator's own UI thread, and
+                // with the guest-window watchdog that holds the same lock; blocking this thread in
+                // the middle of it is how closing used to hang, window frozen, for good. A guest
+                // that has not answered in three seconds is left to the exit.
+                let core = self.core.clone();
+                let (done, finished) = tokio::sync::oneshot::channel::<()>();
+                std::thread::spawn(move || {
+                    core.release_guest_window();
+                    let _ = done.send(());
+                });
+                Task::perform(
+                    async move {
+                        let _ = tokio::time::timeout(Duration::from_secs(3), finished).await;
+                    },
+                    |()| Message::FinishClose,
+                )
+            }
+            Message::FinishClose => {
                 if let Some(installer) = self.core.update_ready_installer() {
                     let _ = oe_core::update::run_installer(&installer);
                 }
-                iced::exit()
+                // Ended here rather than through `iced::exit`. Everything worth keeping is already
+                // on disk, and the toolkit's shutdown waits for any background work still inside a
+                // blocking call, an adb read or a guest preparation, which can take minutes. That
+                // wait was the app freezing on close, window and all.
+                std::process::exit(0)
             }
             Message::FileDropped(path) => {
                 self.workspace = Workspace::Store;
@@ -539,13 +563,32 @@ impl App {
             }
             Message::PointerMoved(point) => {
                 self.pointer = Some(point);
+                if self.pressed.is_some() && self.core.has_native_input() {
+                    return self.send_pointer(point, true);
+                }
                 Task::none()
             }
             Message::PointerDown => {
                 self.pressed = self.pointer.map(|point| (point, Instant::now()));
-                Task::none()
+                match self.pointer {
+                    Some(point) if self.core.has_native_input() => self.send_pointer(point, true),
+                    _ => Task::none(),
+                }
             }
-            Message::PointerUp => self.on_pointer_up(),
+            Message::PointerUp => {
+                if self.core.has_native_input() {
+                    self.pressed = None;
+                    return match self.pointer {
+                        Some(point) => self.send_pointer(point, false),
+                        None => Task::none(),
+                    };
+                }
+                self.on_pointer_up()
+            }
+            Message::Wheel(lines) => {
+                let dy = (lines * 120.0).round() as i32;
+                perform(&self.core, move |core| async move { core.wheel(dy).await }, |_| Message::Tick)
+            }
             Message::Typed(_) => Task::none(),
 
             Message::Apps(apps) => {
@@ -655,6 +698,7 @@ impl App {
 
             Message::Settings(state) => {
                 self.tokens = theme::resolve(state.settings.theme);
+                self.tint_frame();
                 self.settings.cores = None;
                 self.settings.ram = None;
                 self.settings.density = None;
@@ -664,6 +708,7 @@ impl App {
             }
             Message::SetTheme(choice) => self.change_settings(move |s| s.theme = choice),
             Message::SetDevice(device) => self.change_settings(move |s| s.device = device),
+            Message::SetEmulatorWindow(on) => self.change_settings(move |s| s.emulator_window = on),
             Message::SliderCores(value) => {
                 self.settings.cores = Some(value);
                 Task::none()
@@ -854,6 +899,12 @@ impl App {
                 }
                 Task::none()
             }
+            CoreEvent::FrameReady => {
+                if let Some(frame) = self.core.take_frame() {
+                    self.frame = Some((image::Handle::from_rgba(frame.width, frame.height, frame.rgba), frame.width, frame.height));
+                }
+                Task::none()
+            }
             CoreEvent::Frame(png) => {
                 let size = png_size(&png);
                 if let Some((width, height)) = size {
@@ -886,6 +937,20 @@ impl App {
         }
     }
 
+    /// Windows' own title bar and edge in the strip's colour, so the window's top reads as one
+    /// band, the way Graphite's page begins.
+    fn tint_frame(&self) {
+        #[cfg(windows)]
+        if let Some(hwnd) = self.parent {
+            let t = self.tokens;
+            let windows_colour = |color: iced::Color| {
+                let [r, g, b, _] = color.into_rgba8();
+                oe_win::window::colorref(r, g, b)
+            };
+            oe_win::window::tint_frame(oe_win::Hwnd(hwnd), windows_colour(t.raised), windows_colour(t.text_dim), windows_colour(t.border_subtle), t.dark);
+        }
+    }
+
     fn on_key(&mut self, key: keyboard::Key, modifiers: keyboard::Modifiers) -> Task<Message> {
         use keyboard::key::Named;
         match key.as_ref() {
@@ -903,11 +968,38 @@ impl App {
                 Task::none()
             }
             keyboard::Key::Named(Named::ArrowLeft) if modifiers.alt() && !modifiers.control() => self.update(Message::Press("KEYCODE_BACK")),
+            _ if self.visible() && !modifiers.alt() && !modifiers.control() && self.core.has_native_input() => {
+                let name = match key.as_ref() {
+                    keyboard::Key::Named(Named::Enter) => Some("Enter"),
+                    keyboard::Key::Named(Named::Backspace) => Some("Backspace"),
+                    keyboard::Key::Named(Named::Delete) => Some("Delete"),
+                    keyboard::Key::Named(Named::Tab) => Some("Tab"),
+                    keyboard::Key::Named(Named::ArrowLeft) => Some("ArrowLeft"),
+                    keyboard::Key::Named(Named::ArrowRight) => Some("ArrowRight"),
+                    keyboard::Key::Named(Named::ArrowUp) => Some("ArrowUp"),
+                    keyboard::Key::Named(Named::ArrowDown) => Some("ArrowDown"),
+                    keyboard::Key::Named(Named::Home) => Some("Home"),
+                    keyboard::Key::Named(Named::End) => Some("End"),
+                    _ => None,
+                };
+                if let Some(name) = name {
+                    return perform(&self.core, move |core| async move { core.key_name(name).await }, |_| Message::Tick);
+                }
+                match key.as_ref() {
+                    keyboard::Key::Character(text) => {
+                        let text = text.to_owned();
+                        perform(&self.core, move |core| async move { core.type_text(&text).await }, |_| Message::Tick)
+                    }
+                    keyboard::Key::Named(Named::Space) => perform(&self.core, |core| async move { core.type_text(" ").await }, |_| Message::Tick),
+                    _ => Task::none(),
+                }
+            }
             keyboard::Key::Character(c) if modifiers.alt() && !modifiers.control() && self.ready => match c {
                 "1" => self.select(Workspace::Device),
                 "2" => self.select(Workspace::Apps),
                 "3" => self.select(Workspace::Store),
                 "4" => self.select(Workspace::Settings),
+                "a" | "A" => self.update(Message::ToggleAccount),
                 "s" | "S" if !self.device.busy => {
                     self.update(if self.device.phase == EmuPhase::Running { Message::DeviceStop } else { Message::DeviceStart })
                 }
@@ -918,6 +1010,16 @@ impl App {
     }
 
     /// A press and release on the mirrored screen: a tap if it barely moved, a swipe otherwise.
+    /// The pointer as a finger on Android's own display, sent as it happens.
+    fn send_pointer(&self, point: Point, pressed: bool) -> Task<Message> {
+        let (Some((_, width, height)), Some(pane)) = (self.frame.as_ref(), self.pane) else { return Task::none() };
+        let (width, height) = (*width as f32, *height as f32);
+        let fit = fitted(pane.width, pane.height, width, height);
+        let x = ((point.x - fit.x) / fit.width * width).clamp(0.0, width - 1.0) as i32;
+        let y = ((point.y - fit.y) / fit.height * height).clamp(0.0, height - 1.0) as i32;
+        perform(&self.core, move |core| async move { core.pointer(x, y, pressed).await }, |_| Message::Tick)
+    }
+
     fn on_pointer_up(&mut self) -> Task<Message> {
         let (Some((start, at)), Some(end), Some((_, width, height)), Some(pane)) =
             (self.pressed.take(), self.pointer, self.frame.as_ref().map(|(h, w, ht)| (h.clone(), *w, *ht)), self.pane)

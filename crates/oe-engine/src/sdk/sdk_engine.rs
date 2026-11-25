@@ -54,7 +54,7 @@ const BOOT_POLL: Duration = Duration::from_millis(500);
 /// A setting read at the moment it is needed, so changing it in Settings does not need a restart.
 pub type Live<T> = Arc<dyn Fn() -> T + Send + Sync>;
 
-/// What the user asked for in Settings. `None` means "decide from this machine" — the measured
+/// What the user asked for in Settings. `None` means "decide from this machine": the measured
 /// default, or the profile's own hint.
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub struct Performance {
@@ -76,6 +76,9 @@ pub struct SdkEngineOptions {
     pub accelerated: Live<bool>,
     /// False forces `-no-window`; true lets the emulator paint a window we can embed.
     pub windowed: bool,
+    /// True shows the emulator's own window, toolbar and all. False, the default, runs it with no
+    /// window and its screen served over gRPC, for the app to draw Android itself.
+    pub own_window: Option<Live<bool>>,
     pub on_log: Option<Arc<dyn Fn(&str) + Send + Sync>>,
 }
 
@@ -165,8 +168,8 @@ impl SdkEngine {
 
     /// The identity the guest reports as, with the user's interface size laid over its panel.
     ///
-    /// The density is the one part of the panel worth exposing. The window decides the pixels — the
-    /// display follows it — and what is left is how many of them a button takes, which is what a
+    /// The density is the one part of the panel worth exposing. The window decides the pixels (the
+    /// display follows it), and what is left is how many of them a button takes, which is what a
     /// person means by "make everything bigger".
     pub fn device(&self) -> Result<DeviceIdentity> {
         let options = &self.shared.options;
@@ -229,15 +232,15 @@ impl SdkEngine {
 
     // ── Is it running? ───────────────────────────────────────────────────────────────────────
 
-    /// Is an emulator running for this AVD — including one this process did not start?
+    /// Is an emulator running for this AVD, including one this process did not start?
     ///
     /// The in-memory handle is not enough, and the gap is not theoretical. Close the app while
     /// Android is running and reopen it, and the handle is gone while the emulator is very much
     /// still there. Two things then go wrong: `status` reports the guest as stopped while it is
     /// plainly running, and `start` misses the warm path and launches a **second** emulator against
-    /// the same AVD — which corrupts the userdata both instances are writing.
+    /// the same AVD, which corrupts the userdata both instances are writing.
     ///
-    /// So the pid file is read back and the process checked — that it is running, and that it is
+    /// So the pid file is read back and the process checked: that it is running, and that it is
     /// still an emulator rather than an unrelated program that has since been given the same pid.
     /// When the file is missing or stale, the process list is searched: the pid this app spawns is
     /// the launcher's, and the launcher dies with this app's stdio pipes while QEMU keeps running
@@ -253,7 +256,7 @@ impl SdkEngine {
         self.remember_search(avd_name, found)
     }
 
-    /// [`Self::running_pid`] for a caller on a worker thread — the ROM build asks it.
+    /// [`Self::running_pid`] for a caller on a worker thread: the ROM build asks it.
     fn running_pid_blocking(&self, avd_name: &str) -> Option<u32> {
         if let Some(pid) = self.known_pid(avd_name) {
             return Some(pid);
@@ -319,7 +322,7 @@ impl SdkEngine {
     }
 
     /// Records the moment provisioning finished, which is what `status` reports as
-    /// `provisioned_at` — and, for our own ROM, which build it finished against.
+    /// `provisioned_at`, and, for our own ROM, which build it finished against.
     ///
     /// The ROM id is written here and nowhere earlier. Written before the invalidation it guards, a
     /// crash in between would leave the new id beside the old snapshot, and the mismatch that
@@ -384,7 +387,7 @@ impl SdkEngine {
             return Ok(false);
         }
         self.log(&format!(
-            "ROM changed since {avd_name} was provisioned — discarding its snapshot and system overlays, keeping userdata"
+            "ROM changed since {avd_name} was provisioned; discarding its snapshot and system overlays, keeping userdata"
         ));
         let dir = avd_dir(self.layout(), avd_name);
         remove_file_if_present(&dir.join("system.img.qcow2"))?;
@@ -396,7 +399,7 @@ impl SdkEngine {
     /// Brings `advancedFeatures.ini` up to date, and treats a change on a booted AVD the way a ROM
     /// change is treated, minus the overlays: the snapshot goes and the AVD is provisioned again.
     ///
-    /// The feature set is negotiated when the guest boots — GLES version included — so a snapshot
+    /// The feature set is negotiated when the guest boots, GLES version included, so a snapshot
     /// taken under the old one would restore the old GL state onto a guest launched with the new
     /// flags. The cold-retry path does not cover that: a restore that succeeds with stale state
     /// refuses nothing.
@@ -409,7 +412,7 @@ impl SdkEngine {
         if !sync_advanced_features(self.layout(), avd_name)? || !booted {
             return Ok(false);
         }
-        self.log(&format!("emulator features changed for {avd_name} — discarding its snapshot, keeping userdata"));
+        self.log(&format!("emulator features changed for {avd_name}; discarding its snapshot, keeping userdata"));
         self.forget_snapshot(avd_name)?;
         Ok(true)
     }
@@ -418,7 +421,7 @@ impl SdkEngine {
     /// the renderer.
     ///
     /// A snapshot is the guest's RAM and device state as that hardware left it, and the emulator
-    /// refuses to restore one onto different hardware. The cold-retry path would then boot it — and
+    /// refuses to restore one onto different hardware. The cold-retry path would then boot it, and
     /// keep the snapshot, so every later start would be refused and cold-booted the same way.
     ///
     /// Decided by comparing what `config.ini` says now with what this start is about to write, so
@@ -458,7 +461,7 @@ impl SdkEngine {
             return Ok(false);
         }
         self.log(&format!(
-            "hardware changed for {avd_name} ({}) — discarding its snapshot, keeping userdata",
+            "hardware changed for {avd_name} ({}); discarding its snapshot, keeping userdata",
             changed.join(", ")
         ));
         self.forget_snapshot(avd_name)?;
@@ -543,7 +546,7 @@ impl SdkEngine {
         loop {
             match self.start_once(on_log.clone(), cold).await {
                 Ok(Attempt::Done(result)) => return result,
-                // A failed restore is recoverable, so it retries cold — but it must NOT delete the
+                // A failed restore is recoverable, so it retries cold, but it must NOT delete the
                 // snapshot. Deleting it turns one bad restore into a mandatory re-provision.
                 Ok(Attempt::RetryCold) if !cold => cold = true,
                 Ok(Attempt::RetryCold) => return failed("the emulator refused to boot"),
@@ -560,17 +563,17 @@ impl SdkEngine {
         let emulator = self.layout().emulator.clone();
 
         if !emulator.exists() {
-            return done_failing(format!("emulator not installed — expected {}", emulator.display()));
+            return done_failing(format!("emulator not installed: expected {}", emulator.display()));
         }
 
         // Warm path: a guest that is already up is not rebooted. Reconnecting to it is the whole
         // reason `start` is safe to call from a button. Adopted on adb's word plus a live pid, not
-        // on holding the child handle — after an app restart the handle is gone but the emulator
+        // on holding the child handle: after an app restart the handle is gone but the emulator
         // is not, and starting a second one against the same AVD corrupts the userdata both write.
         let existing = self.adb().wait_for_device(Duration::from_secs(2), DEVICE_POLL).await;
         if let Some(existing) = existing {
             if self.running_pid(&avd_name).await.is_some() {
-                self.log(&format!("already running on {existing} — warm path, no reboot"));
+                self.log(&format!("already running on {existing}: warm path, no reboot"));
                 let result = ok(vec![format!("adb_device={existing}")]);
                 self.state().serial = Some(existing);
                 return Ok(Attempt::Done(result));
@@ -612,6 +615,9 @@ impl SdkEngine {
             use_snapshot: use_snapshot.then_some(SNAPSHOT),
             headless: !self.shared.options.windowed,
             writable_system: false,
+            native_display: (!self.shared.options.own_window.as_ref().is_some_and(|own| own()))
+                .then(crate::grpc::free_port)
+                .flatten(),
         });
 
         self.log(&format!(
@@ -639,7 +645,19 @@ impl SdkEngine {
             .env("ANDROID_SDK_ROOT", &layout.sdk_root)
             .env("ANDROID_HOME", &layout.sdk_root)
             .env("ANDROID_AVD_HOME", &layout.avd_home)
+            // Its settings and crash reports: beside the AVDs, not in the user's profile.
+            .env("ANDROID_EMULATOR_HOME", layout.root.join("home").join(".android"))
             .on_log(watch);
+        // The emulator does not create its home: without it, it cannot write the discovery
+        // file the app reads the gRPC address from, and quietly falls back to the profile.
+        let emulator_home = layout.root.join("home").join(".android");
+        let _ = std::fs::create_dir_all(&emulator_home);
+        // adb on Windows always keeps its key pair in the user's profile (it ignores every
+        // variable), and the emulator hands the guest the public half from its own home. Without
+        // a copy there, Android never trusts adb, which then sees the device `offline` for good.
+        if let Some(profile) = std::env::var_os("USERPROFILE") {
+            let _ = std::fs::copy(PathBuf::from(profile).join(".android").join("adbkey.pub"), emulator_home.join("adbkey.pub"));
+        }
         let launched = spawn_detached(&emulator, options)?;
         let pid = launched.pid;
         {
@@ -651,7 +669,9 @@ impl SdkEngine {
             self.record_pid(&avd_name, pid);
         }
 
-        let timeout = Duration::from_secs(if use_snapshot { 120 } else { 300 });
+        // Generous, because a first boot from a slow disk is slow: from a USB stick it took eight
+        // minutes to boot fully, and giving up at five left a guest that was about to finish.
+        let timeout = Duration::from_secs(if use_snapshot { 120 } else { 600 });
         let Some(serial) = self.adb().wait_for_device(timeout, DEVICE_POLL).await else {
             return done_failing("the emulator started but no adb device appeared");
         };
@@ -665,12 +685,12 @@ impl SdkEngine {
 
         let refused = !refusals.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).is_empty();
         if use_snapshot && refused {
-            self.log("snapshot restore failed — cold booting, snapshot kept for the next attempt");
+            self.log("snapshot restore failed: cold booting, snapshot kept for the next attempt");
             self.stop(on_log).await;
             return Ok(Attempt::RetryCold);
         }
 
-        let boot_timeout = Duration::from_secs(if tuning.accel { 300 } else { 1800 });
+        let boot_timeout = Duration::from_secs(if tuning.accel { 900 } else { 1800 });
         if !self.adb().wait_for_boot(&serial, boot_timeout, BOOT_POLL).await {
             return done_failing("Android did not finish booting");
         }
@@ -711,12 +731,12 @@ impl SdkEngine {
 
         let had_child = self.state().emulator.is_some();
         if had_child && !self.wait_for_child_exit(EXIT_GRACE).await {
-            self.log("emulator still alive after 30s — terminating");
+            self.log("emulator still alive after 30s; terminating");
             self.kill_child();
             self.wait_for_child_exit(Duration::from_secs(5)).await;
         }
 
-        // A guest this process did not start has no child handle, so it is found by its pid — and
+        // A guest this process did not start has no child handle, so it is found by its pid, and
         // given the same grace a child gets once asked to quit, since ending it at once would
         // interrupt the very writes asking was meant to protect. One this process did start can
         // outlast its launcher too: QEMU is the launcher's child, not this app's.
@@ -767,7 +787,7 @@ impl SdkEngine {
     /// The `key=value` lines the UI reads.
     ///
     /// Shaped to match what `open-emu status` printed, and read by a parser that is deliberately
-    /// tolerant of lines that are absent — a missing line leaves a field at its default rather than
+    /// tolerant of lines that are absent: a missing line leaves a field at its default rather than
     /// reporting "not provisioned" and sending someone through a re-provision they did not need.
     pub async fn status(&self, _on_log: LogHandler) -> CommandResult {
         let (profile, recipe) = match self.profile().and_then(|profile| Ok((recipe_for_profile(&profile)?, profile))) {
@@ -777,7 +797,7 @@ impl SdkEngine {
         let avd_name = &profile.avd_name;
 
         let mut lines = vec![format!("avd={avd_name}")];
-        // From the pid file, not just the in-memory handle — otherwise a guest that outlived an app
+        // From the pid file, not just the in-memory handle: otherwise a guest that outlived an app
         // restart is reported as stopped while it is plainly running.
         let pid = self.running_pid(avd_name).await;
         lines.push(format!("emulator={}", if pid.is_some() { "running" } else { "stopped" }));
@@ -830,7 +850,7 @@ impl SdkEngine {
         lines.push(format!("adb_binary={}", present(&layout.adb)));
         lines.push(format!(
             "acceleration={}",
-            if (self.shared.options.accelerated)() { "available" } else { "missing — the guest will be very slow" }
+            if (self.shared.options.accelerated)() { "available" } else { "missing: the guest will be very slow" }
         ));
         ok(lines)
     }
@@ -900,7 +920,7 @@ impl SdkEngine {
 
     /// Types a string into the guest's focused field without putting it on a command line.
     ///
-    /// There is only one shell between here and the guest — the guest's own — so the value is
+    /// There is only one shell between here and the guest, the guest's own, so the value is
     /// quoted once for that. It goes to the adb server over its socket, so no process on this
     /// machine ever has it on its command line, which is the property that matters.
     pub async fn type_secret(&self, value: &str, on_log: LogHandler, timeout: Duration) -> CommandResult {
@@ -911,7 +931,7 @@ impl SdkEngine {
 
     /// Sends one `input …` command down a guest shell that stays open between taps.
     ///
-    /// The Electron app started `adb.exe shell input …` for every tap — a process start on the
+    /// The Electron app started `adb.exe shell input …` for every tap: a process start on the
     /// host before the guest saw anything, and a place in the command queue behind whatever else
     /// was running, an install included. The shell is opened once and reopened if it has closed;
     /// only when no shell can be opened at all does a command go the slow way, on its own.
@@ -1059,7 +1079,7 @@ async fn wait_for_pid_exit(pid: u32, timeout: Duration) -> bool {
     }
 }
 
-/// Ends a process — only ever one already checked to be the emulator.
+/// Ends a process, only ever one already checked to be the emulator.
 fn end_process(pid: u32) -> bool {
     #[cfg(windows)]
     {
@@ -1100,6 +1120,7 @@ mod tests {
             density: Some(Arc::new(move || settings.density)),
             accelerated: Arc::new(|| true),
             windowed: true,
+            own_window: None,
             on_log: None,
         })
     }

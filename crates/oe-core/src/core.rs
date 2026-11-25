@@ -14,6 +14,7 @@ use oe_engine::defender::{self, ExclusionState};
 use oe_engine::download::MessageHandler;
 use oe_engine::engine::AndroidEngine;
 use oe_engine::env_file::{load_device, load_profile};
+use oe_engine::grpc::{self, EmulatorGrpc, Frame, KeyAction, BUTTON_PRIMARY};
 use oe_engine::host::{tune_for_host, HostFacts, TuningOverrides};
 use oe_engine::layout::{native_root, SdkLayout};
 use oe_engine::mirror::{EngineMirror, DEFAULT_INTERVAL};
@@ -42,8 +43,11 @@ pub enum CoreEvent {
     Log(LogStream, String),
     /// A mirrored frame, as PNG.
     Frame(Vec<u8>),
+    /// A new frame of the natively drawn screen is waiting in [`Core::take_frame`]. Only the
+    /// newest is kept, so a busy UI skips frames rather than falling behind.
+    FrameReady,
     StoreJob(InstallJob),
-    /// An install really landed in the guest — the cue to re-read the app list.
+    /// An install really landed in the guest: the cue to re-read the app list.
     StoreInstalled(String),
     StoreIndexUpdated(StoreState),
     Update(UpdateState),
@@ -62,7 +66,7 @@ pub struct CorePaths {
 }
 
 impl CorePaths {
-    /// The real locations: the user's roaming profile, and `android/` beside the app — or, in a
+    /// The real locations: the user's roaming profile, and `android/` beside the app, or, in a
     /// development run, in the checkout the app was built from.
     pub fn discover() -> Result<CorePaths> {
         // For development and tests: somewhere other than the real profile.
@@ -114,14 +118,14 @@ pub struct SettingsState {
     pub storage: StorageUsage,
     /// Which runtime is driving, so the UI can be honest about it.
     pub engine: String,
-    /// What the last action had to say — moving the download folder, say.
+    /// What the last action had to say: moving the download folder, say.
     pub last_message: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DefenderResult {
     pub state: ExclusionState,
-    /// Why the change did not go through — the UAC prompt was declined, say.
+    /// Why the change did not go through: the UAC prompt was declined, say.
     pub error: Option<String>,
 }
 
@@ -145,6 +149,12 @@ pub struct Core {
     device_prefs: DevicePrefsStore,
     scaler: DisplayScaler,
     mirror: Mutex<Option<EngineMirror>>,
+    /// The emulator's screen over gRPC, drawn by the app itself: see [`Core::start_mirror`].
+    native: Arc<Mutex<Option<NativeDisplay>>>,
+    latest_frame: Arc<Mutex<Option<Frame>>>,
+    frame_pending: Arc<AtomicBool>,
+    /// Frames drawn since `drawn_since`, for a frame rate in the log every ten seconds.
+    drawn: Mutex<(u64, std::time::Instant)>,
     device: Mutex<DeviceRuntime>,
     accelerated: Arc<AtomicBool>,
     provisioning_started: AtomicBool,
@@ -194,6 +204,10 @@ impl Core {
                 Arc::new(move || accelerated.load(Ordering::Relaxed))
             },
             windowed: true,
+            own_window: Some({
+                let settings = settings.clone();
+                Arc::new(move || settings.get().emulator_window)
+            }),
             on_log: Some(log.clone()),
         }));
         let client = OpenEmuClient::new(engine.clone() as Arc<dyn AndroidEngine>);
@@ -266,6 +280,10 @@ impl Core {
             updates,
             device_prefs,
             mirror: Mutex::new(None),
+            native: Arc::default(),
+            latest_frame: Arc::default(),
+            frame_pending: Arc::default(),
+            drawn: Mutex::new((0, std::time::Instant::now())),
             device: Mutex::default(),
             accelerated,
             provisioning_started: AtomicBool::new(false),
@@ -323,7 +341,7 @@ impl Core {
         self.setup.run_all(|status| self.emit(CoreEvent::SetupStep(status.clone()))).await
     }
 
-    /// Checks everything and repairs what it can, unattended — the first-run path. Once every
+    /// Checks everything and repairs what it can, unattended: the first-run path. Once every
     /// blocking step passes, the one-time first boot starts in the background.
     pub async fn run_setup_auto(self: &Arc<Self>) -> Vec<SetupStepStatus> {
         let results = self
@@ -331,7 +349,7 @@ impl Core {
             .run_auto(
                 |status| {
                     if status.status != crate::setup::StepState::Running {
-                        self.log(&format!("[setup] {}: {:?} — {}", status.id, status.status, status.detail));
+                        self.log(&format!("[setup] {}: {:?}: {}", status.id, status.status, status.detail));
                     }
                     self.emit(CoreEvent::SetupStep(status.clone()));
                 },
@@ -458,7 +476,7 @@ impl Core {
         if self.provisioning_started.swap(true, Ordering::SeqCst) {
             return;
         }
-        self.log("[provision] starting in the background — the user is already in the app");
+        self.log("[provision] starting in the background: the user is already in the app");
         self.device_prepare().await;
     }
 
@@ -480,7 +498,7 @@ impl Core {
 
     /// Where the device pane is, in real pixels within `parent`, and whether it should show.
     ///
-    /// True when the guest's own window is embedded there — painting at the emulator's own frame
+    /// True when the guest's own window is embedded there, painting at the emulator's own frame
     /// rate, so the caller must not also mirror. False means mirror: the window could not be
     /// embedded, or there is none yet.
     #[cfg(windows)]
@@ -496,6 +514,10 @@ impl Core {
                 guest.set_visible(true);
                 return true;
             }
+        }
+        // The user asked for the emulator's own window: there is nothing to take into the pane.
+        if self.settings.get().emulator_window {
+            return false;
         }
         if let Some(window) = self.wait_for_guest_window().await {
             let attached = self.guest.lock().unwrap_or_else(|p| p.into_inner()).attach(window, parent, rect);
@@ -550,13 +572,69 @@ impl Core {
         });
     }
 
-    /// Gives the emulator's window back to the desktop — before this app's window goes, or Windows
+    /// Gives the emulator's window back to the desktop, before this app's window goes, or Windows
     /// destroys the guest's window with it.
     pub fn release_guest_window(&self) {
         self.detach_guest();
     }
 
-    pub fn start_mirror(&self) {
+    /// Shows the guest in the device pane.
+    ///
+    /// Natively when it can: the emulator runs with no window of its own and serves its screen
+    /// over gRPC, a frame each time the display changes, which the app draws itself. Only when no
+    /// gRPC service turns up (the user chose the emulator's own window, or an emulator from before
+    /// this app adopted) does it fall back to PNG screenshots over adb, a few frames a second.
+    pub fn start_mirror(self: &Arc<Self>) {
+        if self.native.lock().unwrap_or_else(|p| p.into_inner()).is_some() {
+            return;
+        }
+        if self.mirror.lock().unwrap_or_else(|p| p.into_inner()).as_ref().is_some_and(EngineMirror::is_active) {
+            return;
+        }
+        let core = self.clone();
+        let task = tokio::spawn(async move {
+            // The discovery file appears a moment after the emulator starts.
+            let mut found = None;
+            for _ in 0..40 {
+                let home = core.layout.root.join("home").join(".android");
+                if let Some(endpoint) = grpc::discover("OpenEmulator_", Some(&home)) {
+                    found = Some(endpoint);
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(250)).await;
+            }
+            let connected = match found {
+                Some((port, token)) => EmulatorGrpc::connect(port, token).await.ok(),
+                None => None,
+            };
+            let Some(client) = connected else {
+                core.native.lock().unwrap_or_else(|p| p.into_inner()).take();
+                core.log("[display] no gRPC screen to draw; mirroring screenshots instead");
+                core.start_png_mirror();
+                return;
+            };
+            if let Some(native) = core.native.lock().unwrap_or_else(|p| p.into_inner()).as_mut() {
+                native.client = Some(client.clone());
+            }
+            core.log("[display] drawing Android natively from the emulator's gRPC screen stream");
+            let (latest, pending, events) = (core.latest_frame.clone(), core.frame_pending.clone(), core.events.clone());
+            let result = client
+                .stream_screenshots(0, 0, move |frame| {
+                    *latest.lock().unwrap_or_else(|p| p.into_inner()) = Some(frame);
+                    if !pending.swap(true, Ordering::AcqRel) {
+                        let _ = events.send(CoreEvent::FrameReady);
+                    }
+                    true
+                })
+                .await;
+            if let Err(error) = result {
+                core.log(&format!("[display] the screen stream ended: {}", error.0));
+            }
+        });
+        *self.native.lock().unwrap_or_else(|p| p.into_inner()) = Some(NativeDisplay { task, client: None });
+    }
+
+    fn start_png_mirror(&self) {
         let mut mirror = self.mirror.lock().unwrap_or_else(|p| p.into_inner());
         if mirror.as_ref().is_some_and(EngineMirror::is_active) {
             return;
@@ -573,8 +651,65 @@ impl Core {
     }
 
     pub fn stop_mirror(&self) {
+        if let Some(native) = self.native.lock().unwrap_or_else(|p| p.into_inner()).take() {
+            native.task.abort();
+        }
+        self.latest_frame.lock().unwrap_or_else(|p| p.into_inner()).take();
+        self.frame_pending.store(false, Ordering::Release);
         if let Some(mirror) = self.mirror.lock().unwrap_or_else(|p| p.into_inner()).take() {
             mirror.stop();
+        }
+    }
+
+    /// The newest natively drawn frame, once per [`CoreEvent::FrameReady`].
+    pub fn take_frame(&self) -> Option<Frame> {
+        let frame = self.latest_frame.lock().unwrap_or_else(|p| p.into_inner()).take();
+        self.frame_pending.store(false, Ordering::Release);
+        if frame.is_some() {
+            let mut drawn = self.drawn.lock().unwrap_or_else(|p| p.into_inner());
+            drawn.0 += 1;
+            let elapsed = drawn.1.elapsed().as_secs_f64();
+            if elapsed >= 10.0 {
+                let line = format!("[display] {:.1} fps drawn over the last {elapsed:.0} s", drawn.0 as f64 / elapsed);
+                *drawn = (0, std::time::Instant::now());
+                drop(drawn);
+                self.log(&line);
+            }
+        }
+        frame
+    }
+
+    fn native_client(&self) -> Option<EmulatorGrpc> {
+        self.native.lock().unwrap_or_else(|p| p.into_inner()).as_ref().and_then(|native| native.client.clone())
+    }
+
+    /// Whether input can go straight to the emulator: a finger down, held, dragged and lifted as
+    /// it happens, rather than a tap or swipe replayed afterwards through adb.
+    pub fn has_native_input(&self) -> bool {
+        self.native_client().is_some()
+    }
+
+    /// The pointer at a display pixel, pressed or not: a finger on the screen while pressed.
+    pub async fn pointer(&self, x: i32, y: i32, pressed: bool) -> bool {
+        match self.native_client() {
+            Some(client) => client.send_mouse(x, y, if pressed { BUTTON_PRIMARY } else { 0 }).await.is_ok(),
+            None => false,
+        }
+    }
+
+    /// A mouse wheel turn, 120 units a click; positive scrolls up.
+    pub async fn wheel(&self, dy: i32) -> bool {
+        match self.native_client() {
+            Some(client) => client.send_wheel(dy).await.is_ok(),
+            None => false,
+        }
+    }
+
+    /// A key typed on this PC's keyboard into Android, by its W3C name ("Enter", "Backspace").
+    pub async fn key_name(&self, key: &str) -> bool {
+        match self.native_client() {
+            Some(client) => client.send_key(key, KeyAction::Press).await.is_ok(),
+            None => false,
         }
     }
 
@@ -583,7 +718,7 @@ impl Core {
         self.engine.screencap().await.ok().filter(|png| !png.is_empty())
     }
 
-    /// Turns Android itself a quarter turn — apps re-lay out, and it works with the guest's own
+    /// Turns Android itself a quarter turn: apps re-lay out, and it works with the guest's own
     /// window embedded, where there is no picture to transform. The new rotation, 0–3.
     pub async fn rotate_device(&self) -> Option<u8> {
         let current = self.client.shell("settings get system user_rotation", oe_engine::no_log(), None).await;
@@ -602,10 +737,20 @@ impl Core {
     }
 
     pub async fn key(&self, keycode: &str) -> bool {
+        if let (Some(client), Some(name)) = (self.native_client(), grpc_key_name(keycode)) {
+            if client.send_key(name, KeyAction::Press).await.is_ok() {
+                return true;
+            }
+        }
         self.client.key(keycode).await
     }
 
     pub async fn type_text(&self, value: &str) -> bool {
+        if let Some(client) = self.native_client() {
+            if client.send_text(value).await.is_ok() {
+                return true;
+            }
+        }
         self.client.text(value).await
     }
 
@@ -647,7 +792,7 @@ impl Core {
         self.store.jobs()
     }
 
-    /// App files already on this PC — dropped on the window, or chosen. One job per file.
+    /// App files already on this PC: dropped on the window, or chosen. One job per file.
     pub async fn store_install_files(&self, paths: &[PathBuf]) -> Vec<InstallJob> {
         self.store.install_files(paths).await
     }
@@ -820,7 +965,26 @@ fn total_ram_mb() -> u64 {
     (bytes + (1 << 19)) >> 20
 }
 
-/// The profile file for an id — for the profile picker, which shows each image's description.
+/// The profile file for an id, for the profile picker, which shows each image's description.
 pub fn profile_exists(android_root: &Path, profile: ProfileId) -> bool {
     load_profile(android_root, profile.id()).is_ok()
+}
+
+/// The natively drawn screen: the task streaming it, and the connection input goes over.
+struct NativeDisplay {
+    task: tokio::task::JoinHandle<()>,
+    client: Option<EmulatorGrpc>,
+}
+
+/// The emulator's gRPC name for an Android keycode the toolbar sends.
+fn grpc_key_name(keycode: &str) -> Option<&'static str> {
+    Some(match keycode {
+        "KEYCODE_HOME" => "GoHome",
+        "KEYCODE_BACK" => "GoBack",
+        "KEYCODE_APP_SWITCH" => "AppSwitch",
+        "KEYCODE_POWER" => "Power",
+        "KEYCODE_VOLUME_UP" => "AudioVolumeUp",
+        "KEYCODE_VOLUME_DOWN" => "AudioVolumeDown",
+        _ => return None,
+    })
 }

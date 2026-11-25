@@ -9,7 +9,7 @@
 //! **The emulator owns its shape.** The Qt window keeps the device panel's aspect ratio no matter
 //! what size it is given: asked to fill a landscape pane, it comes back a moment later as a
 //! portrait rectangle of its own choosing. Fighting that on a timer made the window flicker between
-//! the two shapes forever. So this controller never dictates a shape — it fits the largest
+//! the two shapes forever. So this controller never dictates a shape; it fits the largest
 //! rectangle of the emulator's *current* aspect into the pane, centres it, and when the emulator
 //! changes shape on its own (a rotation, a display change) it adopts the new aspect and re-fits
 //! once. The pane's own background shows around it, which is what every desktop emulator does.
@@ -37,7 +37,7 @@ pub trait EmbedApi {
     fn release_window(&self, child: Hwnd, styles: Option<WindowStyles>) -> bool;
     /// Where the child actually is, in the parent's client coordinates.
     fn child_bounds(&self, child: Hwnd, parent: Hwnd) -> Option<Rect>;
-    /// The child's own client size — how the emulator has shaped itself.
+    /// The child's own client size: how the emulator has shaped itself.
     fn client_size(&self, child: Hwnd) -> Option<(i32, i32)>;
     /// Hides the floating tool windows the child owns. Returns how many it hid.
     fn hide_owned_windows(&self, child: Hwnd) -> u32;
@@ -65,7 +65,7 @@ pub struct GuestWindow<E: EmbedApi> {
     styles: Option<WindowStyles>,
     /// The pane the UI reported: where the guest is allowed to be.
     viewport: Option<Rect>,
-    /// The rectangle this controller last set — the fit of `viewport` at `aspect`.
+    /// The rectangle this controller last set: the fit of `viewport` at `aspect`.
     placed: Option<Rect>,
     /// Width over height of the emulator's window, as it last shaped itself.
     aspect: Option<f64>,
@@ -139,7 +139,7 @@ impl<E: EmbedApi> GuestWindow<E> {
         // Captured before embed_window overwrites them, or detach has nothing to restore.
         self.styles = self.embed.capture_window_styles(window);
         if let Err(reason) = self.embed.embed_window(window, parent, target) {
-            self.log(&format!("embedding failed: {reason} — mirroring instead"));
+            self.log(&format!("embedding failed: {reason}; mirroring instead"));
             self.styles = None;
             return false;
         }
@@ -154,7 +154,7 @@ impl<E: EmbedApi> GuestWindow<E> {
         // skipped as a no-op when the state is already correct.
         self.visible = true;
         self.log(&format!(
-            "guest window embedded at {}x{} — running at the emulator’s own frame rate",
+            "guest window embedded at {}x{}, running at the emulator’s own frame rate",
             target.width, target.height
         ));
         self.tidy();
@@ -195,8 +195,8 @@ impl<E: EmbedApi> GuestWindow<E> {
             // sits.
             //
             // Its *exact* size is kept, not re-derived from the aspect ratio. Qt believes this
-            // window is top-level, and when it corrects a size it dislikes — even by one pixel of
-            // rounding — it re-applies its geometry in screen coordinates, which for a child window
+            // window is top-level, and when it corrects a size it dislikes, even by one pixel of
+            // rounding, it re-applies its geometry in screen coordinates, which for a child window
             // are parent-relative. The window then lands offset by the parent's origin, gets moved
             // back, and Qt corrects it again: a visible bounce twice a second, forever. Handing
             // back a size Qt already agrees with gives it nothing to correct. Only a shape too
@@ -210,7 +210,7 @@ impl<E: EmbedApi> GuestWindow<E> {
                 self.placed = Some(actual);
             } else {
                 self.log(&format!(
-                    "guest window reshaped to {actual} (was placed at {placed}) — fitting it as {target}"
+                    "guest window reshaped to {actual} (was placed at {placed}); fitting it as {target}"
                 ));
                 if self.embed.move_window(child, target) {
                     self.placed = Some(target);
@@ -242,7 +242,7 @@ impl<E: EmbedApi> GuestWindow<E> {
         moved
     }
 
-    /// Shows or hides the window — the airspace escape hatch.
+    /// Shows or hides the window: the airspace escape hatch.
     ///
     /// A child HWND paints over the parent, so anything the UI draws that would overlap the device
     /// is invisible until this is called with false. Workspace switches and dialogs depend on it.
@@ -264,7 +264,7 @@ impl<E: EmbedApi> GuestWindow<E> {
     ///
     /// Merely dropping the reference is not enough, and getting this wrong is expensive: Windows
     /// destroys child windows along with their parent, so a guest window left parented to ours
-    /// when the app closes is destroyed with it — while the emulator keeps running, now with no
+    /// when the app closes is destroyed with it, while the emulator keeps running, now with no
     /// screen. Observed exactly that way, and it poisons every later start, which finds no window
     /// to embed.
     pub fn detach(&mut self) {
@@ -284,7 +284,7 @@ impl<E: EmbedApi> GuestWindow<E> {
 }
 
 impl<E: EmbedApi> Drop for GuestWindow<E> {
-    /// The window goes back to the desktop however the controller goes away — see `detach`.
+    /// The window goes back to the desktop however the controller goes away: see `detach`.
     fn drop(&mut self) {
         self.detach();
     }
@@ -577,7 +577,7 @@ mod tests {
         let mut guest = attached(&fake);
         fake.clear();
         guest.check();
-        assert!(fake.calls().is_empty(), "within rounding of the fit — leave it alone");
+        assert!(fake.calls().is_empty(), "within rounding of the fit; leave it alone");
     }
 
     #[test]

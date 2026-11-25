@@ -4,7 +4,7 @@
 //! packages be fetched in parallel and resumed, and removes the need for a Java runtime and
 //! `cmdline-tools` whose only job was to run `sdkmanager` as a downloader.
 //!
-//! Read by splitting on element boundaries and looking within each block — never with one search
+//! Read by splitting on element boundaries and looking within each block, never with one search
 //! spanning the whole document, which is the mistake that quietly returns the wrong archive (see
 //! [`archives_of`]). The shape is small, stable and covered by the fixture test.
 
@@ -72,7 +72,7 @@ fn is_xml_space(c: char) -> bool {
 }
 
 /// Every non-overlapping block from an opening `<name` (followed by a non-word character) to the
-/// first closing tag after it — `/<name\b[\s\S]*?<\/name>/g`.
+/// first closing tag after it: `/<name\b[\s\S]*?<\/name>/g`.
 fn blocks<'a>(source: &'a str, name: &str) -> Vec<&'a str> {
     let open = format!("<{name}");
     let close = format!("</{name}>");
@@ -93,7 +93,7 @@ fn blocks<'a>(source: &'a str, name: &str) -> Vec<&'a str> {
     out
 }
 
-/// The trimmed content of the first `<name …>…</name>` in `source` — `/<name[^>]*>([\s\S]*?)<\/name>/`.
+/// The trimmed content of the first `<name …>…</name>` in `source`: `/<name[^>]*>([\s\S]*?)<\/name>/`.
 fn tag<'a>(source: &'a str, name: &str) -> Option<&'a str> {
     let open = format!("<{name}");
     let close = format!("</{name}>");
@@ -137,7 +137,7 @@ fn attribute<'a>(source: &'a str, element: &str, attribute: &str) -> Option<&'a 
 ///
 /// Split into blocks *before* looking inside them. A single lazy search spanning from the first
 /// `<archive>` to the Windows `<host-os>` reaches across the intervening archives, and the `<url>`
-/// read out of that span is the *first* archive's — the Linux one. That produced a manifest lookup
+/// read out of that span is the *first* archive's: the Linux one. That produced a manifest lookup
 /// which cheerfully returned `platform-tools_r37.0.1-linux.zip` for a Windows host.
 fn archives_of(package_block: &str) -> Vec<&str> {
     // `<archive>` exactly: `<archives>` is the container, not an archive.
@@ -155,7 +155,7 @@ fn archives_of(package_block: &str) -> Vec<&str> {
 
 /// Picks the archive for this host.
 ///
-/// A missing `<host-os>` means the package is platform-independent — `platforms;android-30` is one —
+/// A missing `<host-os>` means the package is platform-independent (`platforms;android-30` is one),
 /// so it is a valid match for every host rather than a match for none.
 fn select_archive<'a>(archives: &[&'a str], host: HostOs) -> Option<&'a str> {
     archives

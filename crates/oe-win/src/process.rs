@@ -2,7 +2,7 @@
 //!
 //! The Electron app asked `process.kill(pid, 0)`, which says only that *some* process holds the
 //! pid. Windows hands pids out again quickly, so a pid file left behind by a guest that has since
-//! exited can name an unrelated program later — and a stop would then end that program. Reading
+//! exited can name an unrelated program later, and a stop would then end that program. Reading
 //! the image name as well lets a caller check that the pid is still the process it recorded.
 
 use windows_sys::Win32::Foundation::{CloseHandle, HANDLE, WAIT_TIMEOUT};

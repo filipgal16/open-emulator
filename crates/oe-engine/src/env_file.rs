@@ -1,10 +1,10 @@
 //! Reads the `KEY=value` files under `android/profiles/` and `android/devices/`.
 //!
-//! Those files were `source`d by bash in the WSL runtime. They stay the single source of truth —
+//! Those files were `source`d by bash in the WSL runtime. They stay the single source of truth:
 //! one definition of what the `play` guest is, not two that can drift.
 //!
-//! This parses the subset they actually use — comments, blank lines, bare values, and single- or
-//! double-quoted values — and nothing else. It is deliberately *not* a shell: no `$VAR` expansion,
+//! This parses the subset they actually use (comments, blank lines, bare values, and single- or
+//! double-quoted values) and nothing else. It is deliberately *not* a shell: no `$VAR` expansion,
 //! no command substitution, no `export`. A file that wants any of that is a file that has outgrown
 //! being data, and executing it would hand a config file the ability to run commands.
 
@@ -117,7 +117,7 @@ fn non_empty(env: &BTreeMap<String, String>, key: &str) -> Option<String> {
 /// `android/profiles/<name>.env`.
 ///
 /// Fails rather than falling back to a default. Silently running the wrong guest is how someone
-/// ends up staring at an AOSP image wondering where the Play Store went — and worse, how a
+/// ends up staring at an AOSP image wondering where the Play Store went, and worse, how a
 /// snapshot taken against one image gets loaded against another.
 pub fn load_profile(android_root: &Path, name: &str) -> Result<GuestProfile> {
     if !is_safe_config_name(name) {

@@ -1,4 +1,4 @@
-# open-emulator — Documentation
+# open-emulator: Documentation
 
 The complete reference. [`README.md`](README.md) is the short version; this is everything.
 
@@ -26,19 +26,19 @@ The complete reference. [`README.md`](README.md) is the short version; this is e
 ## What this is
 
 open-emulator runs a real Android guest on a Windows PC and puts a consumer-grade GUI in front of
-it. It is aimed at the same job LDPlayer and BlueStacks do — install an Android app on your desktop
-and use it — with the difference that the runtime is assembled from parts you can inspect, and the
+it. It is aimed at the same job LDPlayer and BlueStacks do: install an Android app on your desktop
+and use it, with the difference that the runtime is assembled from parts you can inspect, and the
 project is working toward a stack it can ship commercially.
 
 Three layers:
 
-1. **The app** (`crates/oe-ui`, `oe-core`, `oe-store`) — a native Rust GUI built with iced: the
+1. **The app** (`crates/oe-ui`, `oe-core`, `oe-store`), a native Rust GUI built with iced: the
    emulator's window embedded in ours, an app library, a three-source store, a device-wide account,
    settings, and a Windows installer.
-2. **The Android runtime** (`crates/oe-engine`, `oe-win`, `oe-formats`, and the data in `android/`)
-   — Google's SDK emulator driven natively on Windows, with our own ROM built from Google's stock
+2. **The Android runtime** (`crates/oe-engine`, `oe-win`, `oe-formats`, and the data in `android/`),
+   which is Google's SDK emulator driven natively on Windows, with our own ROM built from Google's stock
    image.
-3. **`open-vmm`** (`crates/oe-vmm`) — a minimal VMM, the long-term backend. It cannot boot Android
+3. **`open-vmm`** (`crates/oe-vmm`): a minimal VMM, the long-term backend. It cannot boot Android
    yet.
 
 The app was an Electron/TypeScript program that drove the emulator through WSL until version 0.2.
@@ -76,7 +76,7 @@ stream, which is what lets the same logic be tested and driven without a GUI.
 
 | Piece | Network access |
 |---|---|
-| The app | Yes — it is the only thing that fetches: the SDK, the F-Droid catalogue and APKs, icons, update checks |
+| The app | Yes; it is the only thing that fetches: the SDK, the F-Droid catalogue and APKs, icons, update checks |
 | Android guest | Isolated VM; reaches the network through the emulator's NAT |
 
 ---
@@ -91,7 +91,7 @@ stream, which is what lets the same logic be tested and driven without a GUI.
 | **Virtualization** | Enabled in BIOS, and the Windows Hypervisor Platform turned on in Windows Features |
 | **Disk** | About 10 GB free. Installer is small; the SDK and system image are roughly 1.1 GB to download and grow with use |
 | **RAM** | 8 GB workable, 16 GB comfortable |
-| **Network** | First run only — after setup the app works offline, except for the store |
+| **Network** | First run only; after setup the app works offline, except for the store |
 
 No WSL, JDK or Android Studio is needed.
 
@@ -111,7 +111,7 @@ The setup runner (in `oe-core`) is unattended and resumable. It works out what t
 has, then:
 
 1. Checks acceleration (Windows Hypervisor Platform).
-2. Downloads the SDK pieces — the emulator, platform tools and the system image — resumably, checking
+2. Downloads the SDK pieces (the emulator, platform tools and the system image) resumably, checking
    each against Google's published SHA digests, and extracts them.
 3. Accepts the SDK licences recorded in the app's data folder.
 4. Creates the AVD from `android/config/avd_config.ini` and the chosen profile and device.
@@ -183,7 +183,7 @@ handling and installs are exactly current because they are Play's, nothing break
 changes an interface we were never calling, and no one's Google account is at risk for automating an
 endpoint that forbids it.
 
-It needs the `play` profile — `google_apis_playstore`, the only image shipping `com.android.vending`.
+It needs the `play` profile: `google_apis_playstore`, the only image shipping `com.android.vending`.
 The Store's Play tab offers a switch to it.
 
 **Play certification and device spoofing are mutually exclusive.** The Play image is certified
@@ -236,17 +236,17 @@ Google's real UI, with every challenge left to you.
 
 ### Settings
 
-- **Appearance** — light, dark, or follow Windows.
-- **Device identity** — which handset the guest reports as (see [Device identities](#device-identities)).
-- **Display** — the screen follows the window; a slider sets how large Android draws things.
-- **Performance** — cores and memory, each Automatic or set by slider or typed number. Applied at the
+- **Appearance**: light, dark, or follow Windows.
+- **Device identity**: which handset the guest reports as (see [Device identities](#device-identities)).
+- **Display**: the screen follows the window; a slider sets how large Android draws things.
+- **Performance**: cores and memory, each Automatic or set by slider or typed number. Applied at the
   next start, which boots fresh once.
-- **Storage** — the folder holding the SDK, AVDs, state and ROMs. Changing it moves what is there.
-- **Windows Defender** — an opt-in exclusion for the emulator's folder. Real-time scanning of the
+- **Storage**: the folder holding the SDK, AVDs, state and ROMs. Changing it moves what is there.
+- **Windows Defender**: an opt-in exclusion for the emulator's folder. Real-time scanning of the
   guest's disk writes is a likely cost of the roughly 37 s cold boot against about 24 s with KVM.
   It changes a security setting, so it is applied only on an explicit action, in one elevated
   PowerShell call (one UAC prompt), and removes exactly what it added.
-- **Updates** — see below.
+- **Updates**: see below.
 
 Settings are stored in `%APPDATA%\open-emulator\settings.json`; the chosen device in `device.json`.
 
@@ -324,7 +324,7 @@ compatibility feature, not cosmetics.
 | `pixel_5` | `google/redfin/redfin:11/RQ3A.211001.001/…:user/release-keys`, 1080×2340 @ 440dpi |
 | `redmi_note_11` | Xiaomi identity |
 
-Do not combine a spoofed device with the `play` profile — a rewritten fingerprint breaks Play
+Do not combine a spoofed device with the `play` profile: a rewritten fingerprint breaks Play
 certification.
 
 ### Performance
@@ -378,7 +378,7 @@ replacement for the SDK emulator. Binary: `open-vmm`.
 | Backend | When used | How it works |
 |---|---|---|
 | **soft** | everywhere | An x86 real-mode software interpreter |
-| **kvm** | Linux with `/dev/kvm` | Linux KVM — hardware virtualization (Intel VT-x / AMD-V) |
+| **kvm** | Linux with `/dev/kvm` | Linux KVM: hardware virtualization (Intel VT-x / AMD-V) |
 
 It allocates guest memory, loads a flat guest binary, runs until the guest executes `HLT`, and
 emulates a serial port (`COM1`, `0x3f8`) so the guest can print. The guest assembler is part of the
@@ -388,7 +388,7 @@ crate, and test guests live under `crates/oe-vmm/testdata`.
 cargo test -p oe-vmm
 ```
 
-It **cannot boot Android yet** — that needs long mode plus virtio/goldfish devices.
+It **cannot boot Android yet**; that needs long mode plus virtio/goldfish devices.
 
 ---
 
@@ -433,8 +433,8 @@ licences are permissive or offer a permissive choice; the list is in
 
 **The problem is what the app downloads on first run.** The runtime is Google's SDK emulator and
 Google's system images, and the Android SDK Terms §3.3 forbid combining "any part of the SDK" with
-other software or distributing software incorporating it. You do not redistribute it — each user's
-machine downloads it and accepts Google's licence — but the clause is broad, and it is the one thing
+other software or distributing software incorporating it. You do not redistribute it: each user's
+machine downloads it and accepts Google's licence, but the clause is broad, and it is the one thing
 standing between this and a product you can sell without worrying.
 
 BlueStacks, LDPlayer and Genymotion all ship Google Play under **GMS certification agreements with
@@ -442,10 +442,10 @@ Google**. That is a commercial negotiation, not something that can be coded arou
 
 | What you'd sell | Verdict |
 |---|---|
-| The app alone | **Yes** — your code plus permissively licensed crates |
-| App + `fast` or `openemu`, user's machine fetches Google's SDK | **Grey area** — you distribute nothing of Google's, but §3.3 is broad |
-| `openemu-compat` | **Unresolved** — a modified copy of a Google image, built on the user's machine |
-| Anything with `full` or `play` | **No**, not without a Google agreement — those carry GMS |
+| The app alone | **Yes**: your code plus permissively licensed crates |
+| App + `fast` or `openemu`, user's machine fetches Google's SDK | **Grey area**: you distribute nothing of Google's, but §3.3 is broad |
+| `openemu-compat` | **Unresolved**: a modified copy of a Google image, built on the user's machine |
+| Anything with `full` or `play` | **No**, not without a Google agreement; those carry GMS |
 
 The route out, in increasing effort: replace the VMM (crosvm is BSD-3-Clause; upstream QEMU is
 GPL-2.0 and sellable with a source offer; `open-vmm` is the stated goal), then replace the system
@@ -463,7 +463,7 @@ is public, decide soon.
 | Variable | Effect |
 |---|---|
 | `OPEN_EMULATOR_USER_DATA` | Use this folder instead of `%APPDATA%\open-emulator` |
-| `OPEN_EMULATOR_SETUP` | `check` or `skip` — see [First run](#first-run-and-the-setup-wizard) |
+| `OPEN_EMULATOR_SETUP` | `check` or `skip`: see [First run](#first-run-and-the-setup-wizard) |
 | `OPEN_EMULATOR_VIEW` | Open on `apps`, `store`, `settings`, `account`, `setup` or `menu` |
 | `OPEN_EMULATOR_ANDROID_ROOT` | Where `android/` (profiles, devices, config) is |
 | `ICED_BACKEND` | `tiny-skia` for the software renderer |
@@ -530,7 +530,7 @@ whole workspace on Windows and `oe-vmm` on Linux for every push and pull request
 ## Troubleshooting
 
 **Setup fails partway.** The setup screen names the step and offers **Try again**; **Details** shows
-the full log. Steps are resumable — nothing already downloaded is fetched twice.
+the full log. Steps are resumable: nothing already downloaded is fetched twice.
 
 **The device is very slow, or will not start.** Windows Hypervisor Platform is probably off. Turn it
 on in *Windows Features* (and reboot), and check that virtualization is enabled in BIOS:
@@ -556,12 +556,12 @@ work.
 **Port conflicts with another adb.** Set `ANDROID_ADB_SERVER_PORT` to a free port.
 
 **SmartScreen blocks the installer.** Expected; it is unsigned. **More info → Run anyway**, or sign
-it — see [`PACKAGING.md`](PACKAGING.md#code-signing).
+it: see [`PACKAGING.md`](PACKAGING.md#code-signing).
 
 **Store shows nothing / search is empty.** The F-Droid catalogue downloads once on first use. Check
 the network, then reopen the tab.
 
-**An install fails digest verification.** Working as intended — the downloaded APK did not match the
+**An install fails digest verification.** Working as intended: the downloaded APK did not match the
 digest F-Droid published. The file is deleted. Retry; if it persists, the mirror is serving something
 else.
 

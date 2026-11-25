@@ -1,6 +1,6 @@
 //! Builders for the `input …` commands that drive the guest.
 //!
-//! Kept apart from the client so the escaping and clamping can be tested directly — this is the
+//! Kept apart from the client so the escaping and clamping can be tested directly; this is the
 //! one place where text from the UI is turned into a command line, so it is tested as carefully as
 //! package names are.
 

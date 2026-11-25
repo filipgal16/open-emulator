@@ -2,8 +2,8 @@
 //! every keystroke.
 //!
 //! The published index is tens of megabytes and carries per-locale text, build metadata and full
-//! permission lists for every version of every app. So it is *distilled* once on download — one
-//! locale, the fields the UI shows, and a handful of recent versions per app — and only the
+//! permission lists for every version of every app. So it is *distilled* once on download (one
+//! locale, the fields the UI shows, and a handful of recent versions per app) and only the
 //! distillate is cached and reloaded. The cache keeps the Electron app's JSON shape, so an
 //! existing cache is read as it is.
 //!
@@ -18,7 +18,7 @@ use oe_formats::js_round;
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase", default)]
 pub struct IndexFile {
-    /// Repo-relative, starting with `/` — joined onto the repo address for a URL.
+    /// Repo-relative, starting with `/`, joined onto the repo address for a URL.
     pub name: String,
     pub sha256: String,
     pub size: u64,
@@ -212,7 +212,7 @@ fn parse_version(raw: &Value) -> Option<IndexVersion> {
     Some(IndexVersion {
         version_name: as_string(field("versionName")).unwrap_or_else(|| version_code.to_string()),
         version_code,
-        // No declared minimum means "any" — API 1 is the platform's own default.
+        // No declared minimum means "any"; API 1 is the platform's own default.
         min_sdk: as_number(uses_sdk.and_then(|sdk| sdk.get("minSdkVersion"))).map_or(1, |sdk| sdk as u32),
         added: as_int(raw.get("added")).unwrap_or(0),
         file,
@@ -262,7 +262,7 @@ fn parse_app(package_name: &str, raw: &Value) -> Option<IndexApp> {
 }
 
 /// Distills a parsed `index-v2.json`. Malformed apps are skipped rather than failing the whole
-/// index — one bad entry upstream must not take the catalogue offline.
+/// index: one bad entry upstream must not take the catalogue offline.
 pub fn distill_index(raw: &Value) -> DistilledIndex {
     let Some(raw) = raw.as_object() else { return DistilledIndex::default() };
     let repo = as_object(raw.get("repo"));

@@ -1,7 +1,7 @@
-//! Reparents a foreign top-level window into ours.
+﻿//! Reparents a foreign top-level window into ours.
 //!
-//! Both runtimes produce an ordinary Win32 window — `emulator.exe` paints a Qt one, QEMU an SDL one
-//! — so one mechanism serves both. Embedding it beats streaming frames on every axis that matters:
+//! Both runtimes produce an ordinary Win32 window (`emulator.exe` paints a Qt one, QEMU an SDL one),
+//! so one mechanism serves both. Embedding it beats streaming frames on every axis that matters:
 //! the guest renders on the real GPU, and mouse, keyboard, and scroll go straight to the emulator
 //! instead of paying an adb round trip per gesture.
 //!
@@ -19,7 +19,7 @@ use windows_sys::Win32::System::Diagnostics::ToolHelp::{
     CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W, TH32CS_SNAPPROCESS,
 };
 use windows_sys::Win32::UI::WindowsAndMessaging::{
-    EnumWindows, GetClientRect, GetWindow, GetWindowLongPtrW, GetWindowRect, GetWindowThreadProcessId, IsWindow,
+    EnumWindows, GetClassNameW, GetClientRect, GetWindow, GetWindowLongPtrW, GetWindowRect, GetWindowThreadProcessId, IsWindow,
     IsWindowVisible, SetParent, SetWindowLongPtrW, SetWindowPos, ShowWindow, GWL_EXSTYLE, GWL_STYLE, GW_OWNER,
     SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, SWP_SHOWWINDOW, SW_HIDE, SW_SHOW,
     WS_CAPTION, WS_CHILD, WS_CLIPCHILDREN, WS_EX_APPWINDOW, WS_EX_TOOLWINDOW, WS_POPUP, WS_SYSMENU, WS_THICKFRAME,
@@ -83,6 +83,8 @@ pub fn descendant_pids(root_pid: u32) -> HashSet<u32> {
 struct FindContext<'a> {
     pids: &'a HashSet<u32>,
     found: HWND,
+    /// Qt's main window while it is hidden.
+    hidden: HWND,
 }
 
 unsafe extern "system" fn find_main_window_proc(hwnd: HWND, lparam: LPARAM) -> i32 {
@@ -92,7 +94,7 @@ unsafe extern "system" fn find_main_window_proc(hwnd: HWND, lparam: LPARAM) -> i
     let mut pid = 0u32;
     unsafe {
         GetWindowThreadProcessId(hwnd, &mut pid);
-        if !context.pids.contains(&pid) || IsWindowVisible(hwnd) == 0 {
+        if !context.pids.contains(&pid) {
             return 1;
         }
         // An owned window is a dialog or a palette belonging to a real one, not the real one.
@@ -102,6 +104,14 @@ unsafe extern "system" fn find_main_window_proc(hwnd: HWND, lparam: LPARAM) -> i
         if GetWindowLongPtrW(hwnd, GWL_EXSTYLE) as u32 & WS_EX_TOOLWINDOW != 0 {
             return 1;
         }
+        if IsWindowVisible(hwnd) == 0 {
+            // Hidden windows are mostly plumbing (Qt's screen observer, the GPU's pbuffers) that is
+            // never shown. The exception is the main window while it is hidden.
+            if context.hidden.is_null() && is_qt_main_window_class(&class_name(hwnd)) {
+                context.hidden = hwnd;
+            }
+            return 1;
+        }
     }
     context.found = hwnd;
     0 // stop enumerating
@@ -109,23 +119,51 @@ unsafe extern "system" fn find_main_window_proc(hwnd: HWND, lparam: LPARAM) -> i
 
 /// The main top-level window belonging to any of `pids`.
 ///
-/// Matched on process id, never on window class. The emulator's Qt class name carries its Qt
-/// version (`Qt5152QWindowIcon` and friends), so matching it would break on an SDK update — and
-/// QEMU's SDL window has a different one again.
+/// Matched on process id. A visible window is never matched on its class: the emulator's Qt class
+/// name carries its Qt version (`Qt5152QWindowIcon` and friends), so an exact match would break on
+/// an SDK update, and QEMU's SDL window has a different one again.
 ///
 /// A process can own several windows: splash screens, tool windows, and the emulator's own
 /// extended controls panel. The one wanted is visible, has no owner, and is not marked as a tool
-/// window — which is the same test the shell uses to decide what belongs on the taskbar.
+/// window, which is the same test the shell uses to decide what belongs on the taskbar. Failing
+/// that, it is the emulator's main window while hidden, recognised by the shape of Qt's class name,
+/// which survives version changes (see [`is_qt_main_window_class`]).
 pub fn find_main_window_for_pids(pids: &HashSet<u32>) -> Option<Hwnd> {
-    let mut context = FindContext { pids, found: std::ptr::null_mut() };
+    let mut context = FindContext { pids, found: std::ptr::null_mut(), hidden: std::ptr::null_mut() };
     // SAFETY: the callback only touches the context, which outlives the call.
     unsafe {
         EnumWindows(Some(find_main_window_proc), &mut context as *mut FindContext as LPARAM);
     }
-    (!context.found.is_null()).then(|| from_raw(context.found))
+    let window = if context.found.is_null() { context.hidden } else { context.found };
+    (!window.is_null()).then(|| from_raw(window))
 }
 
-/// The main window of a process or of anything it started — see [`descendant_pids`].
+/// A window's class name; empty when it cannot be read.
+pub(crate) fn class_name(hwnd: HWND) -> String {
+    let mut buffer = [0u16; 256];
+    // SAFETY: the buffer outlives the call, and its length is passed with it.
+    let len = unsafe { GetClassNameW(hwnd, buffer.as_mut_ptr(), buffer.len() as i32) };
+    String::from_utf16_lossy(&buffer[..len.max(0) as usize])
+}
+
+/// Qt names its window classes `Qt<version>QWindow<kind>`. The version changes with SDK updates;
+/// the shape does not. The emulator's main window is the `Icon` kind.
+pub fn is_qt_main_window_class(class: &str) -> bool {
+    class.starts_with("Qt") && class.ends_with("QWindowIcon")
+}
+
+/// Whether a top-level window our emulator shows is kept off the desktop: its main window
+/// (unowned, `Qtâ€¦QWindowIcon`) and its tool windows (`Qtâ€¦QWindowToolSaveBits`, the toolbar down
+/// its side). An owned `QWindowIcon` is a dialog, and anything that is not Qt's is left alone too,
+/// so an error the emulator raises is still seen.
+pub fn should_hide_emulator_window(class: &str, owned: bool) -> bool {
+    if !class.starts_with("Qt") {
+        return false;
+    }
+    class.ends_with("QWindowToolSaveBits") || class.ends_with("QWindowTool") || (!owned && class.ends_with("QWindowIcon"))
+}
+
+/// The main window of a process or of anything it started: see [`descendant_pids`].
 pub fn find_main_window_for_process_tree(root_pid: u32) -> Option<Hwnd> {
     find_main_window_for_pids(&descendant_pids(root_pid))
 }
@@ -162,7 +200,7 @@ pub fn clip_children(parent: Hwnd) {
 /// Turns a top-level window into a child of `parent`.
 ///
 /// The style rewrite is not cosmetic. `SetParent` alone leaves the window with its caption, resize
-/// frame, and popup style, so it renders as a floating window pinned inside another one — complete
+/// frame, and popup style, so it renders as a floating window pinned inside another one, complete
 /// with a title bar the user can drag it out by. Clearing those and adding `WS_CHILD` is what makes
 /// it behave as part of the host window. `SWP_FRAMECHANGED` is required for the new styles to be
 /// recalculated; without it the old frame is still drawn until something else forces a non-client
@@ -185,7 +223,7 @@ pub fn embed_window(child: Hwnd, parent: Hwnd, bounds: Rect) -> Result<(), Strin
 
         clip_children(parent);
 
-        // `SetParent` returns the window's *previous* parent, and a top-level window has none — so
+        // `SetParent` returns the window's *previous* parent, and a top-level window has none, so
         // it returns NULL on success. The documented way to tell the two apart is to clear the
         // last error first and read it back: NULL with no error is success.
         SetLastError(0);
@@ -242,9 +280,9 @@ pub fn capture_window_styles(child: Hwnd) -> Option<WindowStyles> {
 /// Gives the window back to the desktop.
 ///
 /// **This is not optional cleanup.** Windows destroys child windows along with their parent, so
-/// an embedded guest window that is still a child when our window closes is destroyed with it —
+/// an embedded guest window that is still a child when our window closes is destroyed with it:
 /// while the emulator process carries on running, now with no screen. Every later start then finds
-/// no window to embed. So this must run before our window goes away — on quit as well as on a
+/// no window to embed. So this must run before our window goes away, on quit as well as on a
 /// normal stop.
 pub fn release_window(child: Hwnd, styles: Option<WindowStyles>) -> bool {
     if !is_live_window(child) {
@@ -252,6 +290,10 @@ pub fn release_window(child: Hwnd, styles: Option<WindowStyles>) -> bool {
     }
     // SAFETY: plain user32 calls on a live window handle.
     unsafe {
+        // Hidden before it stops being ours, so it never lands on the desktop: the emulator keeps
+        // running after this app closes, out of sight, until the next start finds it and embeds it
+        // again.
+        ShowWindow(raw(child), SW_HIDE);
         // Parent first: the window has to stop being a child before WS_CHILD is cleared, or
         // Windows is briefly asked to treat a parented window as top-level.
         SetLastError(0);
@@ -276,7 +318,7 @@ pub fn release_window(child: Hwnd, styles: Option<WindowStyles>) -> bool {
     }
 }
 
-/// Hides or shows the embedded window — the airspace escape hatch.
+/// Hides or shows the embedded window: the airspace escape hatch.
 pub fn set_window_visible(child: Hwnd, visible: bool) -> bool {
     if !is_live_window(child) {
         return false;
@@ -290,7 +332,7 @@ pub fn set_window_visible(child: Hwnd, visible: bool) -> bool {
     true
 }
 
-/// Whether the handle still refers to a live window — the emulator may have exited.
+/// Whether the handle still refers to a live window: the emulator may have exited.
 pub fn is_live_window(child: Hwnd) -> bool {
     // SAFETY: IsWindow accepts any value, including stale and null handles.
     !child.is_null() && unsafe { IsWindow(raw(child)) } != 0
@@ -299,7 +341,7 @@ pub fn is_live_window(child: Hwnd) -> bool {
 /// Where the embedded window actually is, in the parent's client coordinates.
 ///
 /// Exists because the emulator moves itself. When the guest's display geometry changes, the
-/// emulator's Qt window resizes to its own preferred size for the new display — after our
+/// emulator's Qt window resizes to its own preferred size for the new display, after our
 /// `SetWindowPos`, and without asking. Comparing this against the rectangle we asked for is how
 /// the controller notices and puts it back.
 pub fn child_bounds(child: Hwnd, parent: Hwnd) -> Option<Rect> {
@@ -337,9 +379,9 @@ unsafe extern "system" fn hide_owned_proc(hwnd: HWND, lparam: LPARAM) -> i32 {
     1
 }
 
-/// Hides the top-level windows the embedded one owns — the emulator's floating toolbar.
+/// Hides the top-level windows the embedded one owns: the emulator's floating toolbar.
 ///
-/// The emulator's Qt main window owns a separate frameless tool window (Back/Home/Volume/…) docked
+/// The emulator's Qt main window owns a separate frameless tool window (Back/Home/Volume/â€¦) docked
 /// to its right edge. Owned windows are not children, so `SetParent` leaves it behind as a strip
 /// floating over whatever is under it. Every one of its functions is already on our bezel, and it
 /// reappears whenever the emulator repositions, so this is called on a timer rather than once.
@@ -412,13 +454,59 @@ impl crate::guest_window::EmbedApi for Win32Embed {
     }
 }
 
+/// A colour as Windows takes it: `0x00BBGGRR`.
+pub const fn colorref(r: u8, g: u8, b: u8) -> u32 {
+    (r as u32) | ((g as u32) << 8) | ((b as u32) << 16)
+}
+
+/// Colours a window's own title bar, its title and its edge, so the frame reads as part of the
+/// page under it. Windows 11 honours these; Windows 10 ignores them, leaving its own frame, so
+/// nothing here can fail in a way that matters. Returns whether the caption colour was taken.
+pub fn tint_frame(window: Hwnd, caption: u32, title: u32, edge: u32, dark: bool) -> bool {
+    use windows_sys::Win32::Graphics::Dwm::{
+        DwmSetWindowAttribute, DWMWA_BORDER_COLOR, DWMWA_CAPTION_COLOR, DWMWA_TEXT_COLOR, DWMWA_USE_IMMERSIVE_DARK_MODE, DWMWINDOWATTRIBUTE,
+    };
+    if window.is_null() {
+        return false;
+    }
+    let set = |attribute: DWMWINDOWATTRIBUTE, value: u32| {
+        // SAFETY: a plain value of the size the attribute takes, read during the call only.
+        unsafe { DwmSetWindowAttribute(raw(window), attribute as _, std::ptr::from_ref(&value).cast(), 4) >= 0 }
+    };
+    // Dark mode first: it decides the caption buttons' colours, which the caption colour doesn't.
+    set(DWMWA_USE_IMMERSIVE_DARK_MODE, u32::from(dark));
+    let taken = set(DWMWA_CAPTION_COLOR, caption);
+    set(DWMWA_TEXT_COLOR, title);
+    set(DWMWA_BORDER_COLOR, edge);
+    taken
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
+    fn a_colour_reaches_windows_blue_first() {
+        assert_eq!(colorref(0x17, 0x17, 0x17), 0x0017_1717);
+        assert_eq!(colorref(0x01, 0x02, 0x03), 0x0003_0201);
+    }
+
+    #[test]
     fn a_process_tree_always_contains_its_own_root() {
         assert!(descendant_pids(std::process::id()).contains(&std::process::id()));
+    }
+
+    #[test]
+    fn only_the_emulators_main_window_and_toolbar_are_kept_off_the_desktop() {
+        assert!(should_hide_emulator_window("Qt653QWindowIcon", false), "the main window");
+        assert!(should_hide_emulator_window("Qt5152QWindowIcon", false), "whatever the Qt version");
+        assert!(should_hide_emulator_window("Qt653QWindowToolSaveBits", true), "the toolbar down its side");
+        assert!(!should_hide_emulator_window("Qt653QWindowIcon", true), "an owned Qt window is a dialog, which must be seen");
+        assert!(!should_hide_emulator_window("#32770", true), "a Win32 dialog");
+        assert!(!should_hide_emulator_window("Chrome_WidgetWin_1", false), "not Qt's");
+        assert!(!should_hide_emulator_window("Qt653ScreenChangeObserverWindow", false), "Qt plumbing, never shown");
+        assert!(is_qt_main_window_class("Qt653QWindowIcon"));
+        assert!(!is_qt_main_window_class("Qt653QWindowToolSaveBits"));
     }
 
     #[test]

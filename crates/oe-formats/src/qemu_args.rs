@@ -1,7 +1,7 @@
-//! The QEMU command line for an Android-x86 guest — the licence-clean route that the
+//! The QEMU command line for an Android-x86 guest: the licence-clean route that the
 //! `android/foss` prototype boots, kept for when a QEMU engine is wired in.
 //!
-//! Kept apart from the process handling so it can be tested without QEMU installed — the flags are
+//! Kept apart from the process handling so it can be tested without QEMU installed: the flags are
 //! where the mistakes live, not the spawning. Several of these are load-bearing in ways that are
 //! invisible until the guest fails to boot, so each is explained where it is not obvious.
 
@@ -13,12 +13,12 @@ pub enum QemuAccel {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct QemuArgsInput {
-    /// Extracted from the ISO, not booted through its menu — see `kernel`/`initrd` below.
+    /// Extracted from the ISO, not booted through its menu: see `kernel`/`initrd` below.
     pub kernel_path: String,
     pub initrd_path: String,
     pub iso_path: String,
     pub data_disk_path: String,
-    /// `SRC=` — the directory on the media holding the payload. Empty for an ISO release.
+    /// `SRC=`: the directory on the media holding the payload. Empty for an ISO release.
     pub src_dir: String,
     pub cores: u32,
     pub ram_mb: u32,
@@ -40,7 +40,7 @@ pub const DATA_DEVICE: &str = "/dev/vda";
 /// The kernel command line handed to Android-x86.
 ///
 /// `SRC=` names the directory holding `system.sfs` as an absolute path from the media root, which
-/// is why it is derived from the ISO rather than assumed — an ISO release keeps the payload at the
+/// is why it is derived from the ISO rather than assumed: an ISO release keeps the payload at the
 /// root and an installed layout does not.
 ///
 /// `nomodeset` matters more than it looks: without it the guest tries to bring up KMS against a
@@ -65,7 +65,7 @@ pub fn qemu_args(input: &QemuArgsInput) -> Vec<String> {
 
     // Acceleration first: everything else is irrelevant if the guest is interpreting instructions.
     match input.accel {
-        // `,kernel-irqchip=off` is required — WHPX does not implement the in-kernel interrupt
+        // `,kernel-irqchip=off` is required: WHPX does not implement the in-kernel interrupt
         // controller, and QEMU fails to start rather than falling back.
         QemuAccel::Whpx => push(&["-accel", "whpx,kernel-irqchip=off", "-cpu", "max,-vmx,-svm"]),
         QemuAccel::Tcg => push(&["-accel", "tcg", "-cpu", "qemu64"]),
@@ -74,7 +74,7 @@ pub fn qemu_args(input: &QemuArgsInput) -> Vec<String> {
     push(&["-smp", &input.cores.to_string(), "-m", &input.ram_mb.to_string()]);
 
     // Booted directly from the extracted kernel and initrd rather than through the ISO's boot
-    // menu. The menu needs someone to press a key, and this has to come up unattended — which is
+    // menu. The menu needs someone to press a key, and this has to come up unattended, which is
     // the whole reason the ISO is parsed for these two files instead of simply being handed to
     // QEMU as a bootable disc.
     push(&["-kernel", &input.kernel_path, "-initrd", &input.initrd_path, "-append", &kernel_command_line(&input.src_dir)]);

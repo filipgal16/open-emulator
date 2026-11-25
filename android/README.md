@@ -1,7 +1,7 @@
 # Android guest data
 
-What the app reads to describe and configure an Android guest. The code that drives the guest —
-downloading the SDK, creating the AVD, starting, provisioning and stopping the emulator — is in
+What the app reads to describe and configure an Android guest. The code that drives the guest
+(downloading the SDK, creating the AVD, starting, provisioning and stopping the emulator) is in
 `crates/oe-engine`; this folder is the data it works from, shipped beside `open-emulator.exe`.
 
 ## Layout

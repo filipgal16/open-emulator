@@ -109,7 +109,7 @@ impl FdroidSource {
         self.loaded().index.apps.len()
     }
 
-    /// Fetches the catalogue if it is stale, or always with `force`. Never fails — a stale
+    /// Fetches the catalogue if it is stale, or always with `force`. Never fails: a stale
     /// catalogue still serves.
     pub async fn refresh(&self, force: bool) {
         let before = self.refreshes.load(Ordering::SeqCst);
@@ -300,7 +300,7 @@ impl AppSource for FdroidSource {
     }
 }
 
-/// The cached catalogue, or `None` if there is no usable one — the store then says it is updating
+/// The cached catalogue, or `None` if there is no usable one: the store then says it is updating
 /// the catalogue until the first refresh lands.
 fn read_cache(file: &std::path::Path) -> Option<Loaded> {
     let cache: CacheFile = serde_json::from_slice(&std::fs::read(file).ok()?).ok()?;

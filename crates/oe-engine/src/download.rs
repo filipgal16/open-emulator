@@ -99,7 +99,7 @@ pub fn http_client() -> reqwest::Client {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DownloadError {
     pub message: String,
-    /// True when retrying could plausibly work — a network drop rather than a bad digest.
+    /// True when retrying could plausibly work: a network drop rather than a bad digest.
     pub retryable: bool,
 }
 
@@ -172,7 +172,7 @@ fn file_name(path: &Path) -> String {
 /// Three properties, each earning its complexity:
 ///
 ///   **Resume.** Bytes already in the `.part` file are requested with `Range: bytes=N-`. Without
-///   this, a dropped connection at 90% of a 1.5 GB system image costs the entire download — which
+///   this, a dropped connection at 90% of a 1.5 GB system image costs the entire download, which
 ///   is the single most demoralising way first-run setup fails.
 ///
 ///   **Verify before rename.** The real file appears only after its digest matches. Nothing
@@ -208,7 +208,7 @@ pub async fn download_file(spec: &DownloadSpec, options: &DownloadOptions) -> Re
             progress(size, size);
             return Ok(spec.target.clone());
         }
-        // Present but wrong — a truncated or superseded file. Start over rather than resuming
+        // Present but wrong: a truncated or superseded file. Start over rather than resuming
         // onto it.
         log(&format!("re-downloading {}: digest did not match", file_name(&spec.target)));
         let _ = tokio::fs::remove_file(&spec.target).await;
@@ -233,7 +233,7 @@ pub async fn download_file(spec: &DownloadSpec, options: &DownloadOptions) -> Re
     // duplicated.
     let status = response.status();
     if existing > 0 && status == StatusCode::OK {
-        log("the server ignored the resume request — starting over");
+        log("the server ignored the resume request, starting over");
         let _ = tokio::fs::remove_file(&part).await;
         existing = 0;
     } else if existing > 0 && status != StatusCode::PARTIAL_CONTENT {
@@ -297,7 +297,7 @@ pub async fn download_file(spec: &DownloadSpec, options: &DownloadOptions) -> Re
         let actual = digest_of(&part, spec.algorithm).await.map_err(|e| io_error("could not read the download", e))?;
         if actual != digest.to_lowercase() {
             // A mismatch after a resume usually means the remote file changed under us, so the
-            // partial bytes are worthless — keeping them would make every retry fail the same way.
+            // partial bytes are worthless, keeping them would make every retry fail the same way.
             let _ = tokio::fs::remove_file(&part).await;
             return Err(DownloadError::new(
                 format!("{} failed verification ({})", file_name(&spec.target), spec.algorithm.name()),
@@ -324,7 +324,7 @@ pub struct ParallelResult {
 /// time keeps a domestic link busy without turning progress reporting into noise.
 ///
 /// Failures are collected rather than returned early, so one bad package does not discard the
-/// other two gigabytes that downloaded successfully — the caller retries only what failed.
+/// other two gigabytes that downloaded successfully: the caller retries only what failed.
 pub async fn download_all(specs: Vec<DownloadSpec>, options: DownloadOptions, concurrency: usize) -> ParallelResult {
     // One shared view of overall progress, so the UI can show a single meaningful bar rather than
     // three bars that each jump around independently.
@@ -396,8 +396,8 @@ mod tests {
         status: Option<u16>,
     }
 
-    /// A real HTTP server, not a stubbed client: resume is a *protocol* behaviour — Range
-    /// requests, 206 versus 200, Content-Range — and a fake would only encode assumptions.
+    /// A real HTTP server, not a stubbed client: resume is a *protocol* behaviour (Range
+    /// requests, 206 versus 200, Content-Range) and a fake would only encode assumptions.
     /// Returns its base URL and a log of the Range header of every request.
     async fn serve(behaviour: impl Fn(&str) -> Behaviour + Send + Sync + 'static) -> (String, Arc<Mutex<Vec<Option<String>>>>) {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();

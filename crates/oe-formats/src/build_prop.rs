@@ -1,6 +1,6 @@
 //! Edits Android `build.prop` files as text, changing only the values it is asked to.
 //!
-//! The image's identity — what Settings → About, `Build.MODEL` and the fingerprint report — lives
+//! The image's identity (what Settings → About, `Build.MODEL` and the fingerprint report) lives
 //! in the four stock `build.prop`s (system, system_ext, product, vendor). The line rules here
 //! follow the parser that reads them, `LoadProperties` in AOSP's `init/property_service.cpp`: a
 //! line is `key=value` with whitespace trimmed around both, `#` starts a comment only at the start
@@ -9,7 +9,7 @@
 //! **Identity is rewritten in place, never appended.** Which of two definitions of a key wins
 //! depends on who reads it: API 30's init loads every file into one map and lets the later one
 //! override (logging "Overriding previous 'ro.' property"), older init and anything that reads the
-//! file itself — `/system/build.prop` is world-readable — take the first. An appended line leaves
+//! file itself (`/system/build.prop` is world-readable) take the first. An appended line leaves
 //! two answers and the stock identity still in plain sight; rewriting every occurrence leaves one.
 //!
 //! Everything this module does not rewrite stays byte-identical: comments, blank lines, order, line
@@ -74,7 +74,7 @@ const PARTITIONS: [&str; 6] = ["system", "system_ext", "product", "vendor", "odm
 ///
 /// Deliberately closed on both sides: `ro.product.cpu.abi`, `ro.product.build.date`,
 /// `ro.product.board`, `ro.product.first_api_level`, `ro.product.vndk.version` and the rest share
-/// the prefix, and rewriting any of them would change what the image *is*, not what it is called —
+/// the prefix, and rewriting any of them would change what the image *is*, not what it is called:
 /// a wrong ABI list is an image that refuses every app.
 fn product_key_field(key: &str) -> Option<&str> {
     let rest = key.strip_prefix("ro.product.")?;
@@ -120,7 +120,7 @@ fn is_fingerprint(value: &str) -> bool {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Rewritten {
     pub text: String,
-    /// Each key whose value changed, once, in file order — so a second run reports nothing.
+    /// Each key whose value changed, once, in file order, so a second run reports nothing.
     pub changed: Vec<String>,
 }
 
@@ -128,7 +128,7 @@ pub struct Rewritten {
 /// file does not have is left for the files that do (init derives the unsuffixed `ro.product.*`
 /// and `ro.build.fingerprint` from them).
 ///
-/// A fingerprint keeps everything from its first `:` — release, build id, incremental, type and
+/// A fingerprint keeps everything from its first `:` onward: release, build id, incremental, type and
 /// tags stay true to the build underneath; only `brand/name/device` becomes ours.
 pub fn rewrite_identity(text: &str, identity: &RomIdentity) -> Result<Rewritten> {
     check_identity(identity)?;
@@ -166,7 +166,7 @@ fn identity_value(key: &str, value: &str, identity: &RomIdentity) -> Result<Opti
 
 /// Fails unless every identity value can be written as a property, and brand, name and device can
 /// sit in a fingerprint: a `/`, `:` or space in one of those shifts every part after it, and
-/// anything that splits the fingerprint — attestation, Play's device checks, crash reporters —
+/// anything that splits the fingerprint (attestation, Play's device checks, crash reporters)
 /// reads a different release or build id than the image has.
 pub fn check_identity(identity: &RomIdentity) -> Result<()> {
     for (field, value) in identity.fields() {
@@ -193,7 +193,7 @@ pub fn check_identity(identity: &RomIdentity) -> Result<()> {
 ///
 /// Upsert rather than append because appending a key the file already has does nothing a reader
 /// can rely on (see the module comment). An appended line always ends in a newline, and a file that
-/// did not end in one gets one before it — otherwise the new property is glued onto the last value.
+/// did not end in one gets one before it; otherwise the new property is glued onto the last value.
 /// When nothing is appended the text keeps whatever ending it had.
 ///
 /// Every key and value is checked before anything is edited, so a refusal changes nothing.
@@ -297,7 +297,7 @@ impl Props {
 /// Every property the text defines, skipping comments, blank lines, `import` lines and lines
 /// without `=`.
 ///
-/// When a key is defined twice, the last definition wins — what API 30's init does, and so what
+/// When a key is defined twice, the last definition wins: what API 30's init does, and so what
 /// `getprop` reports (see the module comment).
 pub fn parse_props(text: &str) -> Props {
     let mut out = Props::default();
@@ -370,8 +370,8 @@ struct Rewrite {
 /// Offers every property line to `replace`; a returned string becomes the line's new value, and
 /// `None` leaves the line alone.
 ///
-/// Splits on `\n` only and rejoins with `\n`, so every line `replace` declines — and the file's
-/// final newline, or its absence — comes back byte-for-byte.
+/// Splits on `\n` only and rejoins with `\n`, so every line `replace` declines (and the file's
+/// final newline, or its absence) comes back byte-for-byte.
 fn rewrite_values(text: &str, mut replace: impl FnMut(&str, &str) -> Result<Option<String>>) -> Result<Rewrite> {
     let mut lines: Vec<String> = text.split('\n').map(str::to_owned).collect();
     let mut matched: Vec<String> = Vec::new();
@@ -441,7 +441,7 @@ mod tests {
 
     /// Every identity key each stock file has, in file order, with what it must read after the
     /// rewrite. Written out rather than derived from the module's own patterns, so a pattern that
-    /// misses a key — or grabs one too many — fails here.
+    /// misses a key, or grabs one too many, fails here.
     fn expected(volume: &str) -> Vec<(String, String)> {
         let mut out = Vec::new();
         match volume {

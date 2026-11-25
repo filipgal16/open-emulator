@@ -1,8 +1,8 @@
-//! Remote images — icons and screenshots — downloaded once and kept on disk.
+//! Remote images, icons and screenshots, downloaded once and kept on disk.
 //!
 //! The UI only ever draws from the files here; it never reaches a remote host itself. Every image
 //! is fetched over https only, capped in size, and kept only if its first bytes say it is really a
-//! PNG, JPEG, GIF or WebP — the `Content-Type` header is not trusted for that, since a hostile or
+//! PNG, JPEG, GIF or WebP: the `Content-Type` header is not trusted for that, since a hostile or
 //! compromised CDN can label anything `image/png`.
 
 use std::collections::HashMap;
@@ -84,7 +84,7 @@ impl ImageCache {
         self.path_for(&Self::id_for(image_url))
     }
 
-    /// Downloads the image if needed. `None` when it cannot be used — never an error: art that
+    /// Downloads the image if needed. `None` when it cannot be used, never an error: art that
     /// fails to fetch degrades to a placeholder, it does not break the caller.
     pub async fn ensure(&self, image_url: &str) -> Option<PathBuf> {
         if let Some(ready) = self.path_if_ready(image_url) {

@@ -1,7 +1,7 @@
 //! Reading members out of a zip archive, in-process.
 //!
 //! The SDK's archives are unpacked whole (see the engine), but a game bundle is the opposite case.
-//! Only some of its members are wanted — the ones that fit this guest — and one small member,
+//! Only some of its members are wanted, the ones that fit this guest, and one small member,
 //! `manifest.json`, has to be read before deciding which. The zip format itself is a directory at
 //! the end of the file and a fixed header in front of each member, which is a page of code.
 //!

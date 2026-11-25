@@ -1,7 +1,7 @@
 //! Game bundles: `.xapk` (APKPure, APKCombo) and `.apks` (SAI), as well as plain `.apk`.
 //!
 //! Both bundle formats are a zip holding a base APK and the split APKs Play would normally have
-//! picked for the phone — one per processor type, screen density and language, plus asset packs —
+//! picked for the phone (one per processor type, screen density and language, plus asset packs)
 //! and an XAPK can also carry OBB data files and a `manifest.json` describing them. Installing one
 //! means doing Play's picking ourselves: the base, every language/density/asset split, and the
 //! native-code split for exactly one processor type this guest can run, all handed to the package
@@ -102,7 +102,7 @@ fn is_top_level_apk(name: &str) -> bool {
 /// Decides what a file is from its contents, not only its name.
 ///
 /// An APK is itself a zip, so the extension cannot be the whole story: an XAPK renamed to `.apk`
-/// is common on download sites. What separates them is unambiguous — an APK has
+/// is common on download sites. What separates them is unambiguous: an APK has
 /// `AndroidManifest.xml` at its root, a bundle has APKs there instead.
 pub fn inspect_package_file(file_path: &Path) -> Result<PackageFile, PackageFileError> {
     if !has_package_extension(&file_path.to_string_lossy()) {
@@ -146,7 +146,7 @@ fn js_number(value: Option<&Value>) -> f64 {
 }
 
 /// XAPK's `manifest.json`, version 2. Tolerant: every field is optional, and a field of the wrong
-/// type is dropped rather than failing the whole file — download sites write these by hand.
+/// type is dropped rather than failing the whole file; download sites write these by hand.
 pub fn parse_bundle_manifest(text: &str) -> Option<BundleManifest> {
     let raw: Value = serde_json::from_str(text.strip_prefix('\u{feff}').unwrap_or(text)).ok()?;
     let record = raw.as_object()?;
@@ -221,7 +221,7 @@ pub struct NamedSize {
 ///
 /// Asked in order of how much the answer can be trusted: the manifest naming it, the
 /// `<package>.apk` convention XAPK uses, the `base.apk` convention SAI and bundletool use, and only
-/// then a guess among whatever is not a config split — a package-shaped name first, then the
+/// then a guess among whatever is not a config split: a package-shaped name first, then the
 /// largest, since asset packs aside the base is where the code lives.
 pub fn find_base(apks: &[NamedSize], manifest: Option<&BundleManifest>) -> Option<String> {
     let has = |name: &str| apks.iter().any(|apk| apk.name == name);
@@ -272,7 +272,7 @@ fn no_matching_abi_message(bundle_abis: &[&str]) -> String {
 ///
 /// Everything except native-code splits is installed: languages and densities the guest will not
 /// use cost some disk, while leaving out one it does use breaks the app. Native code is the one
-/// place a wrong pick fails the install outright, so exactly one processor type is chosen — the
+/// place a wrong pick fails the install outright, so exactly one processor type is chosen: the
 /// first in the guest's own preference order that the bundle has.
 pub fn select_apks(apks: &[NamedSize], manifest: Option<&BundleManifest>, guest_abis: &[String]) -> Result<BundleSelection, PackageFileError> {
     let Some(base) = find_base(apks, manifest) else {
@@ -318,7 +318,7 @@ fn is_obb_file_name(name: &str) -> bool {
 /// game looks for them.
 ///
 /// Only the file name is taken from the manifest's install path, and both it and the package name
-/// are checked against a strict pattern — they come from a downloaded file and end up as a path on
+/// are checked against a strict pattern; they come from a downloaded file and end up as a path on
 /// the guest's storage. An entry that fails the check, or names a member the archive does not
 /// have, is skipped.
 pub fn plan_expansions(bundle: &AppBundle, package_name: Option<&str>) -> Vec<ExpansionPlan> {

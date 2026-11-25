@@ -9,7 +9,7 @@ use oe_core::update::UpdatePhase;
 use oe_engine::defender::ExclusionState;
 use oe_store::types::format_bytes;
 
-use super::{action, body, empty, heading, megabytes, quiet, section};
+use super::{action, body, chip, empty, keys, megabytes, page_header, quiet, section};
 use crate::app::{App, Message};
 use crate::theme::{self, Kind, Tokens};
 
@@ -18,7 +18,7 @@ pub fn view(app: &App) -> Element<'_, Message> {
     let Some(state) = &app.settings.state else {
         return empty(t, "Settings", "Loading…".into(), None);
     };
-    let mut page = column![heading(t, "Settings")].spacing(24).max_width(720);
+    let mut page = column![page_header(t, "Settings", "How Android looks, runs and stays up to date on this PC.")].spacing(28).max_width(720);
     if !state.tuning.accelerated {
         page = page.push(super::banner(
             t.warn_bg,
@@ -35,7 +35,7 @@ pub fn view(app: &App) -> Element<'_, Message> {
     page = page.push(antivirus(app));
     page = page.push(updates(app));
     page = page.push(shortcuts(t));
-    scrollable(container(page).padding(24).center_x(Length::Fill)).height(Length::Fill).into()
+    scrollable(container(page).padding([32, 24]).center_x(Length::Fill)).height(Length::Fill).into()
 }
 
 fn block<'a>(t: Tokens, title: &'a str, content: Column<'a, Message>) -> Element<'a, Message> {
@@ -43,19 +43,14 @@ fn block<'a>(t: Tokens, title: &'a str, content: Column<'a, Message>) -> Element
 }
 
 fn appearance(t: Tokens, state: &SettingsState) -> Element<'_, Message> {
-    let mut choices = row![].spacing(4);
+    let mut choices = row![].spacing(6);
     for (label, choice) in [("System", ThemeChoice::System), ("Light", ThemeChoice::Light), ("Dark", ThemeChoice::Dark)] {
-        choices = choices.push(
-            button(text(label).size(theme::TEXT_SM).font(theme::SEMIBOLD))
-                .padding([6, 14])
-                .style(theme::button_style(t, Kind::Nav(state.settings.theme == choice)))
-                .on_press(Message::SetTheme(choice)),
-        );
+        choices = choices.push(chip(t, None, label, state.settings.theme == choice, Some(Message::SetTheme(choice))));
     }
     let note = if state.settings.theme == ThemeChoice::System {
         "Follows Windows. Light or dark is an override that stays put."
     } else {
-        "This window only — Windows itself is unchanged."
+        "This window only. Windows itself is unchanged."
     };
     block(t, "Appearance", column![choices, quiet(t, note)])
 }
@@ -125,18 +120,30 @@ fn display<'a>(app: &'a App, state: &'a SettingsState) -> Element<'a, Message> {
     block(
         t,
         "Display",
-        column![slider_field(
-            t,
-            "Interface size",
-            density,
-            automatic,
-            f64::from(DENSITY_MIN)..=f64::from(DENSITY_MAX),
-            f64::from(DENSITY_STEP),
-            format!("{} dpi", density.round()),
-            advice.into(),
-            Message::SliderDensity,
-            Message::AutoDensity,
-        )],
+        column![
+            slider_field(
+                t,
+                "Interface size",
+                density,
+                automatic,
+                f64::from(DENSITY_MIN)..=f64::from(DENSITY_MAX),
+                f64::from(DENSITY_STEP),
+                format!("{} dpi", density.round()),
+                advice.into(),
+                Message::SliderDensity,
+                Message::AutoDensity,
+            ),
+            toggler(state.settings.emulator_window)
+                .label("Show the emulator's own window")
+                .size(18)
+                .text_size(theme::TEXT_SM)
+                .on_toggle(Message::SetEmulatorWindow),
+            quiet(
+                t,
+                "Opens Android in the emulator's own window, with its toolbar down the side, instead of inside this one. \
+                 Takes effect the next time you start the device.",
+            ),
+        ],
     )
 }
 
@@ -216,7 +223,7 @@ fn storage<'a>(app: &'a App, state: &'a SettingsState) -> Element<'a, Message> {
     let mut content = column![
         text("Where Android is downloaded").size(theme::TEXT_MD).font(theme::SEMIBOLD).color(t.text),
         text(storage.root.display().to_string()).size(theme::TEXT_SM).font(theme::MONO).color(t.text_dim),
-        quiet(t, format!("This is several gigabytes — the largest thing the app puts on a disk. Changing the folder moves what has already been downloaded; nothing is re-downloaded. {size}")),
+        quiet(t, format!("This is several gigabytes, the largest thing the app puts on a disk. Changing the folder moves what has already been downloaded; nothing is re-downloaded. {size}")),
         row![
             action(t, if app.settings.working { "Working…" } else { "Change folder" }, Kind::Secondary, (!app.settings.working).then_some(Message::ChooseFolder)),
             if storage.reclaimable_bytes > 0 {
@@ -293,17 +300,18 @@ fn updates(app: &App) -> Element<'_, Message> {
 }
 
 fn shortcuts(t: Tokens) -> Element<'static, Message> {
-    let mut list = Column::new().spacing(4);
-    for (keys, what) in [
-        ("Alt+1", "Device"),
-        ("Alt+2", "Apps"),
-        ("Alt+3", "Store"),
-        ("Alt+4", "Settings"),
-        ("Alt+S", "Start or stop the device"),
-        ("Alt+←", "Android Back"),
-        ("Esc", "Close the current panel, menu, or fullscreen"),
+    let mut list = Column::new().spacing(8);
+    for (combo, what) in [
+        (&["Alt", "1"][..], "Device"),
+        (&["Alt", "2"][..], "Apps"),
+        (&["Alt", "3"][..], "Store"),
+        (&["Alt", "4"][..], "Settings"),
+        (&["Alt", "S"][..], "Start or stop the device"),
+        (&["Alt", "A"][..], "Account"),
+        (&["Alt", "←"][..], "Android Back"),
+        (&["Esc"][..], "Close the current panel, menu, or fullscreen"),
     ] {
-        list = list.push(row![text(keys).size(theme::TEXT_SM).font(theme::MONO).color(t.text).width(90), quiet(t, what)].spacing(12));
+        list = list.push(row![container(keys(t, combo)).width(90), quiet(t, what)].spacing(12).align_y(Alignment::Center));
     }
     block(t, "Keyboard", list)
 }

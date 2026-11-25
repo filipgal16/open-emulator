@@ -1,11 +1,11 @@
 //! A child process the engine's tests start, so they control exactly what it prints, how long it
 //! takes and how it exits. Not part of the app.
 //!
-//! - `print <line>... [--stderr <line>...]` — lines on stdout, then on stderr
-//! - `raw <text>` / `raw-stderr <text>` — text with no trailing newline
-//! - `split <first> <second>` — two writes 60 ms apart, then a newline
-//! - `sleep <ms>` — waits, then exits 0
-//! - `exit <code>` — exits with the code
+//! - `print <line>... [--stderr <line>...]`: lines on stdout, then on stderr
+//! - `raw <text>` / `raw-stderr <text>`: text with no trailing newline
+//! - `split <first> <second>`: two writes 60 ms apart, then a newline
+//! - `sleep <ms>`: waits, then exits 0
+//! - `exit <code>`: exits with the code
 
 use std::io::Write;
 use std::time::Duration;
